@@ -30,6 +30,7 @@
     --radius-sm: 8px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { overflow-x: hidden; }
   body {
     font-family: 'DM Sans', sans-serif;
     background: var(--green-deep);
@@ -248,8 +249,9 @@
     cursor: pointer; transition: all 0.2s;
   }
   .course-item:hover { border-color: rgba(201,168,76,0.3); background: rgba(201,168,76,0.05); }
-  .course-name { font-size: 16px; color: var(--cream); font-weight: 500; }
-  .course-meta { font-size: 12px; color: var(--cream-dim); margin-top: 3px; }
+  .course-item > div:first-child { flex: 1; min-width: 0; }
+  .course-name { font-size: 16px; color: var(--cream); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .course-meta { font-size: 12px; color: var(--cream-dim); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .tee-dots { display: flex; gap: 5px; align-items: center; }
   .tee-dot { width: 10px; height: 10px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.2); }
   .modal-overlay {
@@ -303,6 +305,24 @@
   .hole-table td input::placeholder { color: rgba(255,255,255,0.2); font-style: italic; }
   .hole-table td input:placeholder-shown { border-color: rgba(201,168,76,0.3); background: rgba(201,168,76,0.05); }
   .hole-num { font-weight: 600; color: var(--gold-dim); }
+  img { max-width: 100%; height: auto; }
+  @media (max-width: 420px) {
+    .topbar { padding: 10px 14px; }
+    .topbar-logo { font-size: 16px; }
+    .topbar-user { gap: 8px; font-size: 12px; }
+    .topbar-user > span { display: none; }
+    .modal { padding: 20px 16px; }
+    .modal-actions { flex-wrap: wrap; }
+    .modal-actions .btn { min-width: 0; }
+    .page { padding: 20px 16px 88px; }
+    .card { padding: 16px; }
+    .player-item { padding: 12px 14px; }
+    .player-info { padding: 0 10px; }
+  }
+  @media (max-width: 340px) {
+    .topbar-logo span:last-child { display: none; }
+    .modal { padding: 16px 12px; }
+  }
 </style>
 </head>
 <body>
@@ -384,7 +404,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.26</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.27</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -708,7 +728,7 @@
         </label>
         <div id="acSlopeStatus" style="font-size:12px;color:var(--cream-dim);margin-top:6px;"></div>
       </div>
-      <div style="font-size:11px;color:var(--cream-dim);display:grid;grid-template-columns:1fr 70px 70px 50px auto;gap:6px;padding:0 2px;margin-bottom:6px;">
+      <div style="font-size:11px;color:var(--cream-dim);display:grid;grid-template-columns:1fr 56px 56px 42px auto;gap:6px;padding:0 2px;margin-bottom:6px;">
         <span>Navn</span><span style="text-align:center;">CR</span><span style="text-align:center;">Slope</span><span style="text-align:center;">Farge</span><span></span>
       </div>
       <div id="acTeeRows"></div>
@@ -1185,7 +1205,7 @@ function acAddTee() {
   const row = document.createElement('div');
   row.className = 'ac-tee-row';
   row.dataset.id = id;
-  row.style.cssText = 'display:grid;grid-template-columns:1fr 70px 70px 50px auto;gap:6px;margin-bottom:8px;align-items:center;';
+  row.style.cssText = 'display:grid;grid-template-columns:1fr 56px 56px 42px auto;gap:6px;margin-bottom:8px;align-items:center;';
   const isFirst = document.querySelectorAll('#acTeeRows .ac-tee-row').length === 0;
   row.innerHTML = `
     <input type="text" id="act-name-${id}" placeholder="f.eks. Gul" style="padding:8px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.3);color:var(--cream);font-size:14px;font-family:'DM Sans',sans-serif;width:100%;">
@@ -1224,7 +1244,7 @@ async function acLoadSlope(file) {
         const row = document.createElement('div');
         row.className = 'ac-tee-row';
         row.dataset.id = id;
-        row.style.cssText = 'display:grid;grid-template-columns:1fr 70px 70px 50px auto;gap:6px;margin-bottom:8px;align-items:center;';
+        row.style.cssText = 'display:grid;grid-template-columns:1fr 56px 56px 42px auto;gap:6px;margin-bottom:8px;align-items:center;';
         row.innerHTML = `
           <input type="text" id="act-name-${id}" value="${(t.name||'').replace(/"/g,'&quot;')}" placeholder="f.eks. Gul" style="padding:8px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.3);color:var(--cream);font-size:14px;font-family:'DM Sans',sans-serif;width:100%;">
           <input type="number" id="act-cr-${id}" value="${t.course_rating||''}" placeholder="71.5" step="0.1" min="55" max="85" style="padding:8px 6px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.3);color:var(--cream);font-size:13px;font-family:'DM Sans',sans-serif;text-align:center;width:100%;">
@@ -1404,6 +1424,7 @@ async function openCourseDetail(courseId) {
   document.getElementById('detailCourseName').textContent = course.name;
   document.getElementById('courseTabInfo').innerHTML = `
     <div class="card">
+      <h3 style="font-family:'Playfair Display',serif;font-size:20px;color:var(--cream);margin-bottom:12px;">${course.name}</h3>
       <div class="grid-2">
         <div><p style="font-size:12px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;">Sted</p><p style="margin-top:4px;">${course.location || '–'}</p></div>
         <div><p style="font-size:12px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;">Hull</p><p style="margin-top:4px;">${holeCount}</p></div>
@@ -1414,7 +1435,7 @@ async function openCourseDetail(courseId) {
       <button onclick="showAddTeeForm('${courseId}')" class="btn-sm">+ Legg til tee</button>
     </div>
     <div id="addTeeForm-${courseId}" style="display:none; background:rgba(0,0,0,0.2); border-radius:8px; padding:14px; margin-bottom:10px; border:1px solid rgba(201,168,76,0.2);">
-      <div style="display:grid; grid-template-columns:1fr 80px 80px 60px; gap:8px; margin-bottom:10px;">
+      <div style="display:grid; grid-template-columns:1fr 60px 60px 44px; gap:8px; margin-bottom:10px;">
         <input type="text" id="newTee-name-${courseId}" placeholder="Navn (f.eks. 59)" style="padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.3); color:var(--cream); font-size:13px; font-family:'DM Sans',sans-serif;">
         <input type="number" id="newTee-slope-${courseId}" placeholder="Slope" style="padding:8px 6px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.3); color:var(--cream); font-size:13px; font-family:'DM Sans',sans-serif; text-align:center;">
         <input type="number" id="newTee-cr-${courseId}" placeholder="CR" step="0.1" style="padding:8px 6px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.3); color:var(--cream); font-size:13px; font-family:'DM Sans',sans-serif; text-align:center;">
@@ -1439,7 +1460,7 @@ async function openCourseDetail(courseId) {
           </div>
         </div>
         <div id="teeEdit-${t.id}" style="display:none; background:rgba(0,0,0,0.2); border-radius:8px; padding:14px; margin:-4px 0 8px; border:1px solid rgba(201,168,76,0.2);">
-          <div style="display:grid; grid-template-columns:1fr 80px 80px 60px; gap:8px; margin-bottom:10px;">
+          <div style="display:grid; grid-template-columns:1fr 60px 60px 44px; gap:8px; margin-bottom:10px;">
             <input type="text" id="editName-${t.id}" value="${t.name}" placeholder="Navn" style="padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.3); color:var(--cream); font-size:13px; font-family:'DM Sans',sans-serif;">
             <input type="number" id="editSlope-${t.id}" value="${t.slope||''}" placeholder="Slope" style="padding:8px 6px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.3); color:var(--cream); font-size:13px; font-family:'DM Sans',sans-serif; text-align:center;">
             <input type="number" id="editCR-${t.id}" value="${t.course_rating||''}" placeholder="CR" step="0.1" style="padding:8px 6px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.3); color:var(--cream); font-size:13px; font-family:'DM Sans',sans-serif; text-align:center;">
@@ -1471,9 +1492,7 @@ function renderHolesTab(course) {
   const existing = {};
   (course.holes || []).forEach(h => { existing[h.hole_number] = h; });
   const courseId = course.id || currentCourseId;
-  const maxExistingSI = Math.max(0, ...(course.holes || []).map(h => h.stroke_index || 0));
-  const siMax = (holeCount === 9 && maxExistingSI > 9) ? 18 : holeCount;
-  const is9of18 = siMax === 18 && holeCount === 9;
+  const siMax = holeCount;
   let rows = '';
   for (let i = 1; i <= holeCount; i++) {
     const h = existing[i] || {};
@@ -1481,61 +1500,38 @@ function renderHolesTab(course) {
       '<td><input type="number" id="hpar-' + i + '" value="' + (h.par || '') + '" placeholder="4" min="3" max="5" style="width:60px;"></td>' +
       '<td><input type="number" id="hsi-' + i + '" value="' + (h.stroke_index || '') + '" placeholder="' + i + '" min="1" max="' + siMax + '" style="width:60px;"></td></tr>';
   }
-  let siInfo = '';
-  if (holeCount === 9) {
-    siInfo = '<div style="margin-bottom:12px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">' +
-      '<span style="font-size:12px; color:var(--cream-dim);">Type 9-hull bane:</span>' +
-      '<label style="font-size:13px; color:var(--cream-dim); cursor:pointer;">' +
-      '<input type="radio" name="siType" value="9" ' + (!is9of18 ? 'checked' : '') + ' onchange="updateSIMax(9, ' + holeCount + ')" style="accent-color:var(--gold); margin-right:4px;">' +
-      'Selvstendig (SI 1–9)</label>' +
-      '<label style="font-size:13px; color:var(--cream-dim); cursor:pointer;">' +
-      '<input type="radio" name="siType" value="18" ' + (is9of18 ? 'checked' : '') + ' onchange="updateSIMax(18, ' + holeCount + ')" style="accent-color:var(--gold); margin-right:4px;">' +
-      'Del av 18-hull (SI 1–18)</label></div>';
-  }
   const hasData = Object.keys(existing).length > 0;
   const statusText = hasData
     ? '<span style="color:var(--green-light);">✓ Data lagret</span>'
     : '<span style="color:var(--gold);">Ingen data ennå</span>';
   const el = document.getElementById('courseTabHoles');
   el.innerHTML = '';
-  // Alle kan laste opp scorekort
-  {
-    const uploadWrap = document.createElement('div');
-    uploadWrap.style.marginBottom = '12px';
-    const uploadLabel = document.createElement('label');
-    uploadLabel.style.cssText = 'padding:6px 12px;border-radius:6px;border:1px solid rgba(201,168,76,0.4);color:var(--gold);font-size:12px;cursor:pointer;display:inline-block;';
-    uploadLabel.textContent = '📸 Les scorekort';
-    const uploadInp = document.createElement('input');
-    uploadInp.type = 'file';
-    uploadInp.id = 'hullScorecardFile';
-    uploadInp.accept = 'image/png,image/jpeg,image/jpg,application/pdf';
-    uploadInp.style.cssText = 'display:none;';
-    uploadInp.onchange = (e) => analyzeHullScorecard(e.target.files[0], courseId, holeCount);
-    uploadLabel.appendChild(uploadInp);
-    const statusDiv = document.createElement('div');
-    statusDiv.id = 'hullScorecardStatus';
-    statusDiv.style.marginBottom = '8px';
-    uploadWrap.appendChild(uploadLabel);
-    uploadWrap.appendChild(statusDiv);
-    el.appendChild(uploadWrap);
-  }
+  const uploadWrap = document.createElement('div');
+  uploadWrap.style.marginBottom = '12px';
+  const uploadLabel = document.createElement('label');
+  uploadLabel.style.cssText = 'padding:6px 12px;border-radius:6px;border:1px solid rgba(201,168,76,0.4);color:var(--gold);font-size:12px;cursor:pointer;display:inline-block;';
+  uploadLabel.textContent = '📸 Les scorekort';
+  const uploadInp = document.createElement('input');
+  uploadInp.type = 'file';
+  uploadInp.id = 'hullScorecardFile';
+  uploadInp.accept = 'image/png,image/jpeg,image/jpg,application/pdf';
+  uploadInp.style.cssText = 'display:none;';
+  uploadInp.onchange = (e) => analyzeHullScorecard(e.target.files[0], courseId, holeCount);
+  uploadLabel.appendChild(uploadInp);
+  const statusDiv = document.createElement('div');
+  statusDiv.id = 'hullScorecardStatus';
+  statusDiv.style.marginBottom = '8px';
+  uploadWrap.appendChild(uploadLabel);
+  uploadWrap.appendChild(statusDiv);
+  el.appendChild(uploadWrap);
   const rest = document.createElement('div');
   rest.innerHTML = '<p style="font-size:13px;color:var(--cream-dim);margin-bottom:12px;">Fyll inn par og SI per hull. ' + statusText + '</p>' +
-    siInfo +
     '<table class="hole-table"><thead><tr><th>Hull</th><th>Par</th><th>SI</th></tr></thead><tbody>' + rows + '</tbody></table>' +
     '<button class="btn" id="saveHolesBtn" style="margin-top:16px;">Lagre hull-data</button>' +
     '<div id="holesAlert" style="margin-top:12px;"></div>';
   el.appendChild(rest);
-  window._currentSIMax = siMax;
   const saveBtn = document.getElementById('saveHolesBtn');
-  if (saveBtn) saveBtn.onclick = () => saveHoles(courseId, holeCount, window._currentSIMax || siMax);
-}
-function updateSIMax(newMax, holeCount) {
-  window._currentSIMax = newMax;
-  for (let i = 1; i <= holeCount; i++) {
-    const el = document.getElementById(`hsi-${i}`);
-    if (el) el.max = newMax;
-  }
+  if (saveBtn) saveBtn.onclick = () => saveHoles(courseId, holeCount, siMax);
 }
 async function saveHoles(courseId, holeCount, siMax) {
   siMax = siMax || holeCount;
