@@ -404,7 +404,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.32</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.33</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -889,12 +889,13 @@ function showLoginFromPublic() {
   document.getElementById('publicLivePage').style.display = 'none';
   document.getElementById('loginPage').style.display = 'flex';
 }
+let _publicLiveInterval = null;
 async function showPublicLive() {
   document.getElementById('loginPage').style.display = 'none';
   document.getElementById('appShell').style.display = 'none';
   document.getElementById('publicLivePage').style.display = 'block';
   await renderPublicLive();
-  setInterval(renderPublicLive, 20000);
+  if (!_publicLiveInterval) _publicLiveInterval = setInterval(renderPublicLive, 20000);
 }
 async function renderPublicLive() {
   const statusEl = document.getElementById('publicLiveStatus');
@@ -1073,6 +1074,11 @@ async function handleLogout() {
 
 // ── NAVIGATION ──
 function showPage(pageId) {
+  // Stop live polling when navigating away
+  if (pageId !== 'live' && _liveRefreshInterval) {
+    clearInterval(_liveRefreshInterval);
+    _liveRefreshInterval = null;
+  }
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   const page = document.getElementById('page-' + pageId);
@@ -1679,9 +1685,12 @@ async function savePlayer() {
   showAlert('addPlayerAlert', `✅ ${displayName} opprettet! Brukernavn: <strong>${username}</strong> · Passord: <strong>${password}</strong> — gi dette til spilleren.`, 'success');
   setTimeout(() => { closeModal('modalAddPlayer'); loadPlayers(); }, 1000);
 }
+let _profileLoading = false;
 async function loadProfilePage() {
+  if (_profileLoading) return;
+  _profileLoading = true;
   const p = currentProfile;
-  if (!p) return;
+  if (!p) { _profileLoading = false; return; }
   document.getElementById('profileContent').innerHTML = `
     <div class="page-header"><div><h1>Min Profil</h1></div></div>
     <div class="profile-header">
@@ -1732,6 +1741,7 @@ async function loadProfilePage() {
       <button class="btn btn-outline btn-auto" onclick="showPage('players')" style="width:100%; margin-bottom:8px;">Administrer spillere</button>
     </div>` : ''}
   `;
+  _profileLoading = false;
   loadAndRenderDifferentials();
 }
 async function changePassword() {
@@ -2851,92 +2861,104 @@ function speakAllHoles() {
   }
   speakNext();
 }
+let _dashboardLoading = false;
 async function loadDashboard() {
-  // Aktiv runde (brukerens egen)
-  const { data: active } = await db.from('rounds')
-    .select('*, courses(name), flights(id, flight_players(player_id))')
-    .eq('status', 'active')
-    .order('created_at', { ascending: false });
-  const myActive = (active || []).filter(r =>
-    r.flights?.some(f => f.flight_players?.some(fp => fp.player_id === currentProfile?.id))
-  );
-  const dashActive = document.getElementById('dashActiveRound');
-  if (myActive.length) {
-    dashActive.style.display = 'block';
-    dashActive.innerHTML = `<div onclick="openRound('${myActive[0].id}')" style="padding:18px 20px; background:rgba(201,168,76,0.1); border:1px solid rgba(201,168,76,0.3); border-radius:12px; margin-bottom:20px; cursor:pointer;">
-      <div style="font-size:11px; color:var(--gold); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:6px;">🟢 Aktiv runde</div>
-      <div style="font-size:18px; color:var(--cream); font-weight:500;">${myActive[0].courses?.name}</div>
-      <div style="font-size:13px; color:var(--cream-dim); margin-top:4px;">${myActive[0].date} · Trykk for å fortsette</div>
-    </div>`;
-  } else {
-    dashActive.style.display = 'none';
-  }
+  if (_dashboardLoading) return;
+  _dashboardLoading = true;
+  try {
+    // Fire all queries in parallel
+    const [
+      { data: active },
+      { data: recent },
+      { data: pending },
+      { data: notifs },
+      { data: myDiffs },
+    ] = await Promise.all([
+      db.from('rounds')
+        .select('*, courses(name), flights(id, flight_players(player_id))')
+        .eq('status', 'active').order('created_at', { ascending: false }),
+      db.from('rounds')
+        .select('*, courses(name), flights(id, flight_players(player_id, handicap, profiles(display_name)))')
+        .eq('status', 'completed').order('date', { ascending: false }).limit(8),
+      currentProfile?.is_admin
+        ? db.from('profiles').select('id').eq('is_approved', false)
+        : Promise.resolve({ data: [] }),
+      db.from('notifications')
+        .select('id').eq('player_id', currentProfile?.id).eq('read', false),
+      currentProfile
+        ? db.from('score_differentials')
+            .select('date,differential').eq('player_id', currentProfile.id)
+            .order('date', { ascending: false }).limit(20)
+        : Promise.resolve({ data: [] }),
+    ]);
 
-  // Sist spilte runder (alle, sortert på dato)
-  const { data: recent } = await db.from('rounds')
-    .select('*, courses(name), flights(id, flight_players(player_id, handicap, profiles(display_name)))')
-    .eq('status', 'finished')
-    .order('date', { ascending: false })
-    .limit(8);
-  const recentEl = document.getElementById('dashRecentRounds');
-  if (!recent?.length) {
-    recentEl.innerHTML = '<div style="text-align:center; padding:40px 20px; color:var(--cream-dim); font-size:14px;">Ingen runder spilt ennå</div>';
-  } else {
-    recentEl.innerHTML = recent.map(r => {
-      const allPlayers = (r.flights || []).flatMap(f => f.flight_players || []);
-      const playerNames = allPlayers
-        .map(fp => fp.profiles?.display_name?.split(' ')[0] || '?')
-        .join(' · ');
-      return `<div style="padding:14px 18px; background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.06); border-radius:12px; margin-bottom:8px; cursor:pointer; transition:border-color 0.2s;" onclick="showPage('rounds');" onmouseover="this.style.borderColor='rgba(201,168,76,0.25)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.06)'">
-        <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:4px;">
-          <div style="font-size:15px; color:var(--cream); font-weight:500;">${r.courses?.name || '–'}</div>
-          <div style="font-size:12px; color:var(--cream-dim);">${r.date}</div>
-        </div>
-        <div style="font-size:12px; color:var(--cream-dim);">${playerNames || 'Ingen spillere registrert'}</div>
+    // Aktiv runde
+    const myActive = (active || []).filter(r =>
+      r.flights?.some(f => f.flight_players?.some(fp => fp.player_id === currentProfile?.id))
+    );
+    const dashActive = document.getElementById('dashActiveRound');
+    if (myActive.length) {
+      dashActive.style.display = 'block';
+      dashActive.innerHTML = `<div onclick="openRound('${myActive[0].id}')" style="padding:18px 20px; background:rgba(201,168,76,0.1); border:1px solid rgba(201,168,76,0.3); border-radius:12px; margin-bottom:20px; cursor:pointer;">
+        <div style="font-size:11px; color:var(--gold); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:6px;">🟢 Aktiv runde</div>
+        <div style="font-size:18px; color:var(--cream); font-weight:500;">${myActive[0].courses?.name}</div>
+        <div style="font-size:13px; color:var(--cream-dim); margin-top:4px;">${myActive[0].date} · Trykk for å fortsette</div>
       </div>`;
-    }).join('');
-  }
+    } else {
+      dashActive.style.display = 'none';
+    }
 
-  // Admin: ventende brukere
-  const pendingBanner = document.getElementById('dashPendingBanner');
-  if (currentProfile?.is_admin) {
-    const { data: pending } = await db.from('profiles').select('id').eq('is_approved', false);
-    const count = pending?.length || 0;
-    if (count > 0) {
-      pendingBanner.innerHTML = `
+    // Sist spilte runder
+    const recentEl = document.getElementById('dashRecentRounds');
+    if (!recent?.length) {
+      recentEl.innerHTML = '<div style="text-align:center; padding:40px 20px; color:var(--cream-dim); font-size:14px;">Ingen runder spilt ennå</div>';
+    } else {
+      recentEl.innerHTML = recent.map(r => {
+        const rPlayers = (r.flights || []).flatMap(f => f.flight_players || []);
+        const playerNames = rPlayers.map(fp => fp.profiles?.display_name?.split(' ')[0] || '?').join(' · ');
+        return `<div style="padding:14px 18px; background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.06); border-radius:12px; margin-bottom:8px; cursor:pointer; transition:border-color 0.2s;" onclick="showPage('rounds');" onmouseover="this.style.borderColor='rgba(201,168,76,0.25)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.06)'">
+          <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:4px;">
+            <div style="font-size:15px; color:var(--cream); font-weight:500;">${r.courses?.name || '–'}</div>
+            <div style="font-size:12px; color:var(--cream-dim);">${r.date}</div>
+          </div>
+          <div style="font-size:12px; color:var(--cream-dim);">${playerNames || 'Ingen spillere registrert'}</div>
+        </div>`;
+      }).join('');
+    }
+
+    // Admin: ventende brukere
+    const pendingBanner = document.getElementById('dashPendingBanner');
+    if (currentProfile?.is_admin) {
+      const count = pending?.length || 0;
+      pendingBanner.innerHTML = count > 0 ? `
         <div style="padding:14px 18px; background:rgba(201,168,76,0.1); border:1px solid rgba(201,168,76,0.4); border-radius:12px; display:flex; justify-content:space-between; align-items:center; gap:12px;">
           <div>
             <div style="font-size:11px; color:var(--gold); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:4px;">⏳ Ventende godkjenning</div>
             <div style="font-size:15px; color:var(--cream);">${count} bruker${count === 1 ? '' : 'e'} venter</div>
           </div>
           <button onclick="openPendingUsers()" class="btn btn-auto" style="font-size:13px; padding:8px 18px; flex-shrink:0;">Godkjenn nå</button>
-        </div>`;
+        </div>` : '';
     } else {
       pendingBanner.innerHTML = '';
     }
-  } else {
-    pendingBanner.innerHTML = '';
-  }
 
-  // Notifikasjonsbadge
-  const { data: notifs } = await db.from('notifications')
-    .select('*').eq('player_id', currentProfile?.id).eq('read', false);
-  const badge = document.getElementById('notifBadge');
-  if (notifs?.length) {
-    badge.style.display = 'inline-flex'; badge.style.alignItems = 'center'; badge.style.justifyContent = 'center';
-    badge.textContent = notifs.length;
-  } else {
-    badge.style.display = 'none';
-  }
+    // Notifikasjonsbadge
+    const badge = document.getElementById('notifBadge');
+    if (notifs?.length) {
+      badge.style.display = 'inline-flex'; badge.style.alignItems = 'center'; badge.style.justifyContent = 'center';
+      badge.textContent = notifs.length;
+    } else {
+      badge.style.display = 'none';
+    }
 
-  // HCP-motivasjon (standard bane, estimat)
-  const motivEl = document.getElementById('dashMotivation');
-  if (motivEl && currentProfile) {
-    const { data: myDiffs } = await db.from('score_differentials')
-      .select('date,differential').eq('player_id', currentProfile.id)
-      .order('date', { ascending: false }).limit(20);
-    const motiv = _calcHcpMotivation(myDiffs || []);
-    motivEl.innerHTML = motiv ? _renderMotivBanner(motiv, false, true) : '';
+    // HCP-motivasjon
+    const motivEl = document.getElementById('dashMotivation');
+    if (motivEl) {
+      const motiv = _calcHcpMotivation(myDiffs || []);
+      motivEl.innerHTML = motiv ? _renderMotivBanner(motiv, false, true) : '';
+    }
+  } finally {
+    _dashboardLoading = false;
   }
 }
 
@@ -2986,36 +3008,41 @@ async function rejectPendingUser(userId, displayName) {
 // ── LIVE PAGE ──
 let _liveRefreshInterval = null;
 let _currentLiveRoundId = null;
+let _liveLoading = false;
 
 async function loadLivePage() {
-  const el = document.getElementById('liveContent');
-  const sub = document.getElementById('liveSubtitle');
-  el.innerHTML = '<div class="loading"><div class="spinner"></div> Laster...</div>';
+  if (_liveLoading) return;
+  _liveLoading = true;
+  if (_liveRefreshInterval) { clearInterval(_liveRefreshInterval); _liveRefreshInterval = null; }
+  try {
+    const el = document.getElementById('liveContent');
+    const sub = document.getElementById('liveSubtitle');
+    el.innerHTML = '<div class="loading"><div class="spinner"></div> Laster...</div>';
 
-  const { data: active } = await db.from('rounds')
-    .select('*, courses(name, holes), tee_sets(name), flights(id, name, flight_players(id, player_id, handicap, profiles(display_name)))')
-    .eq('status', 'active')
-    .order('created_at', { ascending: false });
+    const { data: active } = await db.from('rounds')
+      .select('*, courses(name, holes), tee_sets(name), flights(id, name, flight_players(id, player_id, handicap, profiles(display_name)))')
+      .eq('status', 'active')
+      .order('created_at', { ascending: false });
 
-  if (!active?.length) {
-    sub.textContent = 'Ingen aktive runder akkurat nå';
-    el.innerHTML = `
-      <div style="text-align:center; padding:60px 20px; color:var(--cream-dim);">
-        <div style="font-size:48px; margin-bottom:16px;">⛳</div>
-        <div style="font-size:16px; margin-bottom:8px; color:var(--cream);">Ingen aktive runder</div>
-        <div style="font-size:13px;">Når noen starter en runde vil den vises her</div>
-      </div>`;
-    return;
+    if (!active?.length) {
+      sub.textContent = 'Ingen aktive runder akkurat nå';
+      el.innerHTML = `
+        <div style="text-align:center; padding:60px 20px; color:var(--cream-dim);">
+          <div style="font-size:48px; margin-bottom:16px;">⛳</div>
+          <div style="font-size:16px; margin-bottom:8px; color:var(--cream);">Ingen aktive runder</div>
+          <div style="font-size:13px;">Når noen starter en runde vil den vises her</div>
+        </div>`;
+      return;
+    }
+
+    const round = active[0];
+    _currentLiveRoundId = round.id;
+    sub.textContent = round.courses?.name + ' · ' + round.date;
+    await renderLiveView(round);
+    _liveRefreshInterval = setInterval(() => loadLivePage(), 20000);
+  } finally {
+    _liveLoading = false;
   }
-
-  const round = active[0];
-  _currentLiveRoundId = round.id;
-  sub.textContent = round.courses?.name + ' · ' + round.date;
-
-  await renderLiveView(round);
-
-  if (_liveRefreshInterval) clearInterval(_liveRefreshInterval);
-  _liveRefreshInterval = setInterval(() => loadLivePage(), 20000);
 }
 
 async function renderLiveView(round) {
@@ -3528,13 +3555,17 @@ if ('serviceWorker' in navigator) {
 }
 init();
 
+let _visibilityDebounce = null;
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && currentProfile) {
-    const activePage = document.querySelector('.page.active')?.id?.replace('page-', '');
-    if (activePage === 'dashboard') loadDashboard();
-    else if (activePage === 'rounds') loadRounds();
-    else if (activePage === 'live') loadLivePage();
-    else if (activePage === 'profile') loadProfilePage();
+    clearTimeout(_visibilityDebounce);
+    _visibilityDebounce = setTimeout(() => {
+      const activePage = document.querySelector('.page.active')?.id?.replace('page-', '');
+      if (activePage === 'dashboard') loadDashboard();
+      else if (activePage === 'rounds') loadRounds();
+      else if (activePage === 'live') loadLivePage();
+      else if (activePage === 'profile') loadProfilePage();
+    }, 500);
   }
 });
 </script>
