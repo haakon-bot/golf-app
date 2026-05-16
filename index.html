@@ -404,7 +404,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.33</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.34</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -1841,24 +1841,21 @@ async function updateRoundMotivation() {
   const byPlayer = {};
   (allDiffs || []).forEach(d => { (byPlayer[d.player_id] = byPlayer[d.player_id] || []).push(d); });
   const courseName = document.getElementById('roundCourse').options[document.getElementById('roundCourse').selectedIndex]?.text || '';
-  let rows = allPlayers.map(p => {
-    const motiv = _calcHcpMotivation(byPlayer[p.id] || [], slope, cr, par);
-    return motiv
-      ? `<div style="display:flex;align-items:center;padding:9px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
-           <div style="flex:1;font-size:13px;color:var(--cream);">${p.display_name}</div>
-           <div style="text-align:right;">
-             <div style="font-size:15px;font-weight:600;color:#4caf7d;">${motiv.targetStableford}+ poeng</div>
-             <div style="font-size:11px;color:var(--cream-dim);">${motiv.currentHI} → <span style="color:#4caf7d;">${motiv.newHI}</span></div>
-           </div>
-         </div>`
-      : `<div style="display:flex;align-items:center;padding:9px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
-           <div style="flex:1;font-size:13px;color:var(--cream);">${p.display_name}</div>
-           <div style="font-size:12px;color:var(--cream-dim);">Ikke nok data</div>
-         </div>`;
-  }).join('');
+  const playerRows = allPlayers
+    .map(p => ({ p, motiv: _calcHcpMotivation(byPlayer[p.id] || [], slope, cr, par) }))
+    .filter(({ motiv }) => motiv !== null)
+    .map(({ p, motiv }) => `
+      <div style="display:flex;align-items:center;padding:9px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
+        <div style="flex:1;font-size:13px;color:var(--cream);">${p.display_name}</div>
+        <div style="text-align:right;">
+          <div style="font-size:15px;font-weight:600;color:#4caf7d;">${motiv.targetStableford}+ poeng</div>
+          <div style="font-size:11px;color:var(--cream-dim);">${motiv.currentHI} → <span style="color:#4caf7d;">${motiv.newHI}</span></div>
+        </div>
+      </div>`);
+  if (!playerRows.length) { el.innerHTML = ''; return; }
   el.innerHTML = `<div style="background:rgba(0,0,0,0.2);border-radius:10px;padding:14px;border:1px solid rgba(255,255,255,0.07);margin-bottom:4px;">
     <div style="font-size:10px;color:var(--gold);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;">🎯 HCP-mål · ${courseName} · Slope ${slope}</div>
-    ${rows}
+    ${playerRows.join('')}
   </div>`;
 }
 
@@ -1996,7 +1993,7 @@ async function loadAndRenderDifferentials() {
     const motiv = _calcHcpMotivation(diffs);
     smEl.innerHTML = motiv
       ? _renderMotivBanner(motiv, true, true)
-      : (diffs.length < 3 ? '<p style="font-size:13px;color:var(--cream-dim);">Trenger minst 3 runder for å beregne HCP-mål.</p>' : '');
+      : '';
   }
   _renderHcpGraph(diffs);
   _renderHcpHistoryList(diffs);
