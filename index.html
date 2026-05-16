@@ -404,7 +404,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.39</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.40</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -1780,39 +1780,48 @@ function _calcHcpIndexWHS(sortedDiffsAsc) {
   return +(sortedDiffsAsc.slice(0, use).reduce((s, d) => s + d, 0) / use * 0.96).toFixed(1);
 }
 
-function _calcHcpMotivation(diffs, slope = 113, courseRating = 72, coursePar = 72) {
+// profileHcp: the actual Golfbox HCP from profiles.handicap, used for display only.
+// WHS formula runs internally on differentials to find threshold + dropped round.
+function _calcHcpMotivation(diffs, slope = 113, courseRating = 72, coursePar = 72, profileHcp = null) {
   const withDiff = (diffs || []).filter(d => d.differential != null);
+  if (!withDiff.length) return null;
   if (withDiff.length < 3) return null;
   const byDate = [...withDiff].sort((a, b) => new Date(b.date) - new Date(a.date));
   const last20 = byDate.slice(0, 20);
   const sortedAsc = last20.map(d => parseFloat(d.differential)).sort((a, b) => a - b);
-  const currentHI = _calcHcpIndexWHS(sortedAsc);
-  if (currentHI === null) return null;
+  const currentHI_whs = _calcHcpIndexWHS(sortedAsc);
+  if (currentHI_whs === null) return null;
   const droppedRound = last20.length >= 20 ? last20[19] : null;
   const remaining = (last20.length >= 20 ? last20.slice(0, 19) : last20).map(d => parseFloat(d.differential));
   const bestCase = [...remaining, -10].sort((a, b) => a - b);
   const bestCaseHI = _calcHcpIndexWHS(bestCase) ?? 999;
-  if (bestCaseHI >= currentHI) return null;
+  if (bestCaseHI >= currentHI_whs) return null;
   let lo = -10, hi = 50;
   for (let i = 0; i < 60; i++) {
     const mid = (lo + hi) / 2;
     const trial = [...remaining, mid].sort((a, b) => a - b);
-    (_calcHcpIndexWHS(trial) ?? 999) < currentHI ? (lo = mid) : (hi = mid);
+    (_calcHcpIndexWHS(trial) ?? 999) < currentHI_whs ? (lo = mid) : (hi = mid);
   }
-  // Floor (not round) so thresholdDiff ≤ lo, guaranteeing newHI < currentHI
+  // Floor so thresholdDiff ≤ lo, guaranteeing newHI_whs < currentHI_whs
   let thresholdDiff = +(Math.floor(lo * 10) / 10).toFixed(1);
-  let newHI = _calcHcpIndexWHS([...remaining, thresholdDiff].sort((a, b) => a - b));
-  // Safety: step down by 0.1 until we actually cross the threshold
-  while ((!newHI || newHI >= currentHI) && thresholdDiff > -10) {
+  let newHI_whs = _calcHcpIndexWHS([...remaining, thresholdDiff].sort((a, b) => a - b));
+  while ((!newHI_whs || newHI_whs >= currentHI_whs) && thresholdDiff > -10) {
     thresholdDiff = +(thresholdDiff - 0.1).toFixed(1);
-    newHI = _calcHcpIndexWHS([...remaining, thresholdDiff].sort((a, b) => a - b));
+    newHI_whs = _calcHcpIndexWHS([...remaining, thresholdDiff].sort((a, b) => a - b));
   }
-  if (!newHI || newHI >= currentHI) return null;
-  const playingHCP = Math.round(currentHI * slope / 113 + (courseRating - coursePar));
+  if (!newHI_whs || newHI_whs >= currentHI_whs) return null;
+  const playingHCP = Math.round(currentHI_whs * slope / 113 + (courseRating - coursePar));
   const targetGross = thresholdDiff * slope / 113 + courseRating;
   const targetStableford = Math.round(coursePar + 36 + playingHCP - targetGross);
   if (targetStableford < 20 || targetStableford > 65) return null;
-  return { currentHI, newHI, thresholdDiff, targetStableford, playingHCP, droppedRound, count: last20.length };
+  // Display: use actual Golfbox HCP if provided; apply WHS delta for newHI display
+  const displayCurrentHI = profileHcp != null ? +parseFloat(profileHcp).toFixed(1) : currentHI_whs;
+  const whsDelta = +(newHI_whs - currentHI_whs).toFixed(1);
+  const displayNewHI = Math.min(
+    +(displayCurrentHI + whsDelta).toFixed(1),
+    +(displayCurrentHI - 0.1).toFixed(1)
+  );
+  return { currentHI: displayCurrentHI, newHI: displayNewHI, thresholdDiff, targetStableford, playingHCP, droppedRound, count: last20.length };
 }
 
 function _renderMotivFallback() {
@@ -1856,7 +1865,7 @@ async function updateRoundMotivation() {
   (allDiffs || []).forEach(d => { (byPlayer[d.player_id] = byPlayer[d.player_id] || []).push(d); });
   const courseName = document.getElementById('roundCourse').options[document.getElementById('roundCourse').selectedIndex]?.text || '';
   const playerRows = allPlayers
-    .map(p => ({ p, motiv: _calcHcpMotivation(byPlayer[p.id] || [], slope, cr, par) }))
+    .map(p => ({ p, motiv: _calcHcpMotivation(byPlayer[p.id] || [], slope, cr, par, p.handicap) }))
     .filter(({ motiv }) => motiv !== null)
     .map(({ p, motiv }) => `
       <div style="display:flex;align-items:center;padding:9px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
@@ -2004,8 +2013,8 @@ async function loadAndRenderDifferentials() {
   _renderStatCards(diffs);
   const smEl = document.getElementById('statsMotivation');
   if (smEl) {
-    const motiv = _calcHcpMotivation(diffs);
-    smEl.innerHTML = motiv ? _renderMotivBanner(motiv, true, true) : _renderMotivFallback();
+    const motiv = _calcHcpMotivation(diffs, 113, 72, 72, currentProfile?.handicap);
+    smEl.innerHTML = motiv ? _renderMotivBanner(motiv, true, true) : '';
   }
   _renderHcpGraph(diffs);
   _renderHcpHistoryList(diffs);
@@ -2960,8 +2969,8 @@ async function loadDashboard() {
       const { data: myDiffs } = await db.from('score_differentials')
         .select('*').eq('player_id', currentProfile.id)
         .order('date', { ascending: true });
-      const motiv = _calcHcpMotivation(myDiffs || []);
-      motivEl.innerHTML = motiv ? _renderMotivBanner(motiv, false, true) : _renderMotivFallback();
+      const motiv = _calcHcpMotivation(myDiffs || [], 113, 72, 72, currentProfile?.handicap);
+      motivEl.innerHTML = motiv ? _renderMotivBanner(motiv, false, true) : '';
     }
   } finally {
     _dashboardLoading = false;
