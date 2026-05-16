@@ -384,7 +384,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.25</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.26</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -477,6 +477,20 @@
       </div>
       <div id="roundHoleWarning" style="display:none; padding:12px 16px; border-radius:8px; background:rgba(201,168,76,0.1); border:1px solid rgba(201,168,76,0.4); color:var(--gold-light); font-size:13px; margin-bottom:12px;">
         ⚠️ Denne banen mangler hull-data (par og SI). Stableford og par vil ikke fungere under runde. <br>Gå til <strong>Baner → Hull-data</strong> og legg inn data først.
+      </div>
+      <div id="roundHoleRangeDiv" class="form-group" style="display:none;">
+        <label>Hvilke hull spilles?</label>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+          <label style="display:flex;align-items:center;gap:6px;padding:10px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);cursor:pointer;font-size:14px;color:var(--cream-dim);">
+            <input type="radio" name="roundHoleRange" value="all" checked style="accent-color:var(--gold);"> Hele 18
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;padding:10px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);cursor:pointer;font-size:14px;color:var(--cream-dim);">
+            <input type="radio" name="roundHoleRange" value="front9" style="accent-color:var(--gold);"> Første 9 (1–9)
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;padding:10px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);cursor:pointer;font-size:14px;color:var(--cream-dim);">
+            <input type="radio" name="roundHoleRange" value="back9" style="accent-color:var(--gold);"> Siste 9 (10–18)
+          </label>
+        </div>
       </div>
       <div class="form-group">
         <label>Tee-sett *</label>
@@ -649,119 +663,90 @@
 <!-- MODAL: Add Course -->
 <div class="modal-overlay" id="modalAddCourse" style="display:none;" onclick="closeModalOnOverlay(event,'modalAddCourse')">
   <div class="modal" style="max-width:600px;" onclick="event.stopPropagation()">
-    <h2>Legg til bane</h2>
-    <div id="addCourseAlert"></div>
-    <div id="courseStep1">
-      <div style="display:flex; gap:8px; margin-bottom:12px;">
-        <input type="text" id="courseSearch" placeholder="Søk på banenavn, f.eks. Bogstad..." onkeydown="if(event.key==='Enter')searchCourses()" style="flex:1; padding:12px 16px; border-radius:8px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.3); color:var(--cream); font-size:15px; font-family:'DM Sans',sans-serif; outline:none;">
-        <button class="btn btn-auto" onclick="searchCourses()">Søk</button>
-      </div>
-      <div id="searchResults"></div>
-      <hr class="divider">
-      <p style="font-size:13px; color:var(--cream-dim); text-align:center;">Finner du ikke banen?
-        <button onclick="showManualEntry()" style="background:none;border:none;color:var(--gold);cursor:pointer;font-size:13px;text-decoration:underline;font-family:'DM Sans',sans-serif;">Legg inn manuelt</button>
-      </p>
+    <!-- Step indicator -->
+    <div style="display:flex; align-items:center; margin-bottom:20px;">
+      <div id="acStepDot1" style="width:28px;height:28px;border-radius:50%;background:var(--gold);color:var(--green-deep);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0;">1</div>
+      <div id="acLine1" style="flex:1;height:2px;background:rgba(255,255,255,0.1);"></div>
+      <div id="acStepDot2" style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.1);color:var(--cream-dim);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0;">2</div>
+      <div id="acLine2" style="flex:1;height:2px;background:rgba(255,255,255,0.1);"></div>
+      <div id="acStepDot3" style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.1);color:var(--cream-dim);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0;">3</div>
+      <div id="acLine3" style="flex:1;height:2px;background:rgba(255,255,255,0.1);"></div>
+      <div id="acStepDot4" style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.1);color:var(--cream-dim);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0;">4</div>
     </div>
-    <div id="courseStep2" style="display:none;">
-      <div style="display:flex; align-items:center; gap:10px; margin-bottom:20px;">
-        <button onclick="backToSearch()" style="background:none;border:none;color:var(--gold);cursor:pointer;font-size:22px;">←</button>
-        <h3 id="step2Title" style="font-family:'Playfair Display',serif; color:var(--cream); font-size:18px;"></h3>
-      </div>
-      <div class="grid-2">
-        <div class="form-group"><label>Banenavn *</label><input type="text" id="courseName" placeholder="f.eks. Bogstad Golf"></div>
-        <div class="form-group"><label>Sted</label><input type="text" id="courseLocation" placeholder="f.eks. Oslo"></div>
-      </div>
+    <div id="acAlert"></div>
+
+    <!-- Step 1: Bane -->
+    <div id="acStep1">
+      <h2 style="margin-bottom:16px;">Baneinfo</h2>
+      <div class="form-group"><label>Banenavn *</label><input type="text" id="acName" placeholder="f.eks. Bogstad Golf"></div>
+      <div class="form-group"><label>Sted</label><input type="text" id="acLocation" placeholder="f.eks. Oslo"></div>
       <div class="form-group">
         <label>Antall hull</label>
-        <select id="courseHoles" onchange="updateHoleType(this.value)">
-          <option value="18">18 hull</option>
-          <option value="9">9 hull (selvstendig bane, SI 1-9)</option>
-          <option value="9_of_18">9 hull (del av 18-hulls bane, SI 1-18)</option>
-        </select>
-      </div>
-      <div id="nineHullStartDiv" style="display:none;">
-        <div class="form-group">
-          <label>Hvilke 9 hull spiller dere?</label>
-          <select id="nineHullStart">
-            <option value="1">Hull 1-9 (ut-runden)</option>
-            <option value="10">Hull 10-18 (inn-runden)</option>
-          </select>
-        </div>
-      </div>
-      <hr class="divider">
-      <div style="margin-bottom:16px;">
-        <label style="font-size:12px; text-transform:uppercase; letter-spacing:1px; color:var(--cream-dim); display:block; margin-bottom:10px;">Tee-sett</label>
-        <div style="display:flex; gap:10px; margin-bottom:16px;">
-          <button id="btnTeeMethodSlope" onclick="setTeeMethod('slope')" style="flex:1; padding:14px; border-radius:10px; border:2px solid rgba(201,168,76,0.4); background:rgba(201,168,76,0.15); color:var(--gold-light); cursor:pointer; font-family:'DM Sans',sans-serif; font-size:13px; font-weight:500; transition:all 0.2s;">
-            📷 Les slopetabell<br><span style="font-size:11px; color:var(--cream-dim); font-weight:400;">Bilde eller PDF</span>
-          </button>
-          <button id="btnTeeMethodManual" onclick="setTeeMethod('manual')" style="flex:1; padding:14px; border-radius:10px; border:2px solid rgba(255,255,255,0.1); background:transparent; color:var(--cream-dim); cursor:pointer; font-family:'DM Sans',sans-serif; font-size:13px; font-weight:500; transition:all 0.2s;">
-            ✍️ Manuelt<br><span style="font-size:11px; font-weight:400;">Tast inn selv</span>
-          </button>
-        </div>
-        <!-- Slope upload -->
-        <div id="teeMethodSlope" style="display:block;">
-          <div style="display:flex; gap:10px; margin-bottom:10px;">
-            <label style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; border:2px dashed rgba(201,168,76,0.3); border-radius:10px; padding:16px; text-align:center; cursor:pointer; background:rgba(0,0,0,0.1);">
-              <div style="font-size:24px;">🖼️</div>
-              <div style="color:var(--cream); font-size:12px; font-weight:500;">Bilde</div>
-              <div style="color:var(--cream-dim); font-size:11px;">PNG, JPG</div>
-              <input type="file" id="addCourseFileImage" accept="image/png,image/jpeg,image/jpg" style="display:none;" onchange="handleAddCourseFile(this.files[0])">
-            </label>
-            <label style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; border:2px dashed rgba(201,168,76,0.3); border-radius:10px; padding:16px; text-align:center; cursor:pointer; background:rgba(0,0,0,0.1);">
-              <div style="font-size:24px;">📄</div>
-              <div style="color:var(--cream); font-size:12px; font-weight:500;">PDF</div>
-              <div style="color:var(--cream-dim); font-size:11px;">Slopetabell PDF</div>
-              <input type="file" id="addCourseFilePDF" accept="application/pdf" style="display:none;" onchange="handleAddCourseFile(this.files[0])">
-            </label>
-          </div>
-          <div id="addCourseFileName" style="display:none; text-align:center; color:var(--green-light); font-size:13px; margin-top:4px;"></div>
-          <div id="addCoursePreview" style="display:none; margin-top:10px;">
-            <img id="addCoursePreviewImg" style="max-width:100%; border-radius:8px; border:1px solid rgba(255,255,255,0.1);">
-          </div>
-          <p style="font-size:12px; color:var(--cream-dim); margin-top:8px; text-align:center;">Last opp fil og vent til filnavn vises før du trykker Lagre bane</p>
-        </div>
-        <!-- Manuell innlegging -->
-        <div id="teeMethodManual" style="display:none;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-            <span style="font-size:12px; color:var(--cream-dim);">Legg til tee-sett</span>
-            <button class="btn-sm" onclick="addTeeRow()">+ Legg til tee</button>
-          </div>
-          <div style="font-size:11px; color:var(--cream-dim); margin-bottom:8px; display:grid; grid-template-columns:1fr 80px 80px 80px auto; gap:8px; padding:0 4px;">
-            <span>Navn</span><span style="text-align:center;">Slope</span><span style="text-align:center;">CR</span><span style="text-align:center;">Farge</span><span></span>
-          </div>
-          <div id="teeRows"></div>
+        <div style="display:flex; gap:12px; margin-top:8px;">
+          <label id="acHoles18Lbl" onclick="acSyncHoleRadio()" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:14px;border-radius:10px;border:2px solid rgba(201,168,76,0.6);background:rgba(201,168,76,0.1);cursor:pointer;font-size:15px;font-weight:500;color:var(--gold-light);">
+            <input type="radio" name="acHoles" value="18" checked style="accent-color:var(--gold);">18 hull
+          </label>
+          <label id="acHoles9Lbl" onclick="acSyncHoleRadio()" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:14px;border-radius:10px;border:2px solid rgba(255,255,255,0.1);background:transparent;cursor:pointer;font-size:15px;font-weight:500;color:var(--cream-dim);">
+            <input type="radio" name="acHoles" value="9" style="accent-color:var(--gold);">9 hull
+          </label>
         </div>
       </div>
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="closeModal('modalAddCourse')">Avbryt</button>
-        <button class="btn" id="saveCourseBtn" onclick="saveCourse()">Lagre bane</button>
+        <button class="btn" onclick="acNext(1)">Neste →</button>
       </div>
     </div>
-    <!-- Step 3: Scorekort -->
-    <div id="courseStep3" style="display:none;">
-      <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
-        <button onclick="skipScorecard()" style="background:none;border:none;color:var(--gold);cursor:pointer;font-size:22px;">←</button>
-        <h3 style="font-family:'Playfair Display',serif; color:var(--cream); font-size:18px;">Hull-data fra scorekort</h3>
-      </div>
-      <p style="font-size:13px; color:var(--cream-dim); margin-bottom:16px;">Last opp bilde av scorekortet så leser Claude inn par og SI per hull automatisk.</p>
-      <div id="scorecardAlert"></div>
-      <div style="display:flex; gap:10px; margin-bottom:12px;">
-        <label style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; border:2px dashed rgba(201,168,76,0.3); border-radius:10px; padding:16px; text-align:center; cursor:pointer; background:rgba(0,0,0,0.1);">
-          <div style="font-size:28px;">📸</div>
-          <div style="color:var(--cream); font-size:13px; font-weight:500;">Last opp scorekort</div>
-          <div style="color:var(--cream-dim); font-size:11px;">PNG, JPG eller PDF</div>
-          <input type="file" id="scorecardFileInput" accept="image/png,image/jpeg,image/jpg,application/pdf" style="display:none;" onchange="handleScorecardFile(this.files[0])">
+
+    <!-- Step 2: Tee-sett -->
+    <div id="acStep2" style="display:none;">
+      <h2 style="margin-bottom:4px;">Tee-sett</h2>
+      <p style="font-size:13px;color:var(--cream-dim);margin-bottom:14px;">Legg til ett eller flere tee-sett for banen.</p>
+      <div style="margin-bottom:14px;">
+        <label style="padding:8px 14px;border-radius:8px;border:1px dashed rgba(201,168,76,0.4);color:var(--gold);font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+          📷 Les slopetabell automatisk
+          <input type="file" id="acSlopeFile" accept="image/png,image/jpeg,image/jpg,application/pdf" style="display:none;" onchange="acLoadSlope(this.files[0])">
         </label>
+        <div id="acSlopeStatus" style="font-size:12px;color:var(--cream-dim);margin-top:6px;"></div>
       </div>
-      <div id="scorecardFileName" style="display:none; text-align:center; color:var(--green-light); font-size:13px; margin-bottom:8px;"></div>
-      <div id="scorecardPreview" style="display:none; margin-bottom:12px;">
-        <img id="scorecardPreviewImg" style="max-width:100%; border-radius:8px; border:1px solid rgba(255,255,255,0.1);">
+      <div style="font-size:11px;color:var(--cream-dim);display:grid;grid-template-columns:1fr 70px 70px 50px auto;gap:6px;padding:0 2px;margin-bottom:6px;">
+        <span>Navn</span><span style="text-align:center;">CR</span><span style="text-align:center;">Slope</span><span style="text-align:center;">Farge</span><span></span>
       </div>
-      <div id="scorecardReview" style="display:none;"></div>
+      <div id="acTeeRows"></div>
+      <button class="btn-sm" onclick="acAddTee()" style="margin-top:8px;">+ Legg til tee</button>
+      <div class="modal-actions" style="margin-top:20px;">
+        <button class="btn btn-outline" onclick="acStep(1)">← Tilbake</button>
+        <button class="btn" onclick="acNext(2)">Neste →</button>
+      </div>
+    </div>
+
+    <!-- Step 3: Scorekort -->
+    <div id="acStep3" style="display:none;">
+      <h2 style="margin-bottom:4px;">Hull-data</h2>
+      <p style="font-size:13px;color:var(--cream-dim);margin-bottom:16px;">Last opp scorekort – Claude leser inn par og SI for alle hull automatisk.</p>
+      <label style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;border:2px dashed rgba(201,168,76,0.3);border-radius:10px;padding:20px;text-align:center;cursor:pointer;background:rgba(0,0,0,0.1);margin-bottom:12px;">
+        <div id="acScorecardIcon" style="font-size:28px;">📸</div>
+        <div id="acScorecardLabel" style="color:var(--cream);font-size:13px;font-weight:500;">Last opp scorekort</div>
+        <div style="color:var(--cream-dim);font-size:11px;">PNG, JPG eller PDF</div>
+        <input type="file" id="acScorecardFile" accept="image/png,image/jpeg,image/jpg,application/pdf" style="display:none;" onchange="acLoadScorecard(this.files[0])">
+      </label>
+      <div id="acScorecardPreview" style="display:none;margin-bottom:12px;"><img id="acScorecardPreviewImg" style="max-width:100%;border-radius:8px;border:1px solid rgba(255,255,255,0.1);"></div>
+      <div id="acScorecardStatus" style="margin-bottom:8px;"></div>
+      <div id="acHoleTable" style="display:none;margin-bottom:12px;max-height:300px;overflow-y:auto;"></div>
       <div class="modal-actions">
-        <button class="btn btn-outline" onclick="skipScorecard()">Hopp over</button>
-        <button class="btn" id="scorecardAnalyzeBtn" onclick="analyzeScorecard()" style="display:none;">📖 Les scorekort</button>
+        <button class="btn btn-outline" onclick="acStep(2)">← Tilbake</button>
+        <button class="btn btn-outline" onclick="acNext(3,true)">Hopp over</button>
+        <button class="btn" id="acAnalyzeBtn" onclick="acAnalyzeScorecard()" style="display:none;">📖 Les scorekort</button>
+        <button class="btn" id="acStep3NextBtn" onclick="acNext(3)" style="display:none;">Neste →</button>
+      </div>
+    </div>
+
+    <!-- Step 4: Bekreft og lagre -->
+    <div id="acStep4" style="display:none;">
+      <h2 style="margin-bottom:4px;">Bekreft og lagre</h2>
+      <div id="acSummary" style="margin-bottom:16px;"></div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="acStep(3)">← Tilbake</button>
+        <button class="btn" id="acSaveBtn" onclick="acSave()">✅ Lagre bane</button>
       </div>
     </div>
   </div>
@@ -1073,45 +1058,315 @@ function showPage(pageId) {
   if (pageId === 'live') loadLivePage();
 }
 
-async function searchCourses() {
-  const query = document.getElementById('courseSearch').value.trim().toLowerCase();
-  if (!query) return;
-  const el = document.getElementById('searchResults');
-  el.innerHTML = '<div class="loading"><div class="spinner"></div> Søker...</div>';
-  const { data: hits } = await db.from('courses').select('id, name, location, holes').ilike('name', '%' + query + '%').order('name').limit(8);
-  if (hits?.length) {
-    el.innerHTML = '';
-    hits.forEach(c => {
-      const div = document.createElement('div');
-      div.style.cssText = 'padding:12px 16px;background:rgba(0,0,0,0.2);border-radius:8px;margin-bottom:8px;cursor:pointer;border:1px solid rgba(255,255,255,0.05);transition:all 0.2s;';
-      div.onmouseover = () => div.style.borderColor = 'rgba(201,168,76,0.3)';
-      div.onmouseout = () => div.style.borderColor = 'rgba(255,255,255,0.05)';
-      div.onclick = () => showAlert('addCourseAlert', 'Denne banen er allerede i din database. Åpne den fra Baner-siden for å redigere.', 'error');
-      div.innerHTML = '<div style="font-size:15px;color:var(--cream);font-weight:500;">' + c.name + ' <span style="font-size:11px;background:rgba(82,183,136,0.2);color:var(--green-light);padding:2px 7px;border-radius:10px;">✓ I din database</span></div><div style="font-size:12px;color:var(--cream-dim);margin-top:3px;">' + (c.location||'') + ' · ' + c.holes + ' hull</div>';
-      el.appendChild(div);
-    });
-    const p = document.createElement('p');
-    p.style.cssText = 'font-size:12px;color:var(--cream-dim);margin-top:8px;text-align:center;';
-    p.innerHTML = 'Ikke den du leter etter? <button onclick="showManualEntry()" style="background:none;border:none;color:var(--gold);cursor:pointer;font-size:12px;text-decoration:underline;">Legg inn ny manuelt</button>';
-    el.appendChild(p);
-    return;
+// ── ADD COURSE FLOW ──
+let _ac = {};
+let _acTeeCount = 0;
+
+function openAddCourse() {
+  _ac = { step: 1, holes: 18, fileData: null, fileType: null, holeData: [], tees: [] };
+  _acTeeCount = 0;
+  document.getElementById('acName').value = '';
+  document.getElementById('acLocation').value = '';
+  document.querySelectorAll('input[name="acHoles"]').forEach(r => { r.checked = r.value === '18'; });
+  document.getElementById('acTeeRows').innerHTML = '';
+  document.getElementById('acSlopeStatus').textContent = '';
+  document.getElementById('acScorecardStatus').innerHTML = '';
+  document.getElementById('acHoleTable').style.display = 'none';
+  document.getElementById('acHoleTable').innerHTML = '';
+  document.getElementById('acScorecardPreview').style.display = 'none';
+  document.getElementById('acScorecardIcon').textContent = '📸';
+  document.getElementById('acScorecardLabel').textContent = 'Last opp scorekort';
+  document.getElementById('acAnalyzeBtn').style.display = 'none';
+  document.getElementById('acStep3NextBtn').style.display = 'none';
+  document.getElementById('acAlert').innerHTML = '';
+  const slopeInput = document.getElementById('acSlopeFile');
+  if (slopeInput) slopeInput.value = '';
+  const scInput = document.getElementById('acScorecardFile');
+  if (scInput) scInput.value = '';
+  acAddTee();
+  acStep(1);
+  openModal('modalAddCourse');
+}
+
+function acSyncHoleRadio() {
+  setTimeout(() => {
+    const val = document.querySelector('input[name="acHoles"]:checked')?.value || '18';
+    const lbl18 = document.getElementById('acHoles18Lbl');
+    const lbl9 = document.getElementById('acHoles9Lbl');
+    if (lbl18) {
+      lbl18.style.borderColor = val === '18' ? 'rgba(201,168,76,0.6)' : 'rgba(255,255,255,0.1)';
+      lbl18.style.background = val === '18' ? 'rgba(201,168,76,0.1)' : 'transparent';
+      lbl18.style.color = val === '18' ? 'var(--gold-light)' : 'var(--cream-dim)';
+    }
+    if (lbl9) {
+      lbl9.style.borderColor = val === '9' ? 'rgba(201,168,76,0.6)' : 'rgba(255,255,255,0.1)';
+      lbl9.style.background = val === '9' ? 'rgba(201,168,76,0.1)' : 'transparent';
+      lbl9.style.color = val === '9' ? 'var(--gold-light)' : 'var(--cream-dim)';
+    }
+  }, 0);
+}
+
+function acUpdateStepIndicator(step) {
+  for (let i = 1; i <= 4; i++) {
+    const dot = document.getElementById('acStepDot' + i);
+    if (!dot) continue;
+    const done = i < step;
+    const active = i === step;
+    dot.style.background = active ? 'var(--gold)' : done ? 'var(--green-light)' : 'rgba(255,255,255,0.1)';
+    dot.style.color = (active || done) ? 'var(--green-deep)' : 'var(--cream-dim)';
+    dot.textContent = done ? '✓' : String(i);
+    if (i < 4) {
+      const line = document.getElementById('acLine' + i);
+      if (line) line.style.background = done ? 'var(--green-light)' : 'rgba(255,255,255,0.1)';
+    }
   }
-  el.innerHTML = '<p style="color:var(--cream-dim);font-size:14px;padding:16px 0;">Ingen treff. <button onclick="showManualEntry()" style="background:none;border:none;color:var(--gold);cursor:pointer;font-size:14px;text-decoration:underline;">Legg inn manuelt</button></p>';
 }
-function showManualEntry() {
-  document.getElementById('courseStep1').style.display = 'none';
-  document.getElementById('courseStep2').style.display = 'block';
-  document.getElementById('step2Title').textContent = 'Manuell registrering';
-  document.getElementById('courseName').value = '';
-  document.getElementById('courseLocation').value = '';
-  document.getElementById('teeRows').innerHTML = '';
-  teeCount = 0;
-  addTeeRow();
+
+function acStep(n) {
+  document.getElementById('acAlert').innerHTML = '';
+  for (let i = 1; i <= 4; i++) {
+    document.getElementById('acStep' + i).style.display = i === n ? 'block' : 'none';
+  }
+  acUpdateStepIndicator(n);
+  if (n === 4) acBuildSummary();
 }
-function backToSearch() {
-  document.getElementById('courseStep1').style.display = 'block';
-  document.getElementById('courseStep2').style.display = 'none';
-  document.getElementById('addCourseAlert').innerHTML = '';
+
+function acNext(fromStep, skip) {
+  document.getElementById('acAlert').innerHTML = '';
+  if (fromStep === 1) {
+    const name = document.getElementById('acName').value.trim();
+    if (!name) { showAlert('acAlert', 'Banenavn er påkrevd', 'error'); return; }
+    _ac.name = name;
+    _ac.location = document.getElementById('acLocation').value.trim();
+    _ac.holes = parseInt(document.querySelector('input[name="acHoles"]:checked')?.value || '18');
+    acStep(2);
+  } else if (fromStep === 2) {
+    _ac.tees = acCollectTees();
+    acStep(3);
+  } else if (fromStep === 3) {
+    if (!skip) _ac.holeData = acCollectHoles();
+    else _ac.holeData = [];
+    acStep(4);
+  }
+}
+
+function acCollectTees() {
+  const tees = [];
+  document.querySelectorAll('#acTeeRows .ac-tee-row').forEach(row => {
+    const id = row.dataset.id;
+    const name = document.getElementById('act-name-' + id)?.value?.trim();
+    if (!name) return;
+    tees.push({
+      name,
+      cr: parseFloat(document.getElementById('act-cr-' + id)?.value) || null,
+      slope: parseInt(document.getElementById('act-slope-' + id)?.value) || null,
+      color: document.getElementById('act-color-' + id)?.value || null
+    });
+  });
+  return tees;
+}
+
+function acCollectHoles() {
+  const holeCount = _ac.holes || 18;
+  const holes = [];
+  for (let i = 1; i <= holeCount; i++) {
+    const par = parseInt(document.getElementById('ach-par-' + i)?.value || '0');
+    const si = parseInt(document.getElementById('ach-si-' + i)?.value || '0');
+    if (par && si) holes.push({ hole: i, par, si });
+  }
+  return holes;
+}
+
+function acAddTee() {
+  _acTeeCount++;
+  const id = _acTeeCount;
+  const defaultColors = ['#FFD700', '#FFFFFF', '#3366CC', '#CC3333', '#52b788', '#222222'];
+  const defaultColor = defaultColors[(id - 1) % defaultColors.length];
+  const row = document.createElement('div');
+  row.className = 'ac-tee-row';
+  row.dataset.id = id;
+  row.style.cssText = 'display:grid;grid-template-columns:1fr 70px 70px 50px auto;gap:6px;margin-bottom:8px;align-items:center;';
+  const isFirst = document.querySelectorAll('#acTeeRows .ac-tee-row').length === 0;
+  row.innerHTML = `
+    <input type="text" id="act-name-${id}" placeholder="f.eks. Gul" style="padding:8px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.3);color:var(--cream);font-size:14px;font-family:'DM Sans',sans-serif;width:100%;">
+    <input type="number" id="act-cr-${id}" placeholder="71.5" step="0.1" min="55" max="85" style="padding:8px 6px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.3);color:var(--cream);font-size:13px;font-family:'DM Sans',sans-serif;text-align:center;width:100%;">
+    <input type="number" id="act-slope-${id}" placeholder="113" min="55" max="155" style="padding:8px 6px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.3);color:var(--cream);font-size:13px;font-family:'DM Sans',sans-serif;text-align:center;width:100%;">
+    <input type="color" id="act-color-${id}" value="${defaultColor}" style="height:38px;width:100%;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:none;cursor:pointer;padding:2px;">
+    <button onclick="acRemoveTee(${id})" class="remove-btn" ${isFirst ? 'style="visibility:hidden"' : ''}>×</button>
+  `;
+  document.getElementById('acTeeRows').appendChild(row);
+}
+
+function acRemoveTee(id) {
+  const row = document.querySelector(`.ac-tee-row[data-id="${id}"]`);
+  if (row) row.remove();
+}
+
+async function acLoadSlope(file) {
+  if (!file) return;
+  const statusEl = document.getElementById('acSlopeStatus');
+  statusEl.innerHTML = '⏳ Leser slopetabell...';
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const data = e.target.result.split(',')[1];
+    try {
+      const parsed = await callClaudeProxy(
+        data, file.type,
+        'Dette er en slopetabell fra en norsk golfbane. Trekk ut alle tee-sett og returner KUN gyldig JSON:\n{"tees":[{"name":"tee-navn","course_rating":72.6,"slope":129,"color":"#hexfarge"}]}\nFarger: gul=#FFD700, hvit=#FFFFFF, blå=#3366CC, rød=#CC3333, svart=#222222. Kun JSON.',
+        1200
+      );
+      const tees = parsed.tees || [];
+      document.getElementById('acTeeRows').innerHTML = '';
+      _acTeeCount = 0;
+      for (const t of tees) {
+        _acTeeCount++;
+        const id = _acTeeCount;
+        const row = document.createElement('div');
+        row.className = 'ac-tee-row';
+        row.dataset.id = id;
+        row.style.cssText = 'display:grid;grid-template-columns:1fr 70px 70px 50px auto;gap:6px;margin-bottom:8px;align-items:center;';
+        row.innerHTML = `
+          <input type="text" id="act-name-${id}" value="${(t.name||'').replace(/"/g,'&quot;')}" placeholder="f.eks. Gul" style="padding:8px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.3);color:var(--cream);font-size:14px;font-family:'DM Sans',sans-serif;width:100%;">
+          <input type="number" id="act-cr-${id}" value="${t.course_rating||''}" placeholder="71.5" step="0.1" min="55" max="85" style="padding:8px 6px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.3);color:var(--cream);font-size:13px;font-family:'DM Sans',sans-serif;text-align:center;width:100%;">
+          <input type="number" id="act-slope-${id}" value="${t.slope||''}" placeholder="113" min="55" max="155" style="padding:8px 6px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.3);color:var(--cream);font-size:13px;font-family:'DM Sans',sans-serif;text-align:center;width:100%;">
+          <input type="color" id="act-color-${id}" value="${t.color||'#e8c97a'}" style="height:38px;width:100%;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:none;cursor:pointer;padding:2px;">
+          <button onclick="acRemoveTee(${id})" class="remove-btn">×</button>
+        `;
+        document.getElementById('acTeeRows').appendChild(row);
+      }
+      statusEl.innerHTML = `<span style="color:var(--green-light);">✅ ${tees.length} tee-sett lest inn automatisk</span>`;
+    } catch(e) {
+      statusEl.innerHTML = `<span style="color:var(--danger);">⚠️ Feil: ${e.message}. Fyll inn manuelt.</span>`;
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+function acLoadScorecard(file) {
+  if (!file) return;
+  _ac.fileData = null;
+  _ac.fileType = file.type;
+  document.getElementById('acScorecardIcon').textContent = '✓';
+  document.getElementById('acScorecardLabel').textContent = file.name;
+  document.getElementById('acAnalyzeBtn').style.display = 'inline-flex';
+  document.getElementById('acStep3NextBtn').style.display = 'none';
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    _ac.fileData = e.target.result.split(',')[1];
+    if (file.type.startsWith('image/')) {
+      document.getElementById('acScorecardPreviewImg').src = e.target.result;
+      document.getElementById('acScorecardPreview').style.display = 'block';
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+async function acAnalyzeScorecard() {
+  if (!_ac.fileData) return;
+  const btn = document.getElementById('acAnalyzeBtn');
+  btn.textContent = '⏳ Analyserer...';
+  btn.disabled = true;
+  const statusEl = document.getElementById('acScorecardStatus');
+  statusEl.innerHTML = '<div style="color:var(--cream-dim);font-size:13px;">⏳ Sender til Claude – vent...</div>';
+  const holeCount = _ac.holes || 18;
+  try {
+    const parsed = await callClaudeProxy(
+      _ac.fileData, _ac.fileType,
+      `Dette er et scorekort fra en norsk golfbane. Les alle ${holeCount} hull og trekk ut par og SI/Index/Hcp per hull. Returner KUN JSON: {"holes":[{"hole":1,"par":4,"si":7}]}.`,
+      2000
+    );
+    const holes = parsed.holes || [];
+    if (!holes.length) throw new Error('Fant ingen hull i scorekortet');
+    _ac.holeData = holes.map(h => ({ hole: h.hole, par: h.par, si: h.si }));
+    acRenderHoleTable(holes);
+    statusEl.innerHTML = `<div style="color:var(--green-light);font-size:13px;margin-bottom:8px;">✅ ${holes.length} hull lest inn – sjekk og korriger om nødvendig</div>`;
+    document.getElementById('acStep3NextBtn').style.display = 'inline-flex';
+  } catch(e) {
+    statusEl.innerHTML = `<div style="color:var(--danger);font-size:13px;">${e.message}</div>`;
+  }
+  btn.textContent = '📖 Les scorekort';
+  btn.disabled = false;
+}
+
+function acRenderHoleTable(holes) {
+  const holeCount = _ac.holes || 18;
+  const el = document.getElementById('acHoleTable');
+  el.style.display = 'block';
+  el.innerHTML = '<table class="hole-table"><thead><tr><th>Hull</th><th>Par</th><th>SI</th></tr></thead><tbody>' +
+    Array.from({length: holeCount}, (_, i) => {
+      const h = holes.find(x => x.hole === i + 1) || {};
+      return `<tr><td class="hole-num">${i+1}</td>` +
+        `<td><input type="number" id="ach-par-${i+1}" value="${h.par||''}" min="3" max="5" style="width:60px;"></td>` +
+        `<td><input type="number" id="ach-si-${i+1}" value="${h.si||''}" min="1" max="${holeCount}" style="width:60px;"></td></tr>`;
+    }).join('') +
+    '</tbody></table>';
+}
+
+function acBuildSummary() {
+  _ac.tees = acCollectTees();
+  const holeCount = _ac.holes || 18;
+  const holeDone = (_ac.holeData || []).filter(h => h.par && h.si).length;
+  document.getElementById('acSummary').innerHTML = `
+    <div class="card" style="margin-bottom:12px;">
+      <p style="font-size:12px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Bane</p>
+      <p style="font-size:16px;font-family:'Playfair Display',serif;color:var(--cream);">${_ac.name}</p>
+      ${_ac.location ? `<p style="font-size:13px;color:var(--cream-dim);margin-top:4px;">📍 ${_ac.location}</p>` : ''}
+      <p style="font-size:13px;color:var(--cream-dim);margin-top:4px;">⛳ ${holeCount} hull</p>
+    </div>
+    <div class="card" style="margin-bottom:12px;">
+      <p style="font-size:12px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Tee-sett (${_ac.tees.length})</p>
+      ${_ac.tees.map(t => `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+        <div style="width:16px;height:16px;border-radius:50%;background:${t.color||'#888'};border:1px solid rgba(255,255,255,0.2);flex-shrink:0;"></div>
+        <span style="font-size:14px;color:var(--cream);">${t.name}</span>
+        ${t.cr ? `<span style="font-size:12px;color:var(--cream-dim);">CR ${t.cr}</span>` : ''}
+        ${t.slope ? `<span style="font-size:12px;color:var(--cream-dim);">Slope ${t.slope}</span>` : ''}
+      </div>`).join('') || '<p style="color:var(--cream-dim);font-size:13px;">Ingen tee-sett</p>'}
+    </div>
+    <div class="card">
+      <p style="font-size:12px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Hull-data</p>
+      <p style="font-size:14px;color:${holeDone === holeCount ? 'var(--green-light)' : holeDone > 0 ? 'var(--gold)' : 'var(--cream-dim)'};">
+        ${holeDone === holeCount ? `✅ Alle ${holeCount} hull klar` : holeDone > 0 ? `⚠️ ${holeDone}/${holeCount} hull klar` : '– Ingen hull-data (kan legges til etterpå)'}
+      </p>
+    </div>
+  `;
+}
+
+async function acSave() {
+  const btn = document.getElementById('acSaveBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Lagrer...';
+  showAlert('acAlert', '⏳ Lagrer bane...', 'success');
+  try {
+    const { data: course, error: ce } = await db.from('courses').insert({
+      name: _ac.name,
+      location: _ac.location || null,
+      holes: _ac.holes,
+      created_by: currentProfile?.id
+    }).select().single();
+    if (ce) throw new Error('Feil ved lagring av bane: ' + ce.message);
+    for (const t of (_ac.tees || [])) {
+      if (!t.name) continue;
+      await db.from('tee_sets').insert({
+        course_id: course.id, name: t.name,
+        slope: t.slope || null, course_rating: t.cr || null, color: t.color || null
+      });
+    }
+    const holeData = (_ac.holeData || []).filter(h => h.par && h.si);
+    if (holeData.length > 0) {
+      await db.from('holes').delete().eq('course_id', course.id);
+      const { error: he } = await db.from('holes').insert(
+        holeData.map(h => ({ course_id: course.id, hole_number: h.hole, par: h.par, stroke_index: h.si }))
+      );
+      if (he) throw new Error('Feil ved lagring av hull: ' + he.message);
+    }
+    showAlert('acAlert', '✅ Bane lagret!', 'success');
+    loadCourses();
+    setTimeout(() => { closeModal('modalAddCourse'); openCourseDetail(course.id); }, 800);
+  } catch(e) {
+    showAlert('acAlert', e.message, 'error');
+    btn.disabled = false;
+    btn.textContent = '✅ Lagre bane';
+  }
 }
 async function loadCourses() {
   const { data: courses, error } = await db.from('courses').select('*, tee_sets(*)').order('name');
@@ -1134,179 +1389,6 @@ async function loadCourses() {
   `).join('');
 }
 
-// ── TEE METHOD ──
-function setTeeMethod(method) {
-  const isSlope = method === 'slope';
-  const slopeEl = document.getElementById('teeMethodSlope');
-  const manualEl = document.getElementById('teeMethodManual');
-  const slopeBtn = document.getElementById('btnTeeMethodSlope');
-  const manualBtn = document.getElementById('btnTeeMethodManual');
-  if (slopeEl) slopeEl.style.display = isSlope ? 'block' : 'none';
-  if (manualEl) manualEl.style.display = isSlope ? 'none' : 'block';
-  if (slopeBtn) {
-    slopeBtn.style.borderColor = isSlope ? 'rgba(201,168,76,0.6)' : 'rgba(255,255,255,0.1)';
-    slopeBtn.style.background = isSlope ? 'rgba(201,168,76,0.15)' : 'transparent';
-    slopeBtn.style.color = isSlope ? 'var(--gold-light)' : 'var(--cream-dim)';
-  }
-  if (manualBtn) {
-    manualBtn.style.borderColor = isSlope ? 'rgba(255,255,255,0.1)' : 'rgba(201,168,76,0.6)';
-    manualBtn.style.background = isSlope ? 'transparent' : 'rgba(201,168,76,0.15)';
-    manualBtn.style.color = isSlope ? 'var(--cream-dim)' : 'var(--gold-light)';
-  }
-  if (!isSlope) {
-    _addCourseFileData = null;
-    _addCourseFileType = null;
-    const nameEl = document.getElementById('addCourseFileName');
-    if (nameEl) { nameEl.textContent = ''; nameEl.style.display = 'none'; }
-    const preview = document.getElementById('addCoursePreview');
-    if (preview) preview.style.display = 'none';
-  }
-  if (!isSlope && document.getElementById('teeRows').children.length === 0) addTeeRow();
-}
-
-// ── FIX: handleAddCourseFile – global variabel + FileReader ──
-let _addCourseFileData = null;
-let _addCourseFileType = null;
-
-function handleAddCourseFile(file) {
-  if (!file) return;
-  _addCourseFileType = file.type;
-  const nameEl = document.getElementById('addCourseFileName');
-  if (nameEl) { nameEl.textContent = '✓ ' + file.name; nameEl.style.display = 'block'; }
-  const preview = document.getElementById('addCoursePreview');
-  const previewImg = document.getElementById('addCoursePreviewImg');
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    _addCourseFileData = e.target.result.split(',')[1]; // base64
-    if (file.type.startsWith('image/') && previewImg && preview) {
-      previewImg.src = e.target.result;
-      preview.style.display = 'block';
-    }
-    // Oppdater hint-tekst til å vise at fil er klar
-    const hintEl = document.querySelector('#teeMethodSlope p');
-    if (hintEl) hintEl.style.color = 'var(--green-light)';
-  };
-  reader.readAsDataURL(file);
-}
-
-function openAddCourse() {
-  document.getElementById('addCourseAlert').innerHTML = '';
-  document.getElementById('courseStep1').style.display = 'none';
-  document.getElementById('courseStep2').style.display = 'block';
-  document.getElementById('courseStep3').style.display = 'none';
-  document.getElementById('step2Title').textContent = 'Ny bane';
-  document.getElementById('courseName').value = '';
-  document.getElementById('courseLocation').value = '';
-  document.getElementById('courseHoles').value = '18';
-  document.getElementById('teeRows').innerHTML = '';
-  teeCount = 0;
-  // FIX: reset globale variabler
-  _addCourseFileData = null;
-  _addCourseFileType = null;
-  const imgInput = document.getElementById('addCourseFileImage');
-  const pdfInput = document.getElementById('addCourseFilePDF');
-  if (imgInput) imgInput.value = '';
-  if (pdfInput) pdfInput.value = '';
-  const nameEl = document.getElementById('addCourseFileName');
-  if (nameEl) { nameEl.textContent = ''; nameEl.style.display = 'none'; }
-  const preview = document.getElementById('addCoursePreview');
-  if (preview) preview.style.display = 'none';
-  const saveBtn = document.getElementById('saveCourseBtn');
-  if (saveBtn) saveBtn.disabled = false;
-  setTeeMethod('slope');
-  updateHoleType('18');
-  openModal('modalAddCourse');
-}
-
-let teeCount = 0;
-function addTeeRow() {
-  teeCount++;
-  const id = teeCount;
-  const div = document.createElement('div');
-  div.className = 'tee-row';
-  div.id = `tee-${id}`;
-  div.innerHTML = `
-    <input type="text" placeholder="f.eks. Gul" id="tee-name-${id}">
-    <input type="number" placeholder="113" id="tee-slope-${id}" min="55" max="155">
-    <input type="number" placeholder="72.0" id="tee-cr-${id}" step="0.1" min="60" max="85">
-    <input type="color" id="tee-color-${id}" value="#e8c97a" style="height:38px; width:100%; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:none; cursor:pointer; padding:2px;">
-    <button class="remove-btn" onclick="document.getElementById('tee-${id}').remove()">×</button>
-  `;
-  document.getElementById('teeRows').appendChild(div);
-}
-
-// ── FIX: saveCourse – venter på analyse før den går videre ──
-async function saveCourse() {
-  const name = document.getElementById('courseName').value.trim();
-  if (!name) { showAlert('addCourseAlert', 'Banenavn er påkrevd', 'error'); return; }
-
-  const holesVal = document.getElementById('courseHoles').value;
-  const holesInt = holesVal === '9_of_18' ? 9 : parseInt(holesVal);
-  window._newCourseHoles = holesInt;
-
-  const saveBtn = document.getElementById('saveCourseBtn');
-  if (saveBtn) saveBtn.disabled = true;
-
-  const { data: course, error } = await db.from('courses').insert({
-    name,
-    location: document.getElementById('courseLocation').value.trim(),
-    holes: holesInt,
-    created_by: currentProfile?.id
-  }).select().single();
-
-  if (error) {
-    showAlert('addCourseAlert', 'Feil ved lagring: ' + error.message, 'error');
-    if (saveBtn) saveBtn.disabled = false;
-    return;
-  }
-
-  const slopeEl = document.getElementById('teeMethodSlope');
-  const isSlope = slopeEl && slopeEl.style.display !== 'none' && _addCourseFileData;
-
-  if (isSlope) {
-    showAlert('addCourseAlert', '⏳ Sender slopetabell til Claude – vent...', 'success');
-    try {
-      const parsed = await callClaudeProxy(
-        _addCourseFileData, _addCourseFileType,
-        'Dette er en slopetabell fra en norsk golfbane. Trekk ut alle tee-sett og returner KUN gyldig JSON:\n{"course_name":"navn","tees":[{"name":"tee-navn","course_rating":72.6,"slope":129,"color":"#hexfarge"}]}\nFarger: gul=#FFD700, hvit=#FFFFFF, blå=#3366CC, rød=#CC3333, svart=#222222. Kun JSON.',
-        1200
-      );
-      const tees = parsed.tees || [];
-      for (const t of tees) {
-        await db.from('tee_sets').insert({
-          course_id: course.id, name: t.name,
-          slope: t.slope || null, course_rating: t.course_rating || null, color: t.color || null
-        });
-      }
-      showAlert('addCourseAlert', `✅ ${tees.length} tee-sett lest inn! Går til scorekort...`, 'success');
-      await new Promise(r => setTimeout(r, 800));
-    } catch(e) {
-      showAlert('addCourseAlert', '⚠️ Slopetabell feilet: ' + e.message + '. Banen er lagret – legg til tee-sett manuelt.', 'error');
-      await new Promise(r => setTimeout(r, 1500));
-    }
-  } else {
-    // Manuell innlegging
-    const teeRows = document.getElementById('teeRows').querySelectorAll('.tee-row');
-    for (const row of teeRows) {
-      const idMatch = row.id.match(/tee-(\d+)/);
-      if (!idMatch) continue;
-      const i = idMatch[1];
-      const teeName = document.getElementById(`tee-name-${i}`)?.value?.trim();
-      if (!teeName) continue;
-      await db.from('tee_sets').insert({
-        course_id: course.id,
-        name: teeName,
-        slope: parseInt(document.getElementById(`tee-slope-${i}`)?.value) || null,
-        course_rating: parseFloat(document.getElementById(`tee-cr-${i}`)?.value) || null,
-        color: document.getElementById(`tee-color-${i}`)?.value || null
-      });
-    }
-  }
-
-  if (saveBtn) saveBtn.disabled = false;
-  loadCourses();
-  openScorecardStep(course.id);
-}
 
 // ── COURSE DETAIL ──
 let currentCourseId = null;
@@ -1455,11 +1537,6 @@ function updateSIMax(newMax, holeCount) {
     if (el) el.max = newMax;
   }
 }
-function updateHoleType(val) {
-  document.getElementById('courseHoles').dataset.siMax = (val === '9_of_18') ? '18' : val;
-  const nineDiv = document.getElementById('nineHullStartDiv');
-  if (nineDiv) nineDiv.style.display = (val === '9_of_18') ? 'block' : 'none';
-}
 async function saveHoles(courseId, holeCount, siMax) {
   siMax = siMax || holeCount;
   const holes = [];
@@ -1482,7 +1559,8 @@ async function saveHoles(courseId, holeCount, siMax) {
     showAlert('holesAlert', '⚠️ Feil i hull-data:<br>' + errors.map(e => `• ${e}`).join('<br>'), 'error');
     return;
   }
-  const { error } = await db.from('holes').upsert(holes, { onConflict: 'course_id,hole_number' });
+  await db.from('holes').delete().eq('course_id', courseId);
+  const { error } = await db.from('holes').insert(holes);
   if (error) { showAlert('holesAlert', 'Feil: ' + error.message, 'error'); return; }
   showAlert('holesAlert', `✅ Hull-data lagret for alle ${holeCount} hull!`, 'success');
 }
@@ -1742,11 +1820,16 @@ async function loadRounds() {
     </div>`;
   }).join('');
 }
+let _roundCourseHoles = 18;
 async function openNewRound() {
   flightCount = 0;
+  _roundCourseHoles = 18;
   document.getElementById('newRoundAlert').innerHTML = '';
   document.getElementById('flightList').innerHTML = '';
   document.getElementById('roundDate').value = new Date().toISOString().split('T')[0];
+  const rangeDiv = document.getElementById('roundHoleRangeDiv');
+  if (rangeDiv) rangeDiv.style.display = 'none';
+  document.querySelectorAll('input[name="roundHoleRange"]').forEach(r => { r.checked = r.value === 'all'; });
   const { data: courses } = await db.from('courses').select('id, name, holes').order('name');
   const sel = document.getElementById('roundCourse');
   sel.innerHTML = '<option value="">Velg bane...</option>' +
@@ -1765,10 +1848,17 @@ async function loadTeeSets(courseId) {
   const sel = document.getElementById('roundTee');
   sel.innerHTML = '<option value="">Velg tee...</option>' +
     (tees || []).map(t => `<option value="${t.id}">${t.name} — Slope ${t.slope}, CR ${t.course_rating}</option>`).join('');
+  const { data: course } = await db.from('courses').select('holes').eq('id', courseId).single();
+  _roundCourseHoles = course?.holes || 18;
   const { data: holes } = await db.from('holes').select('hole_number').eq('course_id', courseId).limit(1);
   const noHoleData = !holes || holes.length === 0;
   const warningEl = document.getElementById('roundHoleWarning');
   if (warningEl) warningEl.style.display = noHoleData ? 'block' : 'none';
+  const rangeDiv = document.getElementById('roundHoleRangeDiv');
+  if (rangeDiv) {
+    rangeDiv.style.display = _roundCourseHoles === 18 ? 'block' : 'none';
+    document.querySelectorAll('input[name="roundHoleRange"]').forEach(r => { r.checked = r.value === 'all'; });
+  }
 }
 function addFlight() {
   flightCount++;
@@ -1796,8 +1886,12 @@ async function saveRound() {
   const teeId = document.getElementById('roundTee').value;
   const date = document.getElementById('roundDate').value;
   if (!courseId || !teeId || !date) { showAlert('newRoundAlert', 'Fyll inn bane, tee og dato', 'error'); return; }
+  const holeRange = _roundCourseHoles === 18
+    ? (document.querySelector('input[name="roundHoleRange"]:checked')?.value || 'all')
+    : 'all';
   const { data: round, error } = await db.from('rounds').insert({
-    course_id: courseId, tee_set_id: teeId, date, created_by: currentProfile.id, status: 'active'
+    course_id: courseId, tee_set_id: teeId, date, created_by: currentProfile.id, status: 'active',
+    hole_range: holeRange
   }).select().single();
   if (error) { showAlert('newRoundAlert', 'Feil: ' + error.message, 'error'); return; }
   for (let i = 1; i <= flightCount; i++) {
@@ -1861,8 +1955,16 @@ async function openRound(roundId) {
   const { data: holes } = await db.from('holes').select('*').eq('course_id', round.course_id).order('hole_number');
   const { data: scores } = await db.from('scores').select('*').eq('round_id', roundId);
   currentRound = round;
-  currentHole = 1;
-  roundHoles = holes || [];
+  const holeRange = round.hole_range || 'all';
+  const allHoles = holes || [];
+  if (holeRange === 'front9') {
+    roundHoles = allHoles.filter(h => h.hole_number <= 9);
+  } else if (holeRange === 'back9') {
+    roundHoles = allHoles.filter(h => h.hole_number >= 10);
+  } else {
+    roundHoles = allHoles;
+  }
+  currentHole = roundHoles.length > 0 ? Math.min(...roundHoles.map(h => h.hole_number)) : 1;
   roundFlights = round.flights || [];
   roundScores = {};
   (scores || []).forEach(s => {
@@ -1889,12 +1991,13 @@ function closeScoringScreen() {
 }
 function renderScoringHole() {
   const holeData = roundHoles.find(h => h.hole_number === currentHole) || { par: null, stroke_index: null };
-  const totalHoles = currentRound?.courses?.holes || 18;
-  const isLastHole = currentHole === totalHoles;
+  const firstHole = roundHoles.length > 0 ? Math.min(...roundHoles.map(h => h.hole_number)) : 1;
+  const lastHole = roundHoles.length > 0 ? Math.max(...roundHoles.map(h => h.hole_number)) : (currentRound?.courses?.holes || 18);
+  const isLastHole = currentHole === lastHole;
   document.getElementById('scHoleNum').textContent = currentHole;
   document.getElementById('scPar').textContent = holeData.par ?? '?';
   document.getElementById('scSI').textContent = holeData.stroke_index ?? '?';
-  document.getElementById('scPrevHole').style.opacity = currentHole === 1 ? '0.3' : '1';
+  document.getElementById('scPrevHole').style.opacity = currentHole === firstHole ? '0.3' : '1';
   // Oppdater begge Neste-knapper
   const nextTop = document.getElementById('scNextHole');
   const nextBottom = document.getElementById('scNextHoleBottom');
@@ -2046,10 +2149,11 @@ async function adjustScore(playerId, delta) {
   renderMiniLeaderboard();
 }
 function changeHole(delta) {
-  const totalHoles = currentRound?.courses?.holes || 18;
+  const firstHole = roundHoles.length > 0 ? Math.min(...roundHoles.map(h => h.hole_number)) : 1;
+  const lastHole = roundHoles.length > 0 ? Math.max(...roundHoles.map(h => h.hole_number)) : (currentRound?.courses?.holes || 18);
   const newHole = currentHole + delta;
-  if (newHole < 1) return;
-  if (newHole > totalHoles) { finishRound(); return; }
+  if (newHole < firstHole) return;
+  if (newHole > lastHole) { finishRound(); return; }
   currentHole = newHole;
   renderScoringHole();
   document.getElementById('scoringScreen').scrollTo(0, 0);
@@ -2146,14 +2250,20 @@ async function showRoundSummary(roundId) {
     if (!sc[s.player_id]) sc[s.player_id] = {};
     sc[s.player_id][s.hole_number] = s.strokes;
   });
-  document.getElementById('summaryTitle').textContent = `${round.courses?.name} · ${round.date}`;
+  const holeRange = round.hole_range || 'all';
+  const allDbHoles = holes || [];
+  const filteredHoles = holeRange === 'front9' ? allDbHoles.filter(h => h.hole_number <= 9)
+    : holeRange === 'back9' ? allDbHoles.filter(h => h.hole_number >= 10)
+    : allDbHoles;
+  const rangeLabel = holeRange === 'front9' ? ' · Første 9' : holeRange === 'back9' ? ' · Siste 9' : '';
+  document.getElementById('summaryTitle').textContent = `${round.courses?.name} · ${round.date}${rangeLabel}`;
   const allFP = (round.flights || []).flatMap(f => f.flight_players || []);
   const totalHoles = round.courses?.holes || 18;
   const tabs = allFP.map((fp, i) =>
     `<button class="tab ${i === 0 ? 'active' : ''}" onclick="showSummaryPlayer('${fp.player_id}', this)">${fp.profiles?.display_name?.split(' ')[0]}</button>`
   ).join('');
   document.getElementById('summaryTabs').innerHTML = tabs;
-  window._summaryData = { round, holes: holes || [], sc, allFP, totalHoles };
+  window._summaryData = { round, holes: filteredHoles, sc, allFP, totalHoles };
   window._currentSummaryPlayer = null;
   if (allFP[0]) showSummaryPlayer(allFP[0].player_id);
 }
@@ -2948,10 +3058,7 @@ async function analyzeHullScorecard(file, courseId, holeCount) {
   reader.onload = async (e) => {
     const fileData = e.target.result.split(',')[1];
     if (statusEl) statusEl.innerHTML = '<div class="alert alert-success">⏳ Sender til Claude – vent...</div>';
-    const startHole = parseInt(document.getElementById('nineHullStart')?.value || '1');
-    const hullInfo = (holeCount === 9 && startHole === 10)
-      ? 'Les hull 10-18 (inn-runden). Numerer dem som 1-9 i output.'
-      : (holeCount === 9 ? 'Les hull 1-9 (ut-runden).' : 'Les alle ' + holeCount + ' hull.');
+    const hullInfo = 'Les alle ' + holeCount + ' hull.';
     try {
       const parsed = await callClaudeProxy(
         fileData, file.type,
@@ -2974,101 +3081,6 @@ async function analyzeHullScorecard(file, courseId, holeCount) {
   reader.readAsDataURL(file);
 }
 
-// ── SCORECARD UPLOAD (steg 3 ved ny bane) ──
-let _scorecardFileData = null;
-let _scorecardFileType = null;
-let _newCourseId = null;
-function openScorecardStep(courseId) {
-  _newCourseId = courseId;
-  _scorecardFileData = null;
-  document.getElementById('courseStep2').style.display = 'none';
-  document.getElementById('courseStep3').style.display = 'block';
-  document.getElementById('scorecardAlert').innerHTML = '';
-  document.getElementById('scorecardFileName').style.display = 'none';
-  document.getElementById('scorecardPreview').style.display = 'none';
-  document.getElementById('scorecardReview').style.display = 'none';
-  document.getElementById('scorecardAnalyzeBtn').style.display = 'none';
-  const inp = document.getElementById('scorecardFileInput');
-  if (inp) inp.value = '';
-}
-function handleScorecardFile(file) {
-  if (!file) return;
-  _scorecardFileType = file.type;
-  const nameEl = document.getElementById('scorecardFileName');
-  if (nameEl) { nameEl.textContent = '✓ ' + file.name; nameEl.style.display = 'block'; }
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    _scorecardFileData = e.target.result.split(',')[1];
-    if (file.type.startsWith('image/')) {
-      document.getElementById('scorecardPreviewImg').src = e.target.result;
-      document.getElementById('scorecardPreview').style.display = 'block';
-    }
-    document.getElementById('scorecardAnalyzeBtn').style.display = 'block';
-  };
-  reader.readAsDataURL(file);
-}
-async function analyzeScorecard() {
-  const btn = document.getElementById('scorecardAnalyzeBtn');
-  btn.textContent = '⏳ Leser scorekort...';
-  btn.disabled = true;
-  showAlert('scorecardAlert', '⏳ Sender til Claude – vent...', 'success');
-  const holeCount = window._newCourseHoles || 18;
-  const startHole = parseInt(document.getElementById('nineHullStart')?.value || '1');
-  const hullInfo = (holeCount === 9 && startHole === 10)
-    ? 'Les hull 10-18 (inn-runden) og numerer dem 1-9 i output.'
-    : (holeCount === 9 ? 'Les hull 1-9 (ut-runden).' : 'Les alle ' + holeCount + ' hull.');
-  try {
-    const parsed = await callClaudeProxy(
-      _scorecardFileData, _scorecardFileType,
-      'Dette er et scorekort fra en norsk golfbane. ' + hullInfo + ' Trekk ut par og SI/Index/Hcp per hull. Returner KUN JSON: {"holes":[{"hole":1,"par":4,"si":7}]}.',
-      2000
-    );
-    const holes = parsed.holes || [];
-    if (!holes.length) throw new Error('Fant ingen hull i scorekortet');
-    showScorecardReview(holes);
-    showAlert('scorecardAlert', '✅ Fant ' + holes.length + ' hull. Sjekk dataene og trykk Lagre.', 'success');
-  } catch(e) {
-    showAlert('scorecardAlert', '⚠️ Kunne ikke lese scorekort: ' + e.message, 'error');
-  }
-  btn.textContent = '📖 Les scorekort';
-  btn.disabled = false;
-}
-function showScorecardReview(holes) {
-  const reviewEl = document.getElementById('scorecardReview');
-  reviewEl.style.display = 'block';
-  reviewEl.innerHTML = '<div style="max-height:300px;overflow-y:auto;"><table class="hole-table"><thead><tr><th>Hull</th><th>Par</th><th>SI</th></tr></thead><tbody>' +
-    holes.map(h => '<tr><td class="hole-num">' + h.hole + '</td><td><input type="number" id="sc-par-' + h.hole + '" value="' + (h.par||'') + '" min="3" max="5" style="width:60px;"></td><td><input type="number" id="sc-si-' + h.hole + '" value="' + (h.si||'') + '" min="1" max="18" style="width:60px;"></td></tr>').join('') +
-    '</tbody></table></div>' +
-    '<button class="btn" style="margin-top:12px;" onclick="saveScorecardHoles()">Lagre hull-data</button>';
-}
-async function saveScorecardHoles() {
-  const courseId = _newCourseId;
-  if (!courseId) return;
-  const holes = [];
-  const rows = document.getElementById('scorecardReview').querySelectorAll('tbody tr');
-  for (const row of rows) {
-    const cells = row.querySelectorAll('td');
-    const holeNum = parseInt(cells[0]?.textContent?.trim());
-    if (!holeNum || isNaN(holeNum)) continue;
-    const par = parseInt(document.getElementById('sc-par-' + holeNum)?.value);
-    const si = parseInt(document.getElementById('sc-si-' + holeNum)?.value);
-    if (par && si) holes.push({ course_id: courseId, hole_number: holeNum, par, stroke_index: si });
-  }
-  if (holes.length) {
-    const { error } = await db.from('holes').upsert(holes, { onConflict: 'course_id,hole_number' });
-    if (error) { showAlert('scorecardAlert', 'Feil: ' + error.message, 'error'); return; }
-  }
-  closeModal('modalAddCourse');
-  loadCourses();
-  setTimeout(async () => { await openCourseDetail(courseId); }, 300);
-}
-function skipScorecard() {
-  closeModal('modalAddCourse');
-  loadCourses();
-  if (_newCourseId) {
-    setTimeout(async () => { await openCourseDetail(_newCourseId); setTimeout(() => showCourseTab('holes'), 100); }, 300);
-  }
-}
 
 // ── START ──
 if ('serviceWorker' in navigator) {
