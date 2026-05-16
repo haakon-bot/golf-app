@@ -404,7 +404,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.30</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.31</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -1711,9 +1711,17 @@ async function loadProfilePage() {
       <div id="golfboxImportList" style="margin-top:16px;"><div style="height:24px;"></div></div>
     </div>
     <div class="card">
-      <h3 style="font-family:'Playfair Display',serif; margin-bottom:16px;">Min historikk</h3>
-      <div id="hcpGraph" style="margin-bottom:20px;"></div>
-      <div id="hcpHistoryList"><div class="loading"><div class="spinner"></div></div></div>
+      <h3 style="font-family:'Playfair Display',serif; margin-bottom:16px;">Statistikk</h3>
+      <div id="statsKpis" style="margin-bottom:16px;"><div class="loading"><div class="spinner"></div></div></div>
+      <button onclick="_toggleStatsExpand()" id="statsExpandBtn" style="width:100%;background:none;border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:11px 16px;color:var(--cream-dim);font-family:'DM Sans',sans-serif;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:color 0.2s,border-color 0.2s;">
+        Se full statistikk <span id="statsExpandArrow" style="font-size:11px;transition:transform 0.3s;">▼</span>
+      </button>
+      <div id="statsExpandSection" data-open="0" style="max-height:0;overflow:hidden;transition:max-height 0.4s ease;">
+        <div style="padding-top:20px;">
+          <div id="hcpGraph" style="margin-bottom:20px;"></div>
+          <div id="hcpHistoryList"></div>
+        </div>
+      </div>
     </div>
     ${p.is_admin ? `
     <div class="card" style="margin-top:16px;">
@@ -1873,8 +1881,85 @@ async function loadAndRenderDifferentials() {
     .select('*').eq('player_id', currentProfile.id).order('date', { ascending: true });
   const diffs = data || [];
   _renderGolfboxImportList(diffs);
+  _renderStatCards(diffs);
   _renderHcpGraph(diffs);
   _renderHcpHistoryList(diffs);
+  const section = document.getElementById('statsExpandSection');
+  if (section && section.getAttribute('data-open') === '1') {
+    section.style.maxHeight = section.scrollHeight + 'px';
+  }
+}
+
+function _renderStatCards(diffs) {
+  const el = document.getElementById('statsKpis');
+  if (!el) return;
+  if (!diffs.length) {
+    el.innerHTML = '<p style="font-size:13px;color:var(--cream-dim);">Ingen data ennå – importer runder for å se statistikk.</p>';
+    return;
+  }
+  const sorted = [...diffs].sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  // HCP nå + trend
+  const withHcp = sorted.filter(d => d.hcp_after != null);
+  const hcpNow  = withHcp.length ? parseFloat(withHcp[withHcp.length - 1].hcp_after) : null;
+  const hcpPrev = withHcp.length > 1 ? parseFloat(withHcp[withHcp.length - 2].hcp_after) : null;
+  const delta   = hcpNow != null && hcpPrev != null ? +(hcpNow - hcpPrev).toFixed(1) : null;
+  const improved = delta != null && delta < 0;
+  const worsened = delta != null && delta > 0;
+  const trendColor  = improved ? '#4caf7d' : worsened ? 'var(--danger)' : 'var(--cream-dim)';
+  const trendArrow  = improved ? '↓' : worsened ? '↑' : '–';
+  const trendLabel  = delta != null && delta !== 0 ? (delta > 0 ? '+' : '') + delta : '';
+
+  // Snitt differential – siste 5 runder
+  const withDiff = sorted.filter(d => d.differential != null);
+  const last5    = withDiff.slice(-5);
+  const avg5     = last5.length ? (last5.reduce((s, d) => s + parseFloat(d.differential), 0) / last5.length).toFixed(1) : null;
+
+  // Beste differential i år
+  const yr       = new Date().getFullYear().toString();
+  const yrDiffs  = diffs.filter(d => d.date?.startsWith(yr) && d.differential != null);
+  const bestYr   = yrDiffs.length ? Math.min(...yrDiffs.map(d => parseFloat(d.differential))).toFixed(1) : null;
+
+  el.innerHTML = `
+    <div style="display:flex;gap:10px;">
+      <div style="flex:1;background:rgba(0,0,0,0.25);border-radius:10px;padding:14px 8px;text-align:center;border:1px solid rgba(255,255,255,0.07);">
+        <div style="font-size:9px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">HCP nå</div>
+        <div style="font-family:'Playfair Display',serif;font-size:26px;color:var(--cream);line-height:1;">${hcpNow != null ? hcpNow.toFixed(1) : '–'}</div>
+        <div style="font-size:13px;color:${trendColor};margin-top:6px;font-weight:600;min-height:18px;">${trendArrow !== '–' ? trendArrow + ' ' + trendLabel : (hcpNow != null ? '<span style="color:var(--cream-dim);font-size:11px;">stabil</span>' : '')}</div>
+      </div>
+      <div style="flex:1;background:rgba(0,0,0,0.25);border-radius:10px;padding:14px 8px;text-align:center;border:1px solid rgba(255,255,255,0.07);">
+        <div style="font-size:9px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Snitt diff</div>
+        <div style="font-family:'Playfair Display',serif;font-size:26px;color:var(--cream);line-height:1;">${avg5 ?? '–'}</div>
+        <div style="font-size:11px;color:var(--cream-dim);margin-top:6px;min-height:18px;">siste ${last5.length} runder</div>
+      </div>
+      <div style="flex:1;background:rgba(0,0,0,0.25);border-radius:10px;padding:14px 8px;text-align:center;border:1px solid rgba(255,255,255,0.07);">
+        <div style="font-size:9px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Beste ${yr}</div>
+        <div style="font-family:'Playfair Display',serif;font-size:26px;color:${bestYr != null ? 'var(--gold)' : 'var(--cream)'};line-height:1;">${bestYr ?? '–'}</div>
+        <div style="font-size:11px;color:var(--cream-dim);margin-top:6px;min-height:18px;">${bestYr != null ? 'differential' : ''}</div>
+      </div>
+    </div>`;
+}
+
+function _toggleStatsExpand() {
+  const section = document.getElementById('statsExpandSection');
+  const arrow   = document.getElementById('statsExpandArrow');
+  const btn     = document.getElementById('statsExpandBtn');
+  if (!section) return;
+  const isOpen = section.getAttribute('data-open') === '1';
+  if (isOpen) {
+    section.style.maxHeight = section.scrollHeight + 'px';
+    requestAnimationFrame(() => requestAnimationFrame(() => { section.style.maxHeight = '0px'; }));
+    section.setAttribute('data-open', '0');
+    arrow.style.transform = 'rotate(0deg)';
+    btn.style.borderColor = 'rgba(255,255,255,0.1)';
+    btn.style.color = 'var(--cream-dim)';
+  } else {
+    section.style.maxHeight = section.scrollHeight + 'px';
+    section.setAttribute('data-open', '1');
+    arrow.style.transform = 'rotate(180deg)';
+    btn.style.borderColor = 'rgba(201,168,76,0.3)';
+    btn.style.color = 'var(--gold)';
+  }
 }
 
 function _renderGolfboxImportList(diffs) {
