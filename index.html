@@ -404,7 +404,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.40</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.41</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -2005,22 +2005,32 @@ function _fileToBase64(file) {
   });
 }
 
+let _diffsLoading = false;
 async function loadAndRenderDifferentials() {
-  const { data } = await db.from('score_differentials')
-    .select('*').eq('player_id', currentProfile.id).order('date', { ascending: true });
-  const diffs = data || [];
-  _renderGolfboxImportList(diffs);
-  _renderStatCards(diffs);
-  const smEl = document.getElementById('statsMotivation');
-  if (smEl) {
-    const motiv = _calcHcpMotivation(diffs, 113, 72, 72, currentProfile?.handicap);
-    smEl.innerHTML = motiv ? _renderMotivBanner(motiv, true, true) : '';
-  }
-  _renderHcpGraph(diffs);
-  _renderHcpHistoryList(diffs);
-  const section = document.getElementById('statsExpandSection');
-  if (section && section.getAttribute('data-open') === '1') {
-    section.style.maxHeight = section.scrollHeight + 'px';
+  if (_diffsLoading) return;
+  _diffsLoading = true;
+  try {
+    const { data, error } = await db.from('score_differentials')
+      .select('*').eq('player_id', currentProfile.id).order('date', { ascending: true });
+    if (error) throw error;
+    const diffs = data || [];
+    _renderGolfboxImportList(diffs);
+    _renderStatCards(diffs);
+    const smEl = document.getElementById('statsMotivation');
+    if (smEl) {
+      const motiv = _calcHcpMotivation(diffs, 113, 72, 72, currentProfile?.handicap);
+      smEl.innerHTML = motiv ? _renderMotivBanner(motiv, true, true) : '';
+    }
+    _renderHcpGraph(diffs);
+    _renderHcpHistoryList(diffs);
+    const section = document.getElementById('statsExpandSection');
+    if (section && section.getAttribute('data-open') === '1') {
+      section.style.maxHeight = section.scrollHeight + 'px';
+    }
+  } catch (_) {
+    // Network/auth hiccup on wake — keep existing rendered data, don't blank out
+  } finally {
+    _diffsLoading = false;
   }
 }
 
@@ -3617,7 +3627,7 @@ function initPullToRefresh() {
     if (activePage === 'dashboard') await loadDashboard();
     else if (activePage === 'rounds') await loadRounds();
     else if (activePage === 'live') await loadLivePage();
-    else if (activePage === 'profile') await loadProfilePage();
+    else if (activePage === 'profile') await loadAndRenderDifferentials();
   }, { passive: true });
 }
 initPullToRefresh();
@@ -3631,7 +3641,11 @@ document.addEventListener('visibilitychange', () => {
       if (activePage === 'dashboard') loadDashboard();
       else if (activePage === 'rounds') loadRounds();
       else if (activePage === 'live') loadLivePage();
-      else if (activePage === 'profile') loadProfilePage();
+      else if (activePage === 'profile') {
+        // Don't re-render the whole page on wake — just refresh the data
+        if (document.getElementById('statsKpis')) loadAndRenderDifferentials();
+        else loadProfilePage();
+      }
     }, 500);
   }
 });
