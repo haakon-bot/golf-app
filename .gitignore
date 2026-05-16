@@ -1,0 +1,11 @@
+# Ignorer alt i Downloads...
+*
+
+# ...bortsett fra golf-app-filene
+!.gitignore
+!index.html
+!sw.js
+!manifest.json
+!icon.svg
+!update-version.sh
+!deploy.sh

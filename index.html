@@ -1,0 +1,3103 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>The Fantastic FORE!</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d2818">
+<!-- iOS PWA -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="FORE!">
+<link rel="apple-touch-icon" href="icon.svg">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --green-deep: #0d2818;
+    --green-dark: #1a3d2b;
+    --green-mid: #2d6a4f;
+    --green-light: #52b788;
+    --gold: #c9a84c;
+    --gold-light: #e8c97a;
+    --gold-dim: #8a6f30;
+    --cream: #f5f0e8;
+    --cream-dim: #c8c0b0;
+    --white: #ffffff;
+    --danger: #c0392b;
+    --radius: 12px;
+    --radius-sm: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--green-deep);
+    color: var(--cream);
+    min-height: 100vh;
+    background-image: 
+      radial-gradient(ellipse at 20% 50%, rgba(45,106,79,0.15) 0%, transparent 60%),
+      radial-gradient(ellipse at 80% 20%, rgba(201,168,76,0.08) 0%, transparent 50%);
+  }
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px;
+    border-bottom: 1px solid rgba(201,168,76,0.2);
+    background: rgba(13,40,24,0.8);
+    backdrop-filter: blur(10px);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .topbar-logo {
+    font-family: 'Playfair Display', serif;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--gold);
+    letter-spacing: 1px;
+  }
+  .topbar-logo span { color: var(--cream); font-weight: 400; }
+  .topbar-user {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 14px;
+    color: var(--cream-dim);
+  }
+  .topbar-user strong { color: var(--gold-light); }
+  .btn-sm {
+    padding: 6px 14px;
+    border-radius: 6px;
+    border: 1px solid rgba(201,168,76,0.4);
+    background: transparent;
+    color: var(--cream-dim);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .btn-sm:hover { border-color: var(--gold); color: var(--gold); }
+  .bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    background: rgba(13,40,24,0.97);
+    border-top: 1px solid rgba(255,255,255,0.08);
+    padding: 8px 0 max(12px, env(safe-area-inset-bottom));
+    z-index: 200;
+  }
+  .nav-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    background: none;
+    border: none;
+    color: var(--cream-dim);
+    font-size: 10px;
+    font-family: 'DM Sans', sans-serif;
+    cursor: pointer;
+    padding: 4px 0;
+    opacity: 0.5;
+    transition: opacity 0.2s;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .nav-btn svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  .nav-btn .live-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--green-light); margin-bottom: 1px; }
+  .nav-btn.active { color: var(--gold-light); opacity: 1; }
+  .page { display: none; padding: 24px 20px 88px; max-width: 900px; margin: 0 auto; }
+  .page.active { display: block; }
+  .login-card {
+    background: rgba(26,61,43,0.6);
+    border: 1px solid rgba(201,168,76,0.2);
+    border-radius: var(--radius);
+    padding: 40px;
+    width: 100%;
+    max-width: 400px;
+    backdrop-filter: blur(10px);
+  }
+  .form-group { margin-bottom: 16px; }
+  .form-group label {
+    display: block;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--cream-dim);
+    margin-bottom: 6px;
+  }
+  .form-group input, .form-group select, .form-group textarea {
+    width: 100%;
+    padding: 12px 16px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(0,0,0,0.3);
+    color: var(--cream);
+    font-size: 15px;
+    font-family: 'DM Sans', sans-serif;
+    transition: border-color 0.2s;
+    outline: none;
+  }
+  .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+    border-color: var(--gold-dim);
+  }
+  .form-group select option { background: var(--green-dark); }
+  .btn {
+    width: 100%;
+    padding: 14px;
+    border-radius: var(--radius-sm);
+    border: none;
+    background: var(--gold);
+    color: var(--green-deep);
+    font-size: 15px;
+    font-weight: 600;
+    font-family: 'DM Sans', sans-serif;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 0.5px;
+  }
+  .btn:hover { background: var(--gold-light); transform: translateY(-1px); }
+  .btn:active { transform: translateY(0); }
+  .btn-outline {
+    background: transparent;
+    border: 1px solid rgba(201,168,76,0.4);
+    color: var(--gold);
+  }
+  .btn-outline:hover { background: rgba(201,168,76,0.1); }
+  .btn-danger { background: var(--danger); color: white; }
+  .btn-danger:hover { background: #e74c3c; }
+  .btn-auto { width: auto; padding: 10px 24px; }
+  .card {
+    background: rgba(26,61,43,0.4);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 16px;
+    transition: border-color 0.2s;
+  }
+  .card:hover { border-color: rgba(201,168,76,0.2); }
+  .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 16px;
+  }
+  .card-title { font-family: 'Playfair Display', serif; font-size: 18px; color: var(--cream); }
+  .card-subtitle { font-size: 13px; color: var(--cream-dim); margin-top: 4px; }
+  .page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 28px;
+  }
+  .page-header h1 { font-family: 'Playfair Display', serif; font-size: 28px; color: var(--gold-light); }
+  .page-header p { font-size: 14px; color: var(--cream-dim); margin-top: 4px; }
+  .badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .badge-gold { background: rgba(201,168,76,0.2); color: var(--gold-light); border: 1px solid rgba(201,168,76,0.3); }
+  .badge-green { background: rgba(82,183,136,0.2); color: var(--green-light); border: 1px solid rgba(82,183,136,0.3); }
+  .player-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    background: rgba(0,0,0,0.2);
+    border-radius: var(--radius-sm);
+    margin-bottom: 8px;
+    border: 1px solid rgba(255,255,255,0.05);
+  }
+  .player-avatar {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: var(--green-mid); border: 2px solid var(--gold-dim);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Playfair Display', serif; font-size: 14px;
+    font-weight: 700; color: var(--gold-light); flex-shrink: 0;
+  }
+  .player-info { flex: 1; padding: 0 14px; }
+  .player-name { font-size: 15px; color: var(--cream); font-weight: 500; }
+  .player-meta { font-size: 12px; color: var(--cream-dim); margin-top: 2px; }
+  .player-actions { display: flex; gap: 8px; }
+  .hcp-badge {
+    font-size: 13px; font-weight: 600; color: var(--gold-light);
+    background: rgba(201,168,76,0.1); padding: 4px 10px;
+    border-radius: 6px; border: 1px solid rgba(201,168,76,0.2);
+  }
+  .divider { border: none; border-top: 1px solid rgba(255,255,255,0.07); margin: 24px 0; }
+  .alert { padding: 12px 16px; border-radius: var(--radius-sm); font-size: 14px; margin-bottom: 16px; }
+  .alert-error { background: rgba(192,57,43,0.2); border: 1px solid rgba(192,57,43,0.4); color: #e88; }
+  .alert-success { background: rgba(82,183,136,0.2); border: 1px solid rgba(82,183,136,0.4); color: var(--green-light); }
+  .loading { display: flex; align-items: center; justify-content: center; padding: 60px; color: var(--cream-dim); font-size: 14px; gap: 12px; }
+  .spinner { width: 20px; height: 20px; border: 2px solid rgba(201,168,76,0.3); border-top-color: var(--gold); border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .course-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 20px; background: rgba(0,0,0,0.2); border-radius: var(--radius-sm);
+    margin-bottom: 8px; border: 1px solid rgba(255,255,255,0.05);
+    cursor: pointer; transition: all 0.2s;
+  }
+  .course-item:hover { border-color: rgba(201,168,76,0.3); background: rgba(201,168,76,0.05); }
+  .course-name { font-size: 16px; color: var(--cream); font-weight: 500; }
+  .course-meta { font-size: 12px; color: var(--cream-dim); margin-top: 3px; }
+  .tee-dots { display: flex; gap: 5px; align-items: center; }
+  .tee-dot { width: 10px; height: 10px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.2); }
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000; padding: 20px; backdrop-filter: blur(4px);
+  }
+  .modal {
+    background: var(--green-dark); border: 1px solid rgba(201,168,76,0.3);
+    border-radius: var(--radius); padding: 32px; width: 100%;
+    max-width: 500px; max-height: 90vh; overflow-y: auto;
+  }
+  .modal h2 { font-family: 'Playfair Display', serif; font-size: 22px; color: var(--gold-light); margin-bottom: 24px; }
+  .modal-actions { display: flex; gap: 12px; margin-top: 24px; }
+  .tee-row { display: grid; grid-template-columns: 1fr 80px 80px 80px auto; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .tee-row input { padding: 8px 10px; font-size: 13px; }
+  .remove-btn { background: none; border: none; color: var(--danger); cursor: pointer; font-size: 18px; padding: 4px 8px; border-radius: 4px; transition: background 0.2s; }
+  .remove-btn:hover { background: rgba(192,57,43,0.2); }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .empty { text-align: center; padding: 60px 20px; color: var(--cream-dim); }
+  .empty-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.5; }
+  .empty h3 { font-family: 'Playfair Display', serif; font-size: 20px; color: var(--cream); margin-bottom: 8px; }
+  .empty p { font-size: 14px; }
+  .profile-header { display: flex; align-items: center; gap: 20px; margin-bottom: 32px; }
+  .profile-avatar {
+    width: 72px; height: 72px; border-radius: 50%;
+    background: var(--green-mid); border: 3px solid var(--gold);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Playfair Display', serif; font-size: 28px;
+    font-weight: 700; color: var(--gold-light);
+  }
+  .tabs { display: flex; gap: 4px; margin-bottom: 20px; }
+  .tab {
+    padding: 8px 16px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1);
+    background: transparent; color: var(--cream-dim); font-size: 13px;
+    cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.2s;
+  }
+  .tab.active { background: rgba(201,168,76,0.2); color: var(--gold-light); border-color: rgba(201,168,76,0.3); }
+  .hole-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .hole-table th {
+    text-align: center; padding: 8px 6px; color: var(--cream-dim); font-weight: 500;
+    text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+  }
+  .hole-table td { text-align: center; padding: 6px; }
+  .hole-table td input {
+    width: 50px; padding: 6px; text-align: center; border-radius: 4px;
+    border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3);
+    color: var(--cream); font-size: 13px; font-family: 'DM Sans', sans-serif;
+  }
+  .hole-table td input::placeholder { color: rgba(255,255,255,0.2); font-style: italic; }
+  .hole-table td input:placeholder-shown { border-color: rgba(201,168,76,0.3); background: rgba(201,168,76,0.05); }
+  .hole-num { font-weight: 600; color: var(--gold-dim); }
+</style>
+</head>
+<body>
+<!-- VERSION BANNER REMOVED -->
+<!-- PUBLIC LIVE VIEW (no login required) -->
+<div id="publicLivePage" style="display:none; min-height:100vh; padding:20px; max-width:600px; margin:0 auto;">
+  <div style="text-align:center; margin-bottom:24px;">
+    <div style="font-family:'Playfair Display',serif; font-size:28px; color:var(--gold);">⛳ The Fantastic FORE!</div>
+    <div id="publicLiveStatus" style="font-size:12px; color:var(--cream-dim); margin-top:4px; letter-spacing:1px; text-transform:uppercase;"></div>
+  </div>
+  <div id="publicLiveContent"></div>
+  <div style="text-align:center; margin-top:32px; padding-top:20px; border-top:1px solid rgba(255,255,255,0.06);">
+    <p style="font-size:12px; color:var(--cream-dim); margin-bottom:12px;">Vil du spille? Logg inn eller registrer deg.</p>
+    <button onclick="showLoginFromPublic()" class="btn btn-outline" style="font-size:13px; padding:10px 24px;">Logg inn / Registrer</button>
+  </div>
+</div>
+<!-- LOGIN PAGE -->
+<div id="loginPage" style="display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; padding:20px;">
+  <div style="text-align:center; margin-bottom:40px;">
+    <div style="font-family:'Playfair Display',serif; font-size:56px; font-weight:900; color:var(--gold); line-height:1;">⛳</div>
+    <h1 style="font-family:'Playfair Display',serif; font-size:36px; font-weight:900; color:var(--gold); margin-top:8px; line-height:1.1;">The Fantastic<br><span style="font-size:52px;">FORE!</span></h1>
+    <p style="color:var(--cream-dim); font-size:13px; margin-top:8px; letter-spacing:3px; text-transform:uppercase;">Vennegjengens golfrunder</p>
+  </div>
+  <div class="login-card">
+    <div style="display:flex; gap:4px; margin-bottom:24px; background:rgba(0,0,0,0.2); border-radius:8px; padding:4px;">
+      <button id="tabLoginBtn" onclick="switchAuthTab('login')" style="flex:1; padding:10px; border:none; border-radius:6px; background:rgba(201,168,76,0.2); color:var(--gold-light); font-family:'DM Sans',sans-serif; font-size:14px; cursor:pointer; transition:all 0.2s;">Logg inn</button>
+      <button id="tabRegisterBtn" onclick="switchAuthTab('register')" style="flex:1; padding:10px; border:none; border-radius:6px; background:transparent; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-size:14px; cursor:pointer; transition:all 0.2s;">Registrer deg</button>
+    </div>
+    <div id="tabLogin">
+      <div id="loginAlert"></div>
+      <div class="form-group">
+        <label>Brukernavn</label>
+        <input type="text" id="loginUsername" placeholder="f.eks. hawk, jokke, bjølle..." autocomplete="username" style="text-transform:lowercase;">
+      </div>
+      <div class="form-group">
+        <label>Passord</label>
+        <input type="password" id="loginPassword" placeholder="Passord" autocomplete="current-password">
+      </div>
+      <button class="btn" onclick="handleLogin()">Logg inn</button>
+      <p style="text-align:center; font-size:12px; color:var(--cream-dim); margin-top:16px;">Ikke registrert ennå? Trykk "Registrer deg" over.</p>
+    </div>
+    <div id="tabRegister" style="display:none;">
+      <div id="registerAlert"></div>
+      <div class="form-group">
+        <label>Brukernavn *</label>
+        <input type="text" id="regUsername" placeholder="f.eks. hawk, jokke, bjølle..." autocomplete="off" style="text-transform:lowercase;">
+      </div>
+      <div class="form-group">
+        <label>Fullt navn *</label>
+        <input type="text" id="regDisplayName" placeholder="f.eks. Håkon Lindstad">
+      </div>
+      <div class="form-group">
+        <label>Passord *</label>
+        <input type="password" id="regPassword" placeholder="Minst 6 tegn" autocomplete="new-password">
+      </div>
+      <div class="form-group">
+        <label>Handicap</label>
+        <input type="number" id="regHcp" placeholder="f.eks. 18.0" step="0.1" min="-10" max="54">
+      </div>
+      <div class="form-group">
+        <label>Invitasjonskode *</label>
+        <input type="text" id="regInviteCode" placeholder="Kode fra gjengen..." autocomplete="off" style="text-transform:uppercase; letter-spacing:2px;">
+      </div>
+      <button class="btn" onclick="handleRegister()">Opprett konto</button>
+    </div>
+  </div>
+</div>
+<!-- PENDING APPROVAL PAGE -->
+<div id="pendingPage" style="display:none; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; padding:20px; text-align:center;">
+  <div style="font-family:'Playfair Display',serif; font-size:48px; color:var(--gold); margin-bottom:8px;">⛳</div>
+  <h2 style="font-family:'Playfair Display',serif; font-size:28px; color:var(--gold); margin-bottom:16px;">Venter på godkjenning</h2>
+  <div style="background:rgba(26,61,43,0.6); border:1px solid rgba(201,168,76,0.25); border-radius:var(--radius); padding:28px 32px; max-width:360px; width:100%; margin-bottom:24px;">
+    <p style="color:var(--cream); font-size:15px; line-height:1.7; margin-bottom:4px;">Hei, <strong id="pendingName" style="color:var(--gold-light);"></strong>!</p>
+    <p style="color:var(--cream-dim); font-size:14px; line-height:1.7;">Kontoen din er opprettet, men må godkjennes av Hawk før du kan logge inn.</p>
+    <p style="color:var(--cream-dim); font-size:14px; line-height:1.7; margin-top:12px;">Ta kontakt med Hawk, og kom tilbake når du har fått tommel opp. 👍</p>
+  </div>
+  <button onclick="handleLogout()" class="btn btn-outline" style="width:auto; padding:10px 28px; font-size:14px;">← Tilbake til innlogging</button>
+</div>
+<!-- APP SHELL -->
+<div id="appShell" style="display:none;">
+  <div class="topbar">
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.24</span></div>
+    <div class="topbar-user">
+      <span>Innlogget som <strong id="topbarUsername">–</strong></span>
+      <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
+    </div>
+  </div>
+  <nav class="bottom-nav" id="bottomNav">
+    <button class="nav-btn active" id="navDashboard" onclick="showPage('dashboard')">
+      <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      Hjem
+    </button>
+    <button class="nav-btn" id="navRounds" onclick="showPage('rounds')">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+      Runder
+    </button>
+    <button class="nav-btn" id="navLive" onclick="showPage('live')">
+      <div class="live-dot"></div>
+      Live
+    </button>
+    <button class="nav-btn" id="navCourses" onclick="showPage('courses')">
+      <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+      Baner
+    </button>
+    <button class="nav-btn" id="navProfile" onclick="showPage('profile')">
+      <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      Meg
+      <span id="notifBadge" style="display:none; position:absolute; top:4px; right:calc(50% - 18px); background:var(--gold); color:var(--green-deep); border-radius:50%; width:14px; height:14px; font-size:9px; font-weight:700; align-items:center; justify-content:center;"></span>
+    </button>
+  </nav>
+  <!-- Dashboard -->
+  <div class="page active" id="page-dashboard">
+    <div style="margin-bottom: 28px;">
+      <h1 id="dashGreeting" style="font-family:'Playfair Display',serif; font-size:28px; color:var(--gold-light);">Hei!</h1>
+      <p id="dashQuote" style="font-size:13px; color:var(--cream-dim); font-style:italic; margin-top:6px; line-height:1.5;"></p>
+    </div>
+    <div id="dashPendingBanner" style="margin-bottom:16px;"></div>
+    <div id="dashActiveRound" style="display:none; margin-bottom:16px;"></div>
+    <div style="display:flex; gap:12px; margin-bottom:28px;">
+      <button class="btn" style="flex:1;" onclick="showPage('rounds'); document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active')); document.querySelectorAll('.nav-btn')[1].classList.add('active'); openNewRound();">⛳ Start runde</button>
+      <button class="btn btn-outline" style="flex:1;" onclick="openAddCourse();">+ Ny bane</button>
+    </div>
+    <div style="font-size:11px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:12px;">Sist spilt</div>
+    <div id="dashRecentRounds"></div>
+  </div>
+  <!-- Runder -->
+  <div class="page" id="page-rounds">
+    <div class="page-header">
+      <div><h1>Runder</h1><p>Aktive og tidligere runder</p></div>
+      <button class="btn btn-auto" onclick="openNewRound()">+ Ny runde</button>
+    </div>
+    <div id="roundsList"><div class="loading"><div class="spinner"></div> Laster...</div></div>
+  </div>
+  <!-- Live -->
+  <div class="page" id="page-live">
+    <div class="page-header">
+      <div><h1>🟢 Live</h1><p id="liveSubtitle">Sjekker aktive runder...</p></div>
+      <button class="btn btn-auto" onclick="loadLivePage()" style="font-size:12px; padding:8px 14px;">↻ Oppdater</button>
+    </div>
+    <div id="liveContent"></div>
+  </div>
+  <!-- Courses -->
+  <div class="page" id="page-courses">
+    <div class="page-header">
+      <div><h1>Baner</h1><p>Alle registrerte baner</p></div>
+      <button class="btn btn-auto" onclick="openAddCourse()">+ Legg til bane</button>
+    </div>
+    <div id="coursesList"><div class="loading"><div class="spinner"></div> Laster baner...</div></div>
+  </div>
+  <!-- Players -->
+  <div class="page" id="page-players">
+    <div class="page-header">
+      <div><h1>Spillere</h1><p>Administrer spillere</p></div>
+      <button class="btn btn-auto" onclick="openAddPlayer()">+ Legg til spiller</button>
+    </div>
+    <div id="playersList"><div class="loading"><div class="spinner"></div> Laster spillere...</div></div>
+  </div>
+  <!-- Profile -->
+  <div class="page" id="page-profile">
+    <div id="profileContent"><div class="loading"><div class="spinner"></div></div></div>
+  </div>
+  <!-- MODAL: New Round -->
+  <div class="modal-overlay" id="modalNewRound" style="display:none;" onclick="closeModalOnOverlay(event,'modalNewRound')">
+    <div class="modal" style="max-width:600px;" onclick="event.stopPropagation()">
+      <h2>Ny runde</h2>
+      <div id="newRoundAlert"></div>
+      <div class="form-group">
+        <label>Bane *</label>
+        <select id="roundCourse" onchange="loadTeeSets(this.value)" style="width:100%; padding:12px 16px; border-radius:8px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.3); color:var(--cream); font-size:15px; font-family:'DM Sans',sans-serif;">
+          <option value="">Velg bane...</option>
+        </select>
+      </div>
+      <div id="roundHoleWarning" style="display:none; padding:12px 16px; border-radius:8px; background:rgba(201,168,76,0.1); border:1px solid rgba(201,168,76,0.4); color:var(--gold-light); font-size:13px; margin-bottom:12px;">
+        ⚠️ Denne banen mangler hull-data (par og SI). Stableford og par vil ikke fungere under runde. <br>Gå til <strong>Baner → Hull-data</strong> og legg inn data først.
+      </div>
+      <div class="form-group">
+        <label>Tee-sett *</label>
+        <select id="roundTee" style="width:100%; padding:12px 16px; border-radius:8px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.3); color:var(--cream); font-size:15px; font-family:'DM Sans',sans-serif;">
+          <option value="">Velg tee...</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Dato</label>
+        <input type="date" id="roundDate" style="width:100%; padding:12px 16px; border-radius:8px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.3); color:var(--cream); font-size:15px; font-family:'DM Sans',sans-serif;">
+      </div>
+      <hr class="divider">
+      <div id="flightBuilder">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <label style="font-size:12px; text-transform:uppercase; letter-spacing:1px; color:var(--cream-dim);">Flighter & spillere</label>
+          <button class="btn-sm" onclick="addFlight()">+ Legg til flight</button>
+        </div>
+        <div id="flightList"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal('modalNewRound')">Avbryt</button>
+        <button class="btn" onclick="saveRound()">Start runde</button>
+      </div>
+    </div>
+  </div>
+  <!-- SCREEN: Scoring -->
+  <div id="scoringScreen" style="display:none; position:fixed; inset:0; background:var(--green-deep); z-index:500; overflow-y:auto; flex-direction:column;">
+    <div style="background:var(--green-dark); padding:14px 16px; border-bottom:1px solid rgba(201,168,76,0.2); display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; z-index:10;">
+      <button onclick="closeScoringScreen()" style="background:none; border:none; color:var(--gold); font-size:22px; cursor:pointer; -webkit-tap-highlight-color:transparent;">←</button>
+      <div style="text-align:center;">
+        <div id="scCourseName" style="font-family:'Playfair Display',serif; font-size:16px; color:var(--cream);"></div>
+        <div id="scRoundDate" style="font-size:11px; color:var(--cream-dim); letter-spacing:1px;"></div>
+      </div>
+      <button onclick="showLeaderboard()" style="background:none; border:none; color:var(--gold-light); font-size:13px; cursor:pointer; font-family:'DM Sans',sans-serif; -webkit-tap-highlight-color:transparent;">Ledertavle</button>
+    </div>
+    <!-- Hull-nummer strip -->
+    <div style="display:flex; align-items:center; justify-content:center; gap:16px; padding:12px 16px; background:rgba(0,0,0,0.2); border-bottom:1px solid rgba(255,255,255,0.05);">
+      <button id="scPrevHole" onclick="changeHole(-1)" style="background:none; border:1px solid rgba(255,255,255,0.15); color:var(--cream); padding:10px 20px; border-radius:8px; cursor:pointer; font-family:'DM Sans',sans-serif; font-size:15px; -webkit-tap-highlight-color:transparent; touch-action:manipulation;">← Forrige</button>
+      <div style="text-align:center; min-width:80px;">
+        <div style="font-size:11px; color:var(--cream-dim); letter-spacing:2px; text-transform:uppercase;">Hull</div>
+        <div id="scHoleNum" style="font-family:'Playfair Display',serif; font-size:40px; color:var(--gold); line-height:1;">1</div>
+      </div>
+      <button id="scNextHole" onclick="changeHole(1)" style="background:var(--gold); border:none; color:var(--green-deep); padding:10px 20px; border-radius:8px; cursor:pointer; font-weight:600; font-family:'DM Sans',sans-serif; font-size:15px; -webkit-tap-highlight-color:transparent; touch-action:manipulation;">Neste →</button>
+    </div>
+    <!-- Stats-rad -->
+    <div style="display:flex; gap:0; border-bottom:1px solid rgba(255,255,255,0.05);">
+      <div style="flex:1; padding:10px; text-align:center; border-right:1px solid rgba(255,255,255,0.05);">
+        <div style="font-size:10px; color:var(--cream-dim); letter-spacing:1.5px; text-transform:uppercase;">Par</div>
+        <div id="scPar" style="font-family:'Playfair Display',serif; font-size:22px; color:var(--cream);">–</div>
+      </div>
+      <div style="flex:1; padding:10px; text-align:center; border-right:1px solid rgba(255,255,255,0.05);">
+        <div style="font-size:10px; color:var(--cream-dim); letter-spacing:1.5px; text-transform:uppercase;">SI</div>
+        <div id="scSI" style="font-family:'Playfair Display',serif; font-size:22px; color:var(--cream);">–</div>
+      </div>
+      <div style="flex:1; padding:10px; text-align:center; border-right:1px solid rgba(255,255,255,0.05);">
+        <div style="font-size:10px; color:var(--cream-dim); letter-spacing:1.5px; text-transform:uppercase;">Snitt</div>
+        <div id="scAvg" style="font-family:'Playfair Display',serif; font-size:22px; color:var(--gold-light);">–</div>
+      </div>
+      <div style="flex:1; padding:10px; text-align:center;">
+        <div style="font-size:10px; color:var(--cream-dim); letter-spacing:1.5px; text-transform:uppercase;">Champion</div>
+        <div id="scChampion" style="font-size:11px; color:var(--gold); font-weight:600; margin-top:4px;">–</div>
+      </div>
+    </div>
+    <!-- Spillerscores -->
+    <div id="scPlayerScores" style="padding:12px 16px; flex:1;"></div>
+    <!-- Mini-ledertavle -->
+    <div style="padding:0 16px 12px;">
+      <div style="font-size:10px; color:var(--cream-dim); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">Stilling</div>
+      <div id="scMiniLeader" style="display:flex; gap:8px; overflow-x:auto; padding-bottom:4px;"></div>
+    </div>
+    <!-- Neste hull-knapp stor nederst + diskret avslutt -->
+    <div style="padding:12px 16px 8px;">
+      <button id="scNextHoleBottom" onclick="changeHole(1)" style="width:100%; padding:18px; background:var(--gold); border:none; color:var(--green-deep); border-radius:10px; font-size:17px; font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif; -webkit-tap-highlight-color:transparent; touch-action:manipulation;">Neste hull →</button>
+    </div>
+    <div style="padding:4px 16px 24px; text-align:center;">
+      <button id="scFinishBtn" onclick="finishRound()" style="background:none; border:none; color:var(--cream-dim); font-size:13px; cursor:pointer; font-family:'DM Sans',sans-serif; text-decoration:underline; -webkit-tap-highlight-color:transparent;">Avslutt runde</button>
+    </div>
+  </div>
+  <!-- MODAL: Leaderboard -->
+  <div class="modal-overlay" id="modalLeaderboard" style="display:none;" onclick="closeModalOnOverlay(event,'modalLeaderboard')">
+    <div class="modal" style="max-width:500px;" onclick="event.stopPropagation()">
+      <h2>Ledertavle 🏆</h2>
+      <div id="leaderboardContent"></div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal('modalLeaderboard')">Lukk</button>
+      </div>
+    </div>
+  </div>
+  <!-- MODAL: Round Summary -->
+  <div class="modal-overlay" id="modalRoundSummary" style="display:none;" onclick="closeModalOnOverlay(event,'modalRoundSummary')">
+    <div class="modal" style="max-width:600px;" onclick="event.stopPropagation()">
+      <h2 id="summaryTitle">Rundesummary 🏌️</h2>
+      <div class="tabs" id="summaryTabs"></div>
+      <div id="summaryContent"></div>
+      <hr class="divider">
+      <h3 style="font-family:'Playfair Display',serif; font-size:16px; color:var(--cream-dim); margin-bottom:12px;">Golfbox-overføring</h3>
+      <div style="display:flex; gap:8px; margin-bottom:16px;">
+        <button class="tab active" id="golfboxTableBtn" onclick="showGolfboxMode('table')">Tabellvisning</button>
+        <button class="tab" id="golfboxSpeakBtn" onclick="showGolfboxMode('speak')">Les opp</button>
+      </div>
+      <div id="golfboxContent"></div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal('modalRoundSummary')">Lukk</button>
+      </div>
+    </div>
+  </div>
+  <!-- MODAL: Pending Users -->
+  <div class="modal-overlay" id="modalPendingUsers" style="display:none;" onclick="closeModalOnOverlay(event,'modalPendingUsers')">
+    <div class="modal" style="max-width:480px;" onclick="event.stopPropagation()">
+      <h2>⏳ Ventende brukere</h2>
+      <div id="pendingUsersList"></div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal('modalPendingUsers')">Lukk</button>
+      </div>
+    </div>
+  </div>
+</div><!-- end appShell -->
+<!-- MODAL: Slope Upload -->
+<div class="modal-overlay" id="modalSlopeUpload" style="display:none;" onclick="closeModalOnOverlay(event,'modalSlopeUpload')">
+  <div class="modal" style="max-width:600px;" onclick="event.stopPropagation()">
+    <h2>📷 Les slopetabell</h2>
+    <p style="font-size:13px; color:var(--cream-dim); margin-bottom:20px;">Last opp bilde eller PDF av slopetabellen fra NGF/Golfbox. Claude leser tabellen og fyller inn tee-sett automatisk.</p>
+    <div id="slopeUploadAlert"></div>
+    <div id="slopeStep1">
+      <div style="margin-bottom:16px;">
+        <div style="display:flex; gap:10px; margin-bottom:12px;">
+          <label style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; border:2px dashed rgba(201,168,76,0.3); border-radius:12px; padding:20px; text-align:center; cursor:pointer; transition:all 0.2s; background:rgba(0,0,0,0.1);">
+            <div style="font-size:28px;">🖼️</div>
+            <div style="color:var(--cream); font-size:13px; font-weight:500;">Bilde</div>
+            <div style="color:var(--cream-dim); font-size:11px;">PNG, JPG</div>
+            <input type="file" id="slopeFileImage" accept="image/png,image/jpeg,image/jpg" style="display:none;" onchange="handleSlopeFile(this.files[0])">
+          </label>
+          <label style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; border:2px dashed rgba(201,168,76,0.3); border-radius:12px; padding:20px; text-align:center; cursor:pointer; transition:all 0.2s; background:rgba(0,0,0,0.1);">
+            <div style="font-size:28px;">📄</div>
+            <div style="color:var(--cream); font-size:13px; font-weight:500;">PDF</div>
+            <div style="color:var(--cream-dim); font-size:11px;">Slopetabell PDF</div>
+            <input type="file" id="slopeFilePDF" accept="application/pdf" style="display:none;" onchange="handleSlopeFile(this.files[0])">
+          </label>
+        </div>
+        <div id="slopeFileName" style="display:none; text-align:center; color:var(--green-light); font-size:13px; margin-top:4px;"></div>
+      </div>
+      <div id="slopePreview" style="display:none; margin-bottom:16px;">
+        <img id="slopePreviewImg" style="max-width:100%; border-radius:8px; border:1px solid rgba(255,255,255,0.1);">
+      </div>
+      <div class="form-group">
+        <label>Velg bane disse tee-settene tilhører *</label>
+        <select id="slopeCourseSelect" onchange="checkSlopeReady()" style="width:100%; padding:12px 16px; border-radius:8px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.3); color:var(--cream); font-size:15px; font-family:'DM Sans',sans-serif;">
+          <option value="">Velg bane...</option>
+        </select>
+      </div>
+      <button class="btn" id="slopeAnalyzeBtn" onclick="analyzeSlopeImage()" style="display:none;">🔍 Analyser med Claude</button>
+    </div>
+    <div id="slopeStep2" style="display:none;">
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:20px;">
+        <button onclick="backToSlopeUpload()" style="background:none;border:none;color:var(--gold);cursor:pointer;font-size:22px;">←</button>
+        <h3 style="font-family:'Playfair Display',serif; color:var(--cream); font-size:18px;">Bekreft tee-sett</h3>
+      </div>
+      <p style="font-size:13px; color:var(--cream-dim); margin-bottom:16px;">Sjekk at dataene ser riktige ut før du lagrer.</p>
+      <div id="slopeReviewContent"></div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="backToSlopeUpload()">Tilbake</button>
+        <button class="btn" onclick="saveSlopeTees()">Lagre tee-sett</button>
+      </div>
+    </div>
+    <div class="modal-actions" id="slopeStep1Actions">
+      <button class="btn btn-outline" onclick="closeModal('modalSlopeUpload')">Avbryt</button>
+    </div>
+  </div>
+</div>
+<!-- MODAL: Add Course -->
+<div class="modal-overlay" id="modalAddCourse" style="display:none;" onclick="closeModalOnOverlay(event,'modalAddCourse')">
+  <div class="modal" style="max-width:600px;" onclick="event.stopPropagation()">
+    <h2>Legg til bane</h2>
+    <div id="addCourseAlert"></div>
+    <div id="courseStep1">
+      <div style="display:flex; gap:8px; margin-bottom:12px;">
+        <input type="text" id="courseSearch" placeholder="Søk på banenavn, f.eks. Bogstad..." onkeydown="if(event.key==='Enter')searchCourses()" style="flex:1; padding:12px 16px; border-radius:8px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.3); color:var(--cream); font-size:15px; font-family:'DM Sans',sans-serif; outline:none;">
+        <button class="btn btn-auto" onclick="searchCourses()">Søk</button>
+      </div>
+      <div id="searchResults"></div>
+      <hr class="divider">
+      <p style="font-size:13px; color:var(--cream-dim); text-align:center;">Finner du ikke banen?
+        <button onclick="showManualEntry()" style="background:none;border:none;color:var(--gold);cursor:pointer;font-size:13px;text-decoration:underline;font-family:'DM Sans',sans-serif;">Legg inn manuelt</button>
+      </p>
+    </div>
+    <div id="courseStep2" style="display:none;">
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:20px;">
+        <button onclick="backToSearch()" style="background:none;border:none;color:var(--gold);cursor:pointer;font-size:22px;">←</button>
+        <h3 id="step2Title" style="font-family:'Playfair Display',serif; color:var(--cream); font-size:18px;"></h3>
+      </div>
+      <div class="grid-2">
+        <div class="form-group"><label>Banenavn *</label><input type="text" id="courseName" placeholder="f.eks. Bogstad Golf"></div>
+        <div class="form-group"><label>Sted</label><input type="text" id="courseLocation" placeholder="f.eks. Oslo"></div>
+      </div>
+      <div class="form-group">
+        <label>Antall hull</label>
+        <select id="courseHoles" onchange="updateHoleType(this.value)">
+          <option value="18">18 hull</option>
+          <option value="9">9 hull (selvstendig bane, SI 1-9)</option>
+          <option value="9_of_18">9 hull (del av 18-hulls bane, SI 1-18)</option>
+        </select>
+      </div>
+      <div id="nineHullStartDiv" style="display:none;">
+        <div class="form-group">
+          <label>Hvilke 9 hull spiller dere?</label>
+          <select id="nineHullStart">
+            <option value="1">Hull 1-9 (ut-runden)</option>
+            <option value="10">Hull 10-18 (inn-runden)</option>
+          </select>
+        </div>
+      </div>
+      <hr class="divider">
+      <div style="margin-bottom:16px;">
+        <label style="font-size:12px; text-transform:uppercase; letter-spacing:1px; color:var(--cream-dim); display:block; margin-bottom:10px;">Tee-sett</label>
+        <div style="display:flex; gap:10px; margin-bottom:16px;">
+          <button id="btnTeeMethodSlope" onclick="setTeeMethod('slope')" style="flex:1; padding:14px; border-radius:10px; border:2px solid rgba(201,168,76,0.4); background:rgba(201,168,76,0.15); color:var(--gold-light); cursor:pointer; font-family:'DM Sans',sans-serif; font-size:13px; font-weight:500; transition:all 0.2s;">
+            📷 Les slopetabell<br><span style="font-size:11px; color:var(--cream-dim); font-weight:400;">Bilde eller PDF</span>
+          </button>
+          <button id="btnTeeMethodManual" onclick="setTeeMethod('manual')" style="flex:1; padding:14px; border-radius:10px; border:2px solid rgba(255,255,255,0.1); background:transparent; color:var(--cream-dim); cursor:pointer; font-family:'DM Sans',sans-serif; font-size:13px; font-weight:500; transition:all 0.2s;">
+            ✍️ Manuelt<br><span style="font-size:11px; font-weight:400;">Tast inn selv</span>
+          </button>
+        </div>
+        <!-- Slope upload -->
+        <div id="teeMethodSlope" style="display:block;">
+          <div style="display:flex; gap:10px; margin-bottom:10px;">
+            <label style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; border:2px dashed rgba(201,168,76,0.3); border-radius:10px; padding:16px; text-align:center; cursor:pointer; background:rgba(0,0,0,0.1);">
+              <div style="font-size:24px;">🖼️</div>
+              <div style="color:var(--cream); font-size:12px; font-weight:500;">Bilde</div>
+              <div style="color:var(--cream-dim); font-size:11px;">PNG, JPG</div>
+              <input type="file" id="addCourseFileImage" accept="image/png,image/jpeg,image/jpg" style="display:none;" onchange="handleAddCourseFile(this.files[0])">
+            </label>
+            <label style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; border:2px dashed rgba(201,168,76,0.3); border-radius:10px; padding:16px; text-align:center; cursor:pointer; background:rgba(0,0,0,0.1);">
+              <div style="font-size:24px;">📄</div>
+              <div style="color:var(--cream); font-size:12px; font-weight:500;">PDF</div>
+              <div style="color:var(--cream-dim); font-size:11px;">Slopetabell PDF</div>
+              <input type="file" id="addCourseFilePDF" accept="application/pdf" style="display:none;" onchange="handleAddCourseFile(this.files[0])">
+            </label>
+          </div>
+          <div id="addCourseFileName" style="display:none; text-align:center; color:var(--green-light); font-size:13px; margin-top:4px;"></div>
+          <div id="addCoursePreview" style="display:none; margin-top:10px;">
+            <img id="addCoursePreviewImg" style="max-width:100%; border-radius:8px; border:1px solid rgba(255,255,255,0.1);">
+          </div>
+          <p style="font-size:12px; color:var(--cream-dim); margin-top:8px; text-align:center;">Last opp fil og vent til filnavn vises før du trykker Lagre bane</p>
+        </div>
+        <!-- Manuell innlegging -->
+        <div id="teeMethodManual" style="display:none;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <span style="font-size:12px; color:var(--cream-dim);">Legg til tee-sett</span>
+            <button class="btn-sm" onclick="addTeeRow()">+ Legg til tee</button>
+          </div>
+          <div style="font-size:11px; color:var(--cream-dim); margin-bottom:8px; display:grid; grid-template-columns:1fr 80px 80px 80px auto; gap:8px; padding:0 4px;">
+            <span>Navn</span><span style="text-align:center;">Slope</span><span style="text-align:center;">CR</span><span style="text-align:center;">Farge</span><span></span>
+          </div>
+          <div id="teeRows"></div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal('modalAddCourse')">Avbryt</button>
+        <button class="btn" id="saveCourseBtn" onclick="saveCourse()">Lagre bane</button>
+      </div>
+    </div>
+    <!-- Step 3: Scorekort -->
+    <div id="courseStep3" style="display:none;">
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
+        <button onclick="skipScorecard()" style="background:none;border:none;color:var(--gold);cursor:pointer;font-size:22px;">←</button>
+        <h3 style="font-family:'Playfair Display',serif; color:var(--cream); font-size:18px;">Hull-data fra scorekort</h3>
+      </div>
+      <p style="font-size:13px; color:var(--cream-dim); margin-bottom:16px;">Last opp bilde av scorekortet så leser Claude inn par og SI per hull automatisk.</p>
+      <div id="scorecardAlert"></div>
+      <div style="display:flex; gap:10px; margin-bottom:12px;">
+        <label style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; border:2px dashed rgba(201,168,76,0.3); border-radius:10px; padding:16px; text-align:center; cursor:pointer; background:rgba(0,0,0,0.1);">
+          <div style="font-size:28px;">📸</div>
+          <div style="color:var(--cream); font-size:13px; font-weight:500;">Last opp scorekort</div>
+          <div style="color:var(--cream-dim); font-size:11px;">PNG, JPG eller PDF</div>
+          <input type="file" id="scorecardFileInput" accept="image/png,image/jpeg,image/jpg,application/pdf" style="display:none;" onchange="handleScorecardFile(this.files[0])">
+        </label>
+      </div>
+      <div id="scorecardFileName" style="display:none; text-align:center; color:var(--green-light); font-size:13px; margin-bottom:8px;"></div>
+      <div id="scorecardPreview" style="display:none; margin-bottom:12px;">
+        <img id="scorecardPreviewImg" style="max-width:100%; border-radius:8px; border:1px solid rgba(255,255,255,0.1);">
+      </div>
+      <div id="scorecardReview" style="display:none;"></div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="skipScorecard()">Hopp over</button>
+        <button class="btn" id="scorecardAnalyzeBtn" onclick="analyzeScorecard()" style="display:none;">📖 Les scorekort</button>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- MODAL: Add Player -->
+<div class="modal-overlay" id="modalAddPlayer" style="display:none;" onclick="closeModalOnOverlay(event,'modalAddPlayer')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <h2>Legg til spiller</h2>
+    <div id="addPlayerAlert"></div>
+    <div class="form-group"><label>Brukernavn *</label><input type="text" id="newUsername" placeholder="f.eks. jokke" style="text-transform:lowercase;"></div>
+    <div class="form-group"><label>Fullt navn *</label><input type="text" id="newDisplayName" placeholder="f.eks. Jørgen Knudsen"></div>
+    <div class="form-group"><label>Passord * (gi dette til spilleren)</label><input type="password" id="newPlayerPassword" placeholder="Minst 6 tegn"></div>
+    <div class="form-group"><label>Handicap</label><input type="number" id="newHcp" placeholder="18.0" step="0.1" min="-10" max="54"></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('modalAddPlayer')">Avbryt</button>
+      <button class="btn" onclick="savePlayer()">Lagre spiller</button>
+    </div>
+  </div>
+</div>
+<!-- MODAL: Course Detail -->
+<div class="modal-overlay" id="modalCourseDetail" style="display:none;" onclick="closeModalOnOverlay(event,'modalCourseDetail')">
+  <div class="modal" style="max-width:700px;" onclick="event.stopPropagation()">
+    <h2 id="detailCourseName">Bane</h2>
+    <div class="tabs">
+      <button class="tab active" onclick="showCourseTab('info')">Info</button>
+      <button class="tab" onclick="showCourseTab('holes')">Hull-data</button>
+    </div>
+    <div id="courseTabInfo"></div>
+    <div id="courseTabHoles" style="display:none;"></div>
+    <div class="modal-actions" style="justify-content:space-between;">
+      <button class="btn btn-danger btn-auto" id="btnDeleteCourse" style="display:none;" onclick="deleteCourse()">🗑 Slett bane</button>
+      <button class="btn btn-outline btn-auto" onclick="closeModal('modalCourseDetail')">Lukk</button>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay" id="modalShareRound" style="display:none;" onclick="closeModalOnOverlay(event,'modalShareRound')">
+  <div class="modal" style="max-width:400px; text-align:center;" onclick="event.stopPropagation()">
+    <div style="font-size:40px; margin-bottom:8px;">⛳</div>
+    <h2 style="margin-bottom:6px;">Runden er i gang!</h2>
+    <p id="shareRoundDesc" style="color:var(--cream-dim); font-size:14px; margin-bottom:24px;"></p>
+    <button onclick="doShareRound()" class="btn" style="width:100%; margin-bottom:10px; font-size:15px; padding:14px;">
+      📤 Del live-lenke
+    </button>
+    <button onclick="closeModal('modalShareRound')" class="btn btn-outline" style="width:100%; font-size:14px;">
+      Fortsett til scoring
+    </button>
+  </div>
+</div>
+<script>
+// ── SUPABASE INIT ──
+const SUPABASE_URL = 'https://fqiwnsmhypxtsdipzntm.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZxaXduc21oeXB4dHNkaXB6bnRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2MTA2NjIsImV4cCI6MjA5MzE4NjY2Mn0.QZjHeK-ckcM5aAIRsjeZalHQuLgkwCVcoxTL1pBpG68';
+const CLAUDE_PROXY = 'https://fqiwnsmhypxtsdipzntm.supabase.co/functions/v1/claude-proxy';
+const { createClient } = supabase;
+const db = createClient(SUPABASE_URL, SUPABASE_ANON);
+let currentUser = null;
+let currentProfile = null;
+
+// ── AUTH ──
+async function init() {
+  const { data: { session } } = await db.auth.getSession();
+  if (session) {
+    await loadProfile(session.user.id);
+    if (currentProfile) {
+      if (currentProfile.is_approved === false) {
+        await db.auth.signOut();
+        showPending(currentProfile.display_name);
+      } else {
+        showApp();
+        if (location.hash === '#live') {
+          setTimeout(() => { showPage('live'); }, 400);
+        }
+      }
+    } else showLogin();
+  } else {
+    if (location.hash === '#live') {
+      showPublicLive();
+    } else {
+      showLogin();
+    }
+  }
+  db.auth.onAuthStateChange(async (event, session) => {
+    if (event === 'SIGNED_IN' && session) {
+      await loadProfile(session.user.id);
+      if (currentProfile) {
+        if (currentProfile.is_approved === false) { await db.auth.signOut(); showPending(currentProfile.display_name); }
+        else showApp();
+      }
+    }
+  });
+}
+async function loadProfile(userId) {
+  const { data } = await db.from('profiles').select('*').eq('id', userId).single();
+  currentProfile = data;
+}
+function showLogin() {
+  document.getElementById('publicLivePage').style.display = 'none';
+  document.getElementById('loginPage').style.display = 'flex';
+  document.getElementById('appShell').style.display = 'none';
+  document.getElementById('pendingPage').style.display = 'none';
+}
+function showPending(displayName) {
+  document.getElementById('loginPage').style.display = 'none';
+  document.getElementById('appShell').style.display = 'none';
+  document.getElementById('publicLivePage').style.display = 'none';
+  document.getElementById('pendingPage').style.display = 'flex';
+  const el = document.getElementById('pendingName');
+  if (el) el.textContent = displayName || '';
+}
+function showLoginFromPublic() {
+  document.getElementById('publicLivePage').style.display = 'none';
+  document.getElementById('loginPage').style.display = 'flex';
+}
+async function showPublicLive() {
+  document.getElementById('loginPage').style.display = 'none';
+  document.getElementById('appShell').style.display = 'none';
+  document.getElementById('publicLivePage').style.display = 'block';
+  await renderPublicLive();
+  setInterval(renderPublicLive, 20000);
+}
+async function renderPublicLive() {
+  const statusEl = document.getElementById('publicLiveStatus');
+  const contentEl = document.getElementById('publicLiveContent');
+  const { data: active } = await db.from('rounds')
+    .select('*, courses(name, holes), tee_sets(name), flights(id, name, flight_players(id, player_id, handicap, profiles(display_name)))')
+    .eq('status', 'active').order('created_at', { ascending: false });
+  if (!active?.length) {
+    statusEl.textContent = 'Ingen aktive runder akkurat nå';
+    contentEl.innerHTML = `<div style="text-align:center; padding:60px 20px; color:var(--cream-dim);">
+      <div style="font-size:48px; margin-bottom:16px;">⛳</div>
+      <div style="font-size:16px; color:var(--cream);">Ingen aktive runder</div>
+      <div style="font-size:13px; margin-top:8px;">Siden oppdateres automatisk</div>
+    </div>`;
+    return;
+  }
+  const round = active[0];
+  statusEl.textContent = '🟢 Live · ' + round.courses?.name + ' · ' + round.date;
+  const { data: scores } = await db.from('scores').select('*').eq('round_id', round.id);
+  const { data: holes } = await db.from('holes').select('*').eq('course_id', round.course_id).order('hole_number');
+  const allFP = (round.flights || []).flatMap(f => f.flight_players || []);
+  const holeCount = round.courses?.holes || 18;
+  const scoreMap = {}, holeMap = {};
+  (scores || []).forEach(s => { if (!scoreMap[s.player_id]) scoreMap[s.player_id] = {}; scoreMap[s.player_id][s.hole_number] = s.strokes; });
+  (holes || []).forEach(h => { holeMap[h.hole_number] = h; });
+  const standings = allFP.map(fp => {
+    const ps = scoreMap[fp.player_id] || {};
+    let pts = 0, played = 0;
+    Object.entries(ps).forEach(([hn, strokes]) => {
+      if (strokes > 0) { played++; const h = holeMap[parseInt(hn)]; if (h?.par && h?.stroke_index) pts += calcStablefordLive(strokes, h.par, fp.handicap || 36, h.stroke_index, holeCount); }
+    });
+    return { name: fp.profiles?.display_name || '?', pts, played, scores: ps };
+  }).sort((a, b) => b.pts - a.pts);
+  const maxHole = standings.reduce((m, s) => Math.max(m, s.played), 0);
+  const feedEvents = (scores || []).filter(s => s.strokes > 0 && holeMap[s.hole_number]?.par)
+    .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')).slice(0, 5)
+    .map(s => {
+      const h = holeMap[s.hole_number], fp = allFP.find(p => p.player_id === s.player_id);
+      const diff = s.strokes - h.par;
+      let label = 'Par', dot = '#888780';
+      if (s.strokes === 1) { label = 'Hole in One 🏆'; dot = '#fac775'; }
+      else if (diff <= -2) { label = 'Eagle 🦅'; dot = '#fac775'; }
+      else if (diff === -1) { label = 'Birdie 🐦'; dot = '#85b7eb'; }
+      else if (diff === 1) { label = 'Bogey'; dot = '#f09595'; }
+      else if (diff >= 2) { label = `+${diff}`; dot = '#e24b4a'; }
+      return { hole: s.hole_number, par: h.par, label, dot, name: (fp?.profiles?.display_name || '?').split(' ')[0], strokes: s.strokes };
+    });
+  contentEl.innerHTML = `
+    <div style="background:rgba(201,168,76,0.08); border:1px solid rgba(201,168,76,0.2); border-radius:12px; padding:14px 16px; margin-bottom:16px;">
+      <div style="font-size:11px; color:var(--gold); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:4px;">Hull ${maxHole} av ${holeCount}</div>
+      <div style="font-size:16px; color:var(--cream); font-weight:500;">${round.courses?.name}</div>
+      <div style="font-size:12px; color:var(--cream-dim); margin-top:2px;">${round.tee_sets?.name || ''}</div>
+    </div>
+    <div style="font-size:11px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px;">Leaderboard</div>
+    <div style="background:rgba(0,0,0,0.2); border-radius:12px; overflow:hidden; margin-bottom:16px; border:1px solid rgba(255,255,255,0.06);">
+      ${standings.map((s, i) => `
+        <div style="display:flex; align-items:center; gap:12px; padding:13px 16px; ${i < standings.length-1 ? 'border-bottom:1px solid rgba(255,255,255,0.05)' : ''}; ${i===0 ? 'background:rgba(201,168,76,0.07)' : ''};">
+          <div style="font-size:13px; color:var(--cream-dim); min-width:20px;">${i+1}</div>
+          <div style="flex:1;">
+            <div style="font-size:14px; color:var(--cream); font-weight:${i===0?'600':'400'};">${s.name}</div>
+            <div style="font-size:11px; color:var(--cream-dim);">thru ${s.played}</div>
+          </div>
+          <div style="font-size:22px; font-weight:600; color:var(--gold);">${s.pts}p</div>
+        </div>`).join('')}
+    </div>
+    ${feedEvents.length ? `
+    <div style="font-size:11px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px;">Live feed</div>
+    <div style="background:rgba(0,0,0,0.2); border-radius:12px; padding:14px 16px; border:1px solid rgba(255,255,255,0.06);">
+      ${feedEvents.map((e, i) => `
+        <div style="display:flex; gap:10px; align-items:flex-start; ${i>0?'margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.05)':''}">
+          <div style="width:8px;height:8px;border-radius:50%;background:${e.dot};flex-shrink:0;margin-top:5px;"></div>
+          <div>
+            <div style="font-size:13px;font-weight:500;color:var(--cream);">Hull ${e.hole} · Par ${e.par}</div>
+            <div style="font-size:12px;color:var(--cream-dim);margin-top:2px;">${e.name} · ${e.label} · ${e.strokes} slag</div>
+          </div>
+        </div>`).join('')}
+    </div>` : ''}
+    <div style="font-size:11px;color:var(--cream-dim);text-align:center;margin-top:16px;">Oppdateres automatisk hvert 20 sek</div>
+  `;
+}
+function showApp() {
+  document.getElementById('loginPage').style.display = 'none';
+  document.getElementById('appShell').style.display = 'block';
+  document.getElementById('topbarUsername').textContent = currentProfile?.username || '–';
+  document.getElementById('dashGreeting').textContent = `Hei, ${currentProfile?.display_name || currentProfile?.username}!`;
+  const _golfQuotes = [
+    { text: "The most important shot in golf is the next one.", author: "Ben Hogan" },
+    { text: "Golf is a good walk spoiled.", author: "Mark Twain" },
+    { text: "The more I practice, the luckier I get.", author: "Gary Player" },
+    { text: "The older I get, the better I used to be.", author: "Lee Trevino" },
+    { text: "Nobody asked how you looked, just what you shot.", author: "Sam Snead" },
+    { text: "To find a man's true character, play golf with him.", author: "P.G. Wodehouse" },
+    { text: "The only thing a golfer needs is more daylight.", author: "Ben Hogan" },
+    { text: "Drive for show, putt for dough.", author: "Bobby Locke" },
+    { text: "Golf is deceptively simple and endlessly complicated.", author: "Arnold Palmer" },
+    { text: "Happiness is a long walk with a putter.", author: "Greg Norman" },
+    { text: "If you drink, don't drive. Don't even putt.", author: "Dean Martin" },
+    { text: "They call it golf because all the other four-letter words were taken.", author: "Raymond Floyd" },
+    { text: "Serenity is knowing that your worst shot is still pretty good.", author: "Johnny Miller" },
+    { text: "You can't go into a shop and buy a good game of golf.", author: "Sam Snead" },
+    { text: "I know I'm getting better at golf because I'm hitting fewer spectators.", author: "Gerald Ford" },
+    { text: "Golf is a game in which you yell fore, shoot six, and write down five.", author: "Paul Harvey" },
+    { text: "If you think it's hard to meet people, try picking up the wrong golf ball.", author: "Jack Lemmon" },
+    { text: "Every day is a good day on the golf course.", author: "Anonymous" },
+    { text: "Concentration comes out of a combination of confidence and hunger.", author: "Arnold Palmer" },
+    { text: "A good golfer has the determination to win and the patience to wait for the breaks.", author: "Gary Player" },
+  ];
+  const _q = _golfQuotes[Math.floor(Date.now() / 86400000) % _golfQuotes.length];
+  const _qEl = document.getElementById('dashQuote');
+  if (_qEl) _qEl.textContent = `"${_q.text}" – ${_q.author}`;
+  if (currentProfile?.is_admin) {
+    // admin-rettigheter aktive
+  }
+  // players vises via Meg-siden
+  loadCourses();
+  loadDashboard();
+}
+function switchAuthTab(tab) {
+  const isLogin = tab === 'login';
+  document.getElementById('tabLogin').style.display = isLogin ? 'block' : 'none';
+  document.getElementById('tabRegister').style.display = isLogin ? 'none' : 'block';
+  document.getElementById('tabLoginBtn').style.background = isLogin ? 'rgba(201,168,76,0.2)' : 'transparent';
+  document.getElementById('tabLoginBtn').style.color = isLogin ? 'var(--gold-light)' : 'var(--cream-dim)';
+  document.getElementById('tabRegisterBtn').style.background = isLogin ? 'transparent' : 'rgba(201,168,76,0.2)';
+  document.getElementById('tabRegisterBtn').style.color = isLogin ? 'var(--cream-dim)' : 'var(--gold-light)';
+}
+async function handleLogin() {
+  const username = document.getElementById('loginUsername').value.trim().toLowerCase();
+  const password = document.getElementById('loginPassword').value;
+  if (!username || !password) { showAlert('loginAlert', 'Fyll inn brukernavn og passord', 'error'); return; }
+  const { data: profile, error: profileErr } = await db.from('profiles').select('id').eq('username', username).single();
+  if (profileErr || !profile) { showAlert('loginAlert', 'Brukernavn ikke funnet', 'error'); return; }
+  const { data: fullProfile } = await db.from('profiles').select('email').eq('username', username).single();
+  const email = fullProfile?.email;
+  if (!email) { showAlert('loginAlert', 'Ingen e-post koblet til brukeren. Kontakt Hawk.', 'error'); return; }
+  const { error } = await db.auth.signInWithPassword({ email, password });
+  if (error) { showAlert('loginAlert', 'Feil brukernavn eller passord', 'error'); return; }
+  const { data: { session } } = await db.auth.getSession();
+  if (session) {
+    await loadProfile(session.user.id);
+    if (currentProfile) {
+      if (currentProfile.is_approved === false) { await db.auth.signOut(); showPending(currentProfile.display_name); }
+      else showApp();
+    }
+  }
+}
+async function handleRegister() {
+  const username = document.getElementById('regUsername').value.trim().toLowerCase();
+  const displayName = document.getElementById('regDisplayName').value.trim();
+  const password = document.getElementById('regPassword').value;
+  const hcp = parseFloat(document.getElementById('regHcp').value) || 54.0;
+  const inviteCode = document.getElementById('regInviteCode').value.trim().toUpperCase();
+  if (!username || !displayName || !password) { showAlert('registerAlert', 'Fyll inn alle påkrevde felt', 'error'); return; }
+  if (password.length < 6) { showAlert('registerAlert', 'Passordet må være minst 6 tegn', 'error'); return; }
+  if (inviteCode !== 'FORE') { showAlert('registerAlert', 'Feil invitasjonskode – spør Hawk om kode', 'error'); return; }
+  const { data: existing } = await db.from('profiles').select('id').eq('username', username).single();
+  if (existing) { showAlert('registerAlert', 'Brukernavnet er allerede tatt – velg et annet', 'error'); return; }
+  // Auto-generer intern e-post – brukeren ser den aldri
+  const email = `${username}@fantastic-fore.app`;
+  const { data, error } = await db.auth.signUp({ email, password });
+  if (error) { showAlert('registerAlert', error.message, 'error'); return; }
+  if (data.user) {
+    const { error: profileError } = await db.from('profiles').insert({
+      id: data.user.id, username, display_name: displayName, email, handicap: hcp, is_admin: false, is_approved: false
+    });
+    if (profileError) { showAlert('registerAlert', 'Profil feilet: ' + profileError.message, 'error'); return; }
+  }
+  await db.auth.signOut();
+  showPending(displayName);
+}
+async function handleLogout() {
+  await db.auth.signOut();
+  currentProfile = null;
+  showLogin();
+}
+
+// ── NAVIGATION ──
+function showPage(pageId) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  const page = document.getElementById('page-' + pageId);
+  if (page) page.classList.add('active');
+  const navMap = { dashboard: 'navDashboard', rounds: 'navRounds', live: 'navLive', courses: 'navCourses', profile: 'navProfile', players: 'navProfile' };
+  const navBtn = document.getElementById(navMap[pageId]);
+  if (navBtn) navBtn.classList.add('active');
+  if (pageId === 'players') loadPlayers();
+  if (pageId === 'profile') loadProfilePage();
+  if (pageId === 'rounds') loadRounds();
+  if (pageId === 'dashboard') loadDashboard();
+  if (pageId === 'live') loadLivePage();
+}
+
+async function searchCourses() {
+  const query = document.getElementById('courseSearch').value.trim().toLowerCase();
+  if (!query) return;
+  const el = document.getElementById('searchResults');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div> Søker...</div>';
+  const { data: hits } = await db.from('courses').select('id, name, location, holes').ilike('name', '%' + query + '%').order('name').limit(8);
+  if (hits?.length) {
+    el.innerHTML = '';
+    hits.forEach(c => {
+      const div = document.createElement('div');
+      div.style.cssText = 'padding:12px 16px;background:rgba(0,0,0,0.2);border-radius:8px;margin-bottom:8px;cursor:pointer;border:1px solid rgba(255,255,255,0.05);transition:all 0.2s;';
+      div.onmouseover = () => div.style.borderColor = 'rgba(201,168,76,0.3)';
+      div.onmouseout = () => div.style.borderColor = 'rgba(255,255,255,0.05)';
+      div.onclick = () => showAlert('addCourseAlert', 'Denne banen er allerede i din database. Åpne den fra Baner-siden for å redigere.', 'error');
+      div.innerHTML = '<div style="font-size:15px;color:var(--cream);font-weight:500;">' + c.name + ' <span style="font-size:11px;background:rgba(82,183,136,0.2);color:var(--green-light);padding:2px 7px;border-radius:10px;">✓ I din database</span></div><div style="font-size:12px;color:var(--cream-dim);margin-top:3px;">' + (c.location||'') + ' · ' + c.holes + ' hull</div>';
+      el.appendChild(div);
+    });
+    const p = document.createElement('p');
+    p.style.cssText = 'font-size:12px;color:var(--cream-dim);margin-top:8px;text-align:center;';
+    p.innerHTML = 'Ikke den du leter etter? <button onclick="showManualEntry()" style="background:none;border:none;color:var(--gold);cursor:pointer;font-size:12px;text-decoration:underline;">Legg inn ny manuelt</button>';
+    el.appendChild(p);
+    return;
+  }
+  el.innerHTML = '<p style="color:var(--cream-dim);font-size:14px;padding:16px 0;">Ingen treff. <button onclick="showManualEntry()" style="background:none;border:none;color:var(--gold);cursor:pointer;font-size:14px;text-decoration:underline;">Legg inn manuelt</button></p>';
+}
+function showManualEntry() {
+  document.getElementById('courseStep1').style.display = 'none';
+  document.getElementById('courseStep2').style.display = 'block';
+  document.getElementById('step2Title').textContent = 'Manuell registrering';
+  document.getElementById('courseName').value = '';
+  document.getElementById('courseLocation').value = '';
+  document.getElementById('teeRows').innerHTML = '';
+  teeCount = 0;
+  addTeeRow();
+}
+function backToSearch() {
+  document.getElementById('courseStep1').style.display = 'block';
+  document.getElementById('courseStep2').style.display = 'none';
+  document.getElementById('addCourseAlert').innerHTML = '';
+}
+async function loadCourses() {
+  const { data: courses, error } = await db.from('courses').select('*, tee_sets(*)').order('name');
+  const el = document.getElementById('coursesList');
+  if (error || !courses?.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">🏌️</div><h3>Ingen baner enda</h3><p>Legg til den første banen!</p></div>`;
+    return;
+  }
+  el.innerHTML = courses.map(c => `
+    <div class="course-item" onclick="openCourseDetail('${c.id}')">
+      <div>
+        <div class="course-name">${c.name}${c.holes === 9 ? ' <span style="font-size:12px; color:var(--cream-dim); font-weight:400;">(9 hull)</span>' : ''}</div>
+        <div class="course-meta">${c.location || ''} · ${c.holes} hull · ${c.tee_sets?.length || 0} tee-sett</div>
+      </div>
+      <div class="tee-dots">
+        ${(c.tee_sets || []).map(t => `<div class="tee-dot" style="background:${t.color || '#888'};" title="${t.name}"></div>`).join('')}
+        <span style="font-size:12px; color:var(--cream-dim); margin-left:4px;">›</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ── TEE METHOD ──
+function setTeeMethod(method) {
+  const isSlope = method === 'slope';
+  const slopeEl = document.getElementById('teeMethodSlope');
+  const manualEl = document.getElementById('teeMethodManual');
+  const slopeBtn = document.getElementById('btnTeeMethodSlope');
+  const manualBtn = document.getElementById('btnTeeMethodManual');
+  if (slopeEl) slopeEl.style.display = isSlope ? 'block' : 'none';
+  if (manualEl) manualEl.style.display = isSlope ? 'none' : 'block';
+  if (slopeBtn) {
+    slopeBtn.style.borderColor = isSlope ? 'rgba(201,168,76,0.6)' : 'rgba(255,255,255,0.1)';
+    slopeBtn.style.background = isSlope ? 'rgba(201,168,76,0.15)' : 'transparent';
+    slopeBtn.style.color = isSlope ? 'var(--gold-light)' : 'var(--cream-dim)';
+  }
+  if (manualBtn) {
+    manualBtn.style.borderColor = isSlope ? 'rgba(255,255,255,0.1)' : 'rgba(201,168,76,0.6)';
+    manualBtn.style.background = isSlope ? 'transparent' : 'rgba(201,168,76,0.15)';
+    manualBtn.style.color = isSlope ? 'var(--cream-dim)' : 'var(--gold-light)';
+  }
+  if (!isSlope) {
+    _addCourseFileData = null;
+    _addCourseFileType = null;
+    const nameEl = document.getElementById('addCourseFileName');
+    if (nameEl) { nameEl.textContent = ''; nameEl.style.display = 'none'; }
+    const preview = document.getElementById('addCoursePreview');
+    if (preview) preview.style.display = 'none';
+  }
+  if (!isSlope && document.getElementById('teeRows').children.length === 0) addTeeRow();
+}
+
+// ── FIX: handleAddCourseFile – global variabel + FileReader ──
+let _addCourseFileData = null;
+let _addCourseFileType = null;
+
+function handleAddCourseFile(file) {
+  if (!file) return;
+  _addCourseFileType = file.type;
+  const nameEl = document.getElementById('addCourseFileName');
+  if (nameEl) { nameEl.textContent = '✓ ' + file.name; nameEl.style.display = 'block'; }
+  const preview = document.getElementById('addCoursePreview');
+  const previewImg = document.getElementById('addCoursePreviewImg');
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    _addCourseFileData = e.target.result.split(',')[1]; // base64
+    if (file.type.startsWith('image/') && previewImg && preview) {
+      previewImg.src = e.target.result;
+      preview.style.display = 'block';
+    }
+    // Oppdater hint-tekst til å vise at fil er klar
+    const hintEl = document.querySelector('#teeMethodSlope p');
+    if (hintEl) hintEl.style.color = 'var(--green-light)';
+  };
+  reader.readAsDataURL(file);
+}
+
+function openAddCourse() {
+  document.getElementById('addCourseAlert').innerHTML = '';
+  document.getElementById('courseStep1').style.display = 'none';
+  document.getElementById('courseStep2').style.display = 'block';
+  document.getElementById('courseStep3').style.display = 'none';
+  document.getElementById('step2Title').textContent = 'Ny bane';
+  document.getElementById('courseName').value = '';
+  document.getElementById('courseLocation').value = '';
+  document.getElementById('courseHoles').value = '18';
+  document.getElementById('teeRows').innerHTML = '';
+  teeCount = 0;
+  // FIX: reset globale variabler
+  _addCourseFileData = null;
+  _addCourseFileType = null;
+  const imgInput = document.getElementById('addCourseFileImage');
+  const pdfInput = document.getElementById('addCourseFilePDF');
+  if (imgInput) imgInput.value = '';
+  if (pdfInput) pdfInput.value = '';
+  const nameEl = document.getElementById('addCourseFileName');
+  if (nameEl) { nameEl.textContent = ''; nameEl.style.display = 'none'; }
+  const preview = document.getElementById('addCoursePreview');
+  if (preview) preview.style.display = 'none';
+  const saveBtn = document.getElementById('saveCourseBtn');
+  if (saveBtn) saveBtn.disabled = false;
+  setTeeMethod('slope');
+  updateHoleType('18');
+  openModal('modalAddCourse');
+}
+
+let teeCount = 0;
+function addTeeRow() {
+  teeCount++;
+  const id = teeCount;
+  const div = document.createElement('div');
+  div.className = 'tee-row';
+  div.id = `tee-${id}`;
+  div.innerHTML = `
+    <input type="text" placeholder="f.eks. Gul" id="tee-name-${id}">
+    <input type="number" placeholder="113" id="tee-slope-${id}" min="55" max="155">
+    <input type="number" placeholder="72.0" id="tee-cr-${id}" step="0.1" min="60" max="85">
+    <input type="color" id="tee-color-${id}" value="#e8c97a" style="height:38px; width:100%; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:none; cursor:pointer; padding:2px;">
+    <button class="remove-btn" onclick="document.getElementById('tee-${id}').remove()">×</button>
+  `;
+  document.getElementById('teeRows').appendChild(div);
+}
+
+// ── FIX: saveCourse – venter på analyse før den går videre ──
+async function saveCourse() {
+  const name = document.getElementById('courseName').value.trim();
+  if (!name) { showAlert('addCourseAlert', 'Banenavn er påkrevd', 'error'); return; }
+
+  const holesVal = document.getElementById('courseHoles').value;
+  const holesInt = holesVal === '9_of_18' ? 9 : parseInt(holesVal);
+  window._newCourseHoles = holesInt;
+
+  const saveBtn = document.getElementById('saveCourseBtn');
+  if (saveBtn) saveBtn.disabled = true;
+
+  const { data: course, error } = await db.from('courses').insert({
+    name,
+    location: document.getElementById('courseLocation').value.trim(),
+    holes: holesInt,
+    created_by: currentProfile?.id
+  }).select().single();
+
+  if (error) {
+    showAlert('addCourseAlert', 'Feil ved lagring: ' + error.message, 'error');
+    if (saveBtn) saveBtn.disabled = false;
+    return;
+  }
+
+  const slopeEl = document.getElementById('teeMethodSlope');
+  const isSlope = slopeEl && slopeEl.style.display !== 'none' && _addCourseFileData;
+
+  if (isSlope) {
+    showAlert('addCourseAlert', '⏳ Sender slopetabell til Claude – vent...', 'success');
+    try {
+      const parsed = await callClaudeProxy(
+        _addCourseFileData, _addCourseFileType,
+        'Dette er en slopetabell fra en norsk golfbane. Trekk ut alle tee-sett og returner KUN gyldig JSON:\n{"course_name":"navn","tees":[{"name":"tee-navn","course_rating":72.6,"slope":129,"color":"#hexfarge"}]}\nFarger: gul=#FFD700, hvit=#FFFFFF, blå=#3366CC, rød=#CC3333, svart=#222222. Kun JSON.',
+        1200
+      );
+      const tees = parsed.tees || [];
+      for (const t of tees) {
+        await db.from('tee_sets').insert({
+          course_id: course.id, name: t.name,
+          slope: t.slope || null, course_rating: t.course_rating || null, color: t.color || null
+        });
+      }
+      showAlert('addCourseAlert', `✅ ${tees.length} tee-sett lest inn! Går til scorekort...`, 'success');
+      await new Promise(r => setTimeout(r, 800));
+    } catch(e) {
+      showAlert('addCourseAlert', '⚠️ Slopetabell feilet: ' + e.message + '. Banen er lagret – legg til tee-sett manuelt.', 'error');
+      await new Promise(r => setTimeout(r, 1500));
+    }
+  } else {
+    // Manuell innlegging
+    const teeRows = document.getElementById('teeRows').querySelectorAll('.tee-row');
+    for (const row of teeRows) {
+      const idMatch = row.id.match(/tee-(\d+)/);
+      if (!idMatch) continue;
+      const i = idMatch[1];
+      const teeName = document.getElementById(`tee-name-${i}`)?.value?.trim();
+      if (!teeName) continue;
+      await db.from('tee_sets').insert({
+        course_id: course.id,
+        name: teeName,
+        slope: parseInt(document.getElementById(`tee-slope-${i}`)?.value) || null,
+        course_rating: parseFloat(document.getElementById(`tee-cr-${i}`)?.value) || null,
+        color: document.getElementById(`tee-color-${i}`)?.value || null
+      });
+    }
+  }
+
+  if (saveBtn) saveBtn.disabled = false;
+  loadCourses();
+  openScorecardStep(course.id);
+}
+
+// ── COURSE DETAIL ──
+let currentCourseId = null;
+async function openCourseDetail(courseId) {
+  currentCourseId = courseId;
+  const { data: course, error } = await db.from('courses').select('id, name, location, holes, created_at').eq('id', courseId).single();
+  if (error || !course) { alert('Kunne ikke laste bane.'); return; }
+  const { data: tees } = await db.from('tee_sets').select('*').eq('course_id', courseId);
+  const { data: holeRows } = await db.from('holes').select('*').eq('course_id', courseId).order('hole_number');
+  const holeCount = course.holes;
+  const teeList = tees || [];
+  const holeList = holeRows || [];
+  document.getElementById('detailCourseName').textContent = course.name;
+  document.getElementById('courseTabInfo').innerHTML = `
+    <div class="card">
+      <div class="grid-2">
+        <div><p style="font-size:12px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;">Sted</p><p style="margin-top:4px;">${course.location || '–'}</p></div>
+        <div><p style="font-size:12px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;">Hull</p><p style="margin-top:4px;">${holeCount}</p></div>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 10px;">
+      <h3 style="font-family:'Playfair Display',serif; font-size:16px; color:var(--cream-dim);">Tee-sett</h3>
+      <button onclick="showAddTeeForm('${courseId}')" class="btn-sm">+ Legg til tee</button>
+    </div>
+    <div id="addTeeForm-${courseId}" style="display:none; background:rgba(0,0,0,0.2); border-radius:8px; padding:14px; margin-bottom:10px; border:1px solid rgba(201,168,76,0.2);">
+      <div style="display:grid; grid-template-columns:1fr 80px 80px 60px; gap:8px; margin-bottom:10px;">
+        <input type="text" id="newTee-name-${courseId}" placeholder="Navn (f.eks. 59)" style="padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.3); color:var(--cream); font-size:13px; font-family:'DM Sans',sans-serif;">
+        <input type="number" id="newTee-slope-${courseId}" placeholder="Slope" style="padding:8px 6px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.3); color:var(--cream); font-size:13px; font-family:'DM Sans',sans-serif; text-align:center;">
+        <input type="number" id="newTee-cr-${courseId}" placeholder="CR" step="0.1" style="padding:8px 6px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.3); color:var(--cream); font-size:13px; font-family:'DM Sans',sans-serif; text-align:center;">
+        <input type="color" id="newTee-color-${courseId}" value="#e8c97a" style="height:38px; width:100%; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:none; cursor:pointer; padding:2px;">
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button onclick="saveNewTee('${courseId}')" class="btn btn-auto" style="font-size:13px; padding:8px 16px;">Lagre</button>
+        <button onclick="document.getElementById('addTeeForm-${courseId}').style.display='none'" class="btn btn-outline btn-auto" style="font-size:13px; padding:8px 16px;">Avbryt</button>
+      </div>
+    </div>
+    ${teeList.map(t => `
+      <div id="teeRow-${t.id}">
+        <div class="player-item" style="cursor:default;">
+          <div style="width:20px;height:20px;border-radius:50%;background:${t.color||'#888'};border:2px solid rgba(255,255,255,0.2);flex-shrink:0;"></div>
+          <div class="player-info">
+            <div class="player-name">${t.name}</div>
+            <div class="player-meta">Slope: ${t.slope||'–'} · CR: ${t.course_rating||'–'}</div>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <button onclick="toggleTeeEdit('${t.id}')" style="background:none;border:1px solid rgba(201,168,76,0.3);color:var(--gold);cursor:pointer;font-size:12px;padding:4px 10px;border-radius:6px;font-family:'DM Sans',sans-serif;">Rediger</button>
+            ${currentProfile?.is_admin ? `<button onclick="deleteTeeSet('${t.id}')" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:18px;padding:4px 8px;">🗑</button>` : ''}
+          </div>
+        </div>
+        <div id="teeEdit-${t.id}" style="display:none; background:rgba(0,0,0,0.2); border-radius:8px; padding:14px; margin:-4px 0 8px; border:1px solid rgba(201,168,76,0.2);">
+          <div style="display:grid; grid-template-columns:1fr 80px 80px 60px; gap:8px; margin-bottom:10px;">
+            <input type="text" id="editName-${t.id}" value="${t.name}" placeholder="Navn" style="padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.3); color:var(--cream); font-size:13px; font-family:'DM Sans',sans-serif;">
+            <input type="number" id="editSlope-${t.id}" value="${t.slope||''}" placeholder="Slope" style="padding:8px 6px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.3); color:var(--cream); font-size:13px; font-family:'DM Sans',sans-serif; text-align:center;">
+            <input type="number" id="editCR-${t.id}" value="${t.course_rating||''}" placeholder="CR" step="0.1" style="padding:8px 6px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.3); color:var(--cream); font-size:13px; font-family:'DM Sans',sans-serif; text-align:center;">
+            <input type="color" id="editColor-${t.id}" value="${t.color||'#e8c97a'}" style="height:38px; width:100%; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:none; cursor:pointer; padding:2px;">
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button onclick="saveTeeEdit('${t.id}')" class="btn btn-auto" style="font-size:13px; padding:8px 16px;">Lagre</button>
+            <button onclick="toggleTeeEdit('${t.id}')" class="btn btn-outline btn-auto" style="font-size:13px; padding:8px 16px;">Avbryt</button>
+          </div>
+        </div>
+      </div>
+    `).join('') || '<p style="color:var(--cream-dim);font-size:14px;">Ingen tee-sett registrert.</p>'}
+  `;
+  renderHolesTab({ id: courseId, holes_count: holeCount, holes: holeList });
+  showCourseTab('info');
+  const deleteBtn = document.getElementById('btnDeleteCourse');
+  if (deleteBtn) deleteBtn.style.display = currentProfile?.is_admin ? 'inline-flex' : 'none';
+  openModal('modalCourseDetail');
+}
+function showCourseTab(tab) {
+  document.getElementById('courseTabInfo').style.display = tab === 'info' ? 'block' : 'none';
+  document.getElementById('courseTabHoles').style.display = tab === 'holes' ? 'block' : 'none';
+  document.querySelectorAll('#modalCourseDetail .tab').forEach((t, i) => {
+    t.classList.toggle('active', (i === 0 && tab === 'info') || (i === 1 && tab === 'holes'));
+  });
+}
+function renderHolesTab(course) {
+  const holeCount = parseInt(course.holes_count) || 9;
+  const existing = {};
+  (course.holes || []).forEach(h => { existing[h.hole_number] = h; });
+  const courseId = course.id || currentCourseId;
+  const maxExistingSI = Math.max(0, ...(course.holes || []).map(h => h.stroke_index || 0));
+  const siMax = (holeCount === 9 && maxExistingSI > 9) ? 18 : holeCount;
+  const is9of18 = siMax === 18 && holeCount === 9;
+  let rows = '';
+  for (let i = 1; i <= holeCount; i++) {
+    const h = existing[i] || {};
+    rows += '<tr><td class="hole-num">' + i + '</td>' +
+      '<td><input type="number" id="hpar-' + i + '" value="' + (h.par || '') + '" placeholder="4" min="3" max="5" style="width:60px;"></td>' +
+      '<td><input type="number" id="hsi-' + i + '" value="' + (h.stroke_index || '') + '" placeholder="' + i + '" min="1" max="' + siMax + '" style="width:60px;"></td></tr>';
+  }
+  let siInfo = '';
+  if (holeCount === 9) {
+    siInfo = '<div style="margin-bottom:12px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">' +
+      '<span style="font-size:12px; color:var(--cream-dim);">Type 9-hull bane:</span>' +
+      '<label style="font-size:13px; color:var(--cream-dim); cursor:pointer;">' +
+      '<input type="radio" name="siType" value="9" ' + (!is9of18 ? 'checked' : '') + ' onchange="updateSIMax(9, ' + holeCount + ')" style="accent-color:var(--gold); margin-right:4px;">' +
+      'Selvstendig (SI 1–9)</label>' +
+      '<label style="font-size:13px; color:var(--cream-dim); cursor:pointer;">' +
+      '<input type="radio" name="siType" value="18" ' + (is9of18 ? 'checked' : '') + ' onchange="updateSIMax(18, ' + holeCount + ')" style="accent-color:var(--gold); margin-right:4px;">' +
+      'Del av 18-hull (SI 1–18)</label></div>';
+  }
+  const hasData = Object.keys(existing).length > 0;
+  const statusText = hasData
+    ? '<span style="color:var(--green-light);">✓ Data lagret</span>'
+    : '<span style="color:var(--gold);">Ingen data ennå</span>';
+  const el = document.getElementById('courseTabHoles');
+  el.innerHTML = '';
+  // Alle kan laste opp scorekort
+  {
+    const uploadWrap = document.createElement('div');
+    uploadWrap.style.marginBottom = '12px';
+    const uploadLabel = document.createElement('label');
+    uploadLabel.style.cssText = 'padding:6px 12px;border-radius:6px;border:1px solid rgba(201,168,76,0.4);color:var(--gold);font-size:12px;cursor:pointer;display:inline-block;';
+    uploadLabel.textContent = '📸 Les scorekort';
+    const uploadInp = document.createElement('input');
+    uploadInp.type = 'file';
+    uploadInp.id = 'hullScorecardFile';
+    uploadInp.accept = 'image/png,image/jpeg,image/jpg,application/pdf';
+    uploadInp.style.cssText = 'display:none;';
+    uploadInp.onchange = (e) => analyzeHullScorecard(e.target.files[0], courseId, holeCount);
+    uploadLabel.appendChild(uploadInp);
+    const statusDiv = document.createElement('div');
+    statusDiv.id = 'hullScorecardStatus';
+    statusDiv.style.marginBottom = '8px';
+    uploadWrap.appendChild(uploadLabel);
+    uploadWrap.appendChild(statusDiv);
+    el.appendChild(uploadWrap);
+  }
+  const rest = document.createElement('div');
+  rest.innerHTML = '<p style="font-size:13px;color:var(--cream-dim);margin-bottom:12px;">Fyll inn par og SI per hull. ' + statusText + '</p>' +
+    siInfo +
+    '<table class="hole-table"><thead><tr><th>Hull</th><th>Par</th><th>SI</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+    '<button class="btn" id="saveHolesBtn" style="margin-top:16px;">Lagre hull-data</button>' +
+    '<div id="holesAlert" style="margin-top:12px;"></div>';
+  el.appendChild(rest);
+  window._currentSIMax = siMax;
+  const saveBtn = document.getElementById('saveHolesBtn');
+  if (saveBtn) saveBtn.onclick = () => saveHoles(courseId, holeCount, window._currentSIMax || siMax);
+}
+function updateSIMax(newMax, holeCount) {
+  window._currentSIMax = newMax;
+  for (let i = 1; i <= holeCount; i++) {
+    const el = document.getElementById(`hsi-${i}`);
+    if (el) el.max = newMax;
+  }
+}
+function updateHoleType(val) {
+  document.getElementById('courseHoles').dataset.siMax = (val === '9_of_18') ? '18' : val;
+  const nineDiv = document.getElementById('nineHullStartDiv');
+  if (nineDiv) nineDiv.style.display = (val === '9_of_18') ? 'block' : 'none';
+}
+async function saveHoles(courseId, holeCount, siMax) {
+  siMax = siMax || holeCount;
+  const holes = [];
+  const usedSI = [];
+  const errors = [];
+  for (let i = 1; i <= holeCount; i++) {
+    const parVal = document.getElementById(`hpar-${i}`)?.value?.trim();
+    const siVal = document.getElementById(`hsi-${i}`)?.value?.trim();
+    if (!parVal) { errors.push(`Hull ${i}: Par mangler`); continue; }
+    if (!siVal)  { errors.push(`Hull ${i}: SI mangler`); continue; }
+    const par = parseInt(parVal);
+    const si  = parseInt(siVal);
+    if (![3, 4, 5].includes(par)) { errors.push(`Hull ${i}: Par må være 3, 4 eller 5 (du skrev ${parVal})`); continue; }
+    if (isNaN(si) || si < 1 || si > siMax) { errors.push(`Hull ${i}: SI må være mellom 1 og ${siMax} (du skrev ${siVal})`); continue; }
+    if (usedSI.includes(si)) { errors.push(`Hull ${i}: SI ${si} er allerede brukt`); continue; }
+    usedSI.push(si);
+    holes.push({ course_id: courseId, hole_number: i, par, stroke_index: si });
+  }
+  if (errors.length) {
+    showAlert('holesAlert', '⚠️ Feil i hull-data:<br>' + errors.map(e => `• ${e}`).join('<br>'), 'error');
+    return;
+  }
+  const { error } = await db.from('holes').upsert(holes, { onConflict: 'course_id,hole_number' });
+  if (error) { showAlert('holesAlert', 'Feil: ' + error.message, 'error'); return; }
+  showAlert('holesAlert', `✅ Hull-data lagret for alle ${holeCount} hull!`, 'success');
+}
+
+// ── PLAYERS ──
+async function loadPlayers() {
+  const { data: players } = await db.from('profiles').select('*').order('username');
+  const el = document.getElementById('playersList');
+  if (!players?.length) { el.innerHTML = '<div class="empty"><div class="empty-icon">👤</div><h3>Ingen spillere</h3></div>'; return; }
+  el.innerHTML = players.map(p => `
+    <div class="player-item">
+      <div class="player-avatar">${p.display_name?.[0] || p.username?.[0] || '?'}</div>
+      <div class="player-info">
+        <div class="player-name">${p.display_name} <span style="color:var(--cream-dim);font-size:13px;">@${p.username}</span> ${p.is_admin ? '<span class="badge badge-gold">Admin</span>' : ''}</div>
+        <div class="player-meta">HCP: ${p.handicap ?? '–'}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div class="hcp-badge">${p.handicap ?? '–'}</div>
+        ${currentProfile?.is_admin ? `
+          <button onclick="openEditPlayer('${p.id}','${(p.display_name||'').replace(/'/g,"\\'")}',${p.handicap??'null'})" style="background:none;border:1px solid rgba(201,168,76,0.3);color:var(--gold);border-radius:6px;padding:5px 10px;cursor:pointer;font-size:12px;font-family:'DM Sans',sans-serif;">Rediger</button>
+          <button onclick="openResetPassword('${p.id}','${(p.display_name||'').replace(/'/g,"\\'")}','${p.username}')" style="background:none;border:1px solid rgba(82,183,136,0.3);color:var(--green-light);border-radius:6px;padding:5px 10px;cursor:pointer;font-size:12px;font-family:'DM Sans',sans-serif;">Reset pw</button>
+          <button onclick="deletePlayer('${p.id}','${(p.display_name||'').replace(/'/g,"\\'")}','${p.username}')" style="background:none;border:1px solid rgba(192,57,43,0.4);color:var(--danger);border-radius:6px;padding:5px 10px;cursor:pointer;font-size:12px;font-family:'DM Sans',sans-serif;">Slett</button>
+        ` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+function openEditPlayer(playerId, displayName, handicap) {
+  const overlay = document.createElement('div');
+  overlay.id = 'editPlayerOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+  overlay.innerHTML = `
+    <div style="background:var(--green-dark);border:1px solid rgba(201,168,76,0.3);border-radius:12px;padding:28px;max-width:420px;width:100%;">
+      <h3 style="font-family:'Playfair Display',serif;color:var(--gold-light);margin-bottom:20px;">Rediger spiller</h3>
+      <div id="editPlayerAlert"></div>
+      <div class="form-group">
+        <label>Visningsnavn</label>
+        <input type="text" id="ep-name" value="${displayName}" style="width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:var(--cream);font-size:14px;font-family:'DM Sans',sans-serif;">
+      </div>
+      <div class="form-group">
+        <label>Handicap</label>
+        <input type="number" id="ep-hcp" value="${handicap !== 'null' ? handicap : ''}" step="0.1" min="-10" max="54" style="width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:var(--cream);font-size:14px;font-family:'DM Sans',sans-serif;">
+      </div>
+      <div style="display:flex;gap:10px;margin-top:20px;">
+        <button onclick="document.getElementById('editPlayerOverlay').remove()" style="flex:1;padding:10px;border-radius:8px;border:1px solid rgba(201,168,76,0.4);background:transparent;color:var(--gold);cursor:pointer;font-family:'DM Sans',sans-serif;">Avbryt</button>
+        <button onclick="saveEditPlayer('${playerId}')" style="flex:1;padding:10px;border-radius:8px;border:none;background:var(--gold);color:var(--green-deep);font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;">Lagre</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+async function saveEditPlayer(playerId) {
+  const name = document.getElementById('ep-name').value.trim();
+  const hcp = parseFloat(document.getElementById('ep-hcp').value);
+  if (!name) { document.getElementById('editPlayerAlert').innerHTML = '<div class="alert alert-error">Navn er påkrevd</div>'; return; }
+  const { error } = await db.from('profiles').update({ display_name: name, handicap: isNaN(hcp) ? null : hcp }).eq('id', playerId);
+  if (error) { document.getElementById('editPlayerAlert').innerHTML = `<div class="alert alert-error">${error.message}</div>`; return; }
+  document.getElementById('editPlayerOverlay')?.remove();
+  loadPlayers();
+}
+
+async function deletePlayer(playerId, displayName, username) {
+  if (playerId === currentProfile?.id) {
+    alert('Du kan ikke slette din egen bruker!');
+    return;
+  }
+  const confirmed = await showConfirm(`Slette ${displayName} (@${username})? Dette kan ikke angres.`);
+  if (!confirmed) return;
+  await db.from('flight_players').delete().eq('player_id', playerId);
+  await db.from('scores').delete().eq('player_id', playerId);
+  await db.from('notifications').delete().eq('player_id', playerId);
+  const { error } = await db.from('profiles').delete().eq('id', playerId);
+  if (error) { alert('Feil ved sletting: ' + error.message); return; }
+  loadPlayers();
+}
+function openResetPassword(playerId, displayName, username) {
+  const overlay = document.createElement('div');
+  overlay.id = 'resetPwOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+  overlay.innerHTML = `
+    <div style="background:var(--green-dark);border:1px solid rgba(201,168,76,0.3);border-radius:12px;padding:28px;max-width:420px;width:100%;">
+      <h3 style="font-family:'Playfair Display',serif;color:var(--gold-light);margin-bottom:8px;">Reset passord</h3>
+      <p style="font-size:13px;color:var(--cream-dim);margin-bottom:20px;">Sett et midlertidig passord for <strong style="color:var(--cream);">${displayName} (@${username})</strong>. Spilleren bør bytte dette selv under Min Profil.</p>
+      <div id="resetPwAlert"></div>
+      <div class="form-group">
+        <label>Midlertidig passord</label>
+        <input type="text" id="rp-pass" placeholder="f.eks. golf2026" style="width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:var(--cream);font-size:14px;font-family:'DM Sans',sans-serif;">
+      </div>
+      <div style="display:flex;gap:10px;margin-top:20px;">
+        <button onclick="document.getElementById('resetPwOverlay').remove()" style="flex:1;padding:10px;border-radius:8px;border:1px solid rgba(201,168,76,0.4);background:transparent;color:var(--gold);cursor:pointer;font-family:'DM Sans',sans-serif;">Avbryt</button>
+        <button onclick="doResetPassword('${playerId}')" style="flex:1;padding:10px;border-radius:8px;border:none;background:var(--green-mid);color:var(--cream);font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;">Sett passord</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+async function doResetPassword(playerId) {
+  const newPassword = document.getElementById('rp-pass').value.trim();
+  if (!newPassword || newPassword.length < 6) {
+    document.getElementById('resetPwAlert').innerHTML = '<div class="alert alert-error">Passord må være minst 6 tegn</div>';
+    return;
+  }
+  try {
+    const response = await fetch('https://fqiwnsmhypxtsdipzntm.supabase.co/functions/v1/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SUPABASE_ANON },
+      body: JSON.stringify({ userId: playerId, newPassword })
+    });
+    const data = await response.json();
+    if (data.error) {
+      document.getElementById('resetPwAlert').innerHTML = `<div class="alert alert-error">${data.error}</div>`;
+      return;
+    }
+    document.getElementById('resetPwAlert').innerHTML = '<div class="alert alert-success">✅ Passord satt! Gi det videre til spilleren.</div>';
+    setTimeout(() => document.getElementById('resetPwOverlay')?.remove(), 2000);
+  } catch(e) {
+    document.getElementById('resetPwAlert').innerHTML = `<div class="alert alert-error">Feil: ${e.message}</div>`;
+  }
+}
+function openAddPlayer() {
+  document.getElementById('addPlayerAlert').innerHTML = '';
+  ['newUsername','newDisplayName','newHcp','newPlayerPassword'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  openModal('modalAddPlayer');
+}
+async function savePlayer() {
+  const username = document.getElementById('newUsername').value.trim().toLowerCase();
+  const displayName = document.getElementById('newDisplayName').value.trim();
+  const password = document.getElementById('newPlayerPassword')?.value || '';
+  const hcp = parseFloat(document.getElementById('newHcp').value) || 54.0;
+  if (!username || !displayName || !password || password.length < 6) { 
+    showAlert('addPlayerAlert', 'Fyll inn brukernavn, navn og passord (minst 6 tegn)', 'error'); 
+    return; 
+  }
+  const { data: existing } = await db.from('profiles').select('id').eq('username', username).single();
+  if (existing) { showAlert('addPlayerAlert', 'Brukernavnet er allerede tatt', 'error'); return; }
+  const email = `${username}@fantastic-fore.app`;
+  const finalPassword = password || Math.random().toString(36).slice(-10);
+  const { data, error } = await db.auth.signUp({ email, password: finalPassword });
+  if (error) { showAlert('addPlayerAlert', error.message, 'error'); return; }
+  if (data.user) {
+    const { error: profileError } = await db.from('profiles').insert({
+      id: data.user.id, username, display_name: displayName, email, handicap: hcp, is_admin: false, is_approved: true
+    });
+    if (profileError) { showAlert('addPlayerAlert', 'Profil feilet: ' + profileError.message, 'error'); return; }
+  }
+  showAlert('addPlayerAlert', `✅ ${displayName} opprettet! Brukernavn: <strong>${username}</strong> · Passord: <strong>${password}</strong> — gi dette til spilleren.`, 'success');
+  setTimeout(() => { closeModal('modalAddPlayer'); loadPlayers(); }, 1000);
+}
+async function loadProfilePage() {
+  const p = currentProfile;
+  if (!p) return;
+  document.getElementById('profileContent').innerHTML = `
+    <div class="page-header"><div><h1>Min Profil</h1></div></div>
+    <div class="profile-header">
+      <div class="profile-avatar">${p.display_name?.[0] || '?'}</div>
+      <div>
+        <h2 style="font-family:'Playfair Display',serif; font-size:24px;">${p.display_name}</h2>
+        <p style="color:var(--cream-dim);">@${p.username} ${p.is_admin ? '· <span class="badge badge-gold">Admin</span>' : ''}</p>
+      </div>
+    </div>
+    <div class="card">
+      <h3 style="font-family:'Playfair Display',serif; margin-bottom:20px;">Rediger profil</h3>
+      <div id="profileAlert"></div>
+      <div class="form-group"><label>Visningsnavn</label><input type="text" id="editDisplayName" value="${p.display_name || ''}"></div>
+      <div class="form-group"><label>Handicap (følg Golfbox)</label><input type="number" id="editHcp" value="${p.handicap ?? ''}" step="0.1" min="-10" max="54"></div>
+      <button class="btn btn-auto" onclick="saveProfile()">Lagre endringer</button>
+    </div>
+    <div class="card">
+      <h3 style="font-family:'Playfair Display',serif; margin-bottom:8px;">Endre passord</h3>
+      <p style="font-size:13px; color:var(--cream-dim); margin-bottom:16px;">Logg inn med nytt passord neste gang.</p>
+      <div id="passwordAlert"></div>
+      <div class="form-group"><label>Nytt passord</label><input type="password" id="newPassword1" placeholder="Minst 6 tegn"></div>
+      <div class="form-group"><label>Bekreft nytt passord</label><input type="password" id="newPassword2" placeholder="Gjenta passord"></div>
+      <button class="btn btn-auto" onclick="changePassword()">Endre passord</button>
+    </div>
+    ${p.is_admin ? `
+    <div class="card" style="margin-top:16px;">
+      <h3 style="font-family:'Playfair Display',serif; margin-bottom:16px;">Admin</h3>
+      <button class="btn btn-outline btn-auto" onclick="showPage('players')" style="width:100%; margin-bottom:8px;">Administrer spillere</button>
+    </div>` : ''}
+  `;
+}
+async function changePassword() {
+  const p1 = document.getElementById('newPassword1').value;
+  const p2 = document.getElementById('newPassword2').value;
+  if (!p1 || p1.length < 6) { showAlert('passwordAlert', 'Passord må være minst 6 tegn', 'error'); return; }
+  if (p1 !== p2) { showAlert('passwordAlert', 'Passordene er ikke like', 'error'); return; }
+  const { error } = await db.auth.updateUser({ password: p1 });
+  if (error) { showAlert('passwordAlert', 'Feil: ' + error.message, 'error'); return; }
+  showAlert('passwordAlert', '✅ Passord endret!', 'success');
+  document.getElementById('newPassword1').value = '';
+  document.getElementById('newPassword2').value = '';
+}
+async function saveProfile() {
+  const displayName = document.getElementById('editDisplayName').value.trim();
+  const hcp = parseFloat(document.getElementById('editHcp').value);
+  const { error } = await db.from('profiles').update({ display_name: displayName, handicap: hcp }).eq('id', currentProfile.id);
+  if (error) { showAlert('profileAlert', 'Feil: ' + error.message, 'error'); return; }
+  currentProfile.display_name = displayName;
+  currentProfile.handicap = hcp;
+  showAlert('profileAlert', 'Profil oppdatert!', 'success');
+  document.getElementById('topbarUsername').textContent = currentProfile.username;
+}
+
+// ── UTILITIES ──
+function openModal(id) { document.getElementById(id).style.display = 'flex'; }
+function closeModal(id) {
+  document.getElementById(id).style.display = 'none';
+  // Stopp eventuell tale ved lukking
+  if (window.speechSynthesis?.speaking) window.speechSynthesis.cancel();
+}
+function closeModalOnOverlay(event, id) { if (event.target.id === id) closeModal(id); }
+function showAlert(containerId, msg, type) {
+  const el = document.getElementById(containerId);
+  if (el) el.innerHTML = `<div class="alert alert-${type}">${msg}</div>`;
+}
+
+
+// ── ROUNDS ──
+let allPlayers = [];
+let flightCount = 0;
+async function loadRounds() {
+  const { data: rounds } = await db.from('rounds')
+    .select('*, courses(name), tee_sets(name, slope, course_rating), flights(id, name, flight_players(id, handicap, profiles(display_name, username)))')
+    .order('created_at', { ascending: false })
+    .limit(20);
+  const el = document.getElementById('roundsList');
+  if (!rounds?.length) {
+    el.innerHTML = '<div class="empty"><div class="empty-icon">⛳</div><h3>Ingen runder ennå</h3><p>Trykk "+ Ny runde" for å starte!</p></div>';
+    return;
+  }
+  el.innerHTML = rounds.map(r => {
+    const playerCount = (r.flights || []).reduce((sum, f) => sum + (f.flight_players?.length || 0), 0);
+    const statusColor = r.status === 'active' ? 'var(--green-light)' : 'var(--cream-dim)';
+    const statusText = r.status === 'active' ? '🟢 Aktiv' : '✅ Avsluttet';
+    const teeName = r.tee_sets?.name ? ` · ${r.tee_sets.name}` : '';
+    const courseName = r.courses?.name || '(slettet bane)';
+    const playerNames = (r.flights || [])
+      .flatMap(f => f.flight_players || [])
+      .map(fp => fp.profiles?.display_name?.split(' ')[0] || '?')
+      .join(', ');
+    const clickFn = r.status === 'completed' ? `showRoundSummary('${r.id}')` : `openRound('${r.id}')`;
+    return `
+    <div style="padding:16px 20px; background:rgba(0,0,0,0.2); border-radius:10px; margin-bottom:10px; border:1px solid rgba(255,255,255,0.06); transition:all 0.2s; display:flex; align-items:center; gap:12px;" onmouseover="this.style.borderColor='rgba(201,168,76,0.3)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.06)'">
+      <div onclick="${clickFn}" style="flex:1; cursor:pointer;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+          <div>
+            <div style="font-size:16px; color:var(--cream); font-weight:500;">${courseName}</div>
+            <div style="font-size:12px; color:var(--cream-dim); margin-top:3px;">${r.date}${teeName ? ' · Tee ' + r.tee_sets.name : ''}</div>
+            <div style="font-size:12px; color:var(--gold-dim); margin-top:2px;">👤 ${playerNames || '–'}</div>
+          </div>
+          <div style="font-size:12px; color:${statusColor};">${statusText}</div>
+        </div>
+      </div>
+      <button onclick="deleteRound('${r.id}')" style="background:none; border:1px solid rgba(192,57,43,0.4); color:var(--danger); border-radius:6px; padding:6px 10px; cursor:pointer; font-size:14px; flex-shrink:0;" title="Slett runde">🗑</button>
+    </div>`;
+  }).join('');
+}
+async function openNewRound() {
+  flightCount = 0;
+  document.getElementById('newRoundAlert').innerHTML = '';
+  document.getElementById('flightList').innerHTML = '';
+  document.getElementById('roundDate').value = new Date().toISOString().split('T')[0];
+  const { data: courses } = await db.from('courses').select('id, name, holes').order('name');
+  const sel = document.getElementById('roundCourse');
+  sel.innerHTML = '<option value="">Velg bane...</option>' +
+    (courses || []).map(c => {
+      const hullLabel = c.holes === 9 ? ' (9 hull)' : '';
+      return `<option value="${c.id}">${c.name}${hullLabel}</option>`;
+    }).join('');
+  const { data: players } = await db.from('profiles').select('id, display_name, username, handicap').order('display_name');
+  allPlayers = players || [];
+  addFlight();
+  openModal('modalNewRound');
+}
+async function loadTeeSets(courseId) {
+  if (!courseId) return;
+  const { data: tees } = await db.from('tee_sets').select('*').eq('course_id', courseId);
+  const sel = document.getElementById('roundTee');
+  sel.innerHTML = '<option value="">Velg tee...</option>' +
+    (tees || []).map(t => `<option value="${t.id}">${t.name} — Slope ${t.slope}, CR ${t.course_rating}</option>`).join('');
+  const { data: holes } = await db.from('holes').select('hole_number').eq('course_id', courseId).limit(1);
+  const noHoleData = !holes || holes.length === 0;
+  const warningEl = document.getElementById('roundHoleWarning');
+  if (warningEl) warningEl.style.display = noHoleData ? 'block' : 'none';
+}
+function addFlight() {
+  flightCount++;
+  const div = document.createElement('div');
+  div.id = `flight-${flightCount}`;
+  div.style.cssText = 'background:rgba(0,0,0,0.2); border-radius:8px; padding:14px; margin-bottom:10px; border:1px solid rgba(255,255,255,0.07);';
+  div.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <div style="font-size:13px; font-weight:600; color:var(--gold-light);">Flight ${flightCount}</div>
+      ${flightCount > 1 ? `<button onclick="document.getElementById('flight-${flightCount}').remove()" class="remove-btn">×</button>` : ''}
+    </div>
+    <div style="display:flex; flex-wrap:wrap; gap:8px;" id="flight-players-${flightCount}">
+      ${allPlayers.map(p => `
+        <label style="display:flex; align-items:center; gap:6px; padding:6px 12px; background:rgba(255,255,255,0.05); border-radius:20px; cursor:pointer; border:1px solid rgba(255,255,255,0.1); font-size:13px; color:var(--cream-dim);">
+          <input type="checkbox" value="${p.id}" data-name="${p.display_name}" data-hcp="${p.handicap || 36}" style="accent-color:var(--gold);">
+          ${p.display_name} <span style="color:var(--cream-dim); font-size:11px;">(${p.handicap ?? '–'})</span>
+        </label>
+      `).join('')}
+    </div>
+  `;
+  document.getElementById('flightList').appendChild(div);
+}
+async function saveRound() {
+  const courseId = document.getElementById('roundCourse').value;
+  const teeId = document.getElementById('roundTee').value;
+  const date = document.getElementById('roundDate').value;
+  if (!courseId || !teeId || !date) { showAlert('newRoundAlert', 'Fyll inn bane, tee og dato', 'error'); return; }
+  const { data: round, error } = await db.from('rounds').insert({
+    course_id: courseId, tee_set_id: teeId, date, created_by: currentProfile.id, status: 'active'
+  }).select().single();
+  if (error) { showAlert('newRoundAlert', 'Feil: ' + error.message, 'error'); return; }
+  for (let i = 1; i <= flightCount; i++) {
+    const flightDiv = document.getElementById(`flight-${i}`);
+    if (!flightDiv) continue;
+    const checked = flightDiv.querySelectorAll('input[type=checkbox]:checked');
+    if (!checked.length) continue;
+    const { data: flight } = await db.from('flights').insert({ round_id: round.id, name: `Flight ${i}` }).select().single();
+    for (const cb of checked) {
+      await db.from('flight_players').insert({
+        flight_id: flight.id, player_id: cb.value,
+        handicap: parseFloat(cb.dataset.hcp) || 36, tee_set_id: teeId
+      });
+      if (cb.value !== currentProfile.id) {
+        await db.from('notifications').insert({
+          player_id: cb.value,
+          message: `Du er lagt til i en runde på ${document.getElementById('roundCourse').options[document.getElementById('roundCourse').selectedIndex].text} (${date})`
+        });
+      }
+    }
+  }
+  closeModal('modalNewRound');
+  // Vis del-modal før scoring starter
+  showShareRoundModal(round.id, document.getElementById('roundCourse').options[document.getElementById('roundCourse').selectedIndex].text, date);
+  await openRound(round.id);
+}
+
+// ── SCORING SCREEN ──
+let currentRound = null;
+let currentHole = 1;
+let roundScores = {};
+let roundHoles = [];
+let roundFlights = [];
+async function deleteRound(roundId) {
+  const confirmed = await showConfirm('Slette denne runden? Dette sletter alle scores og kan ikke angres.');
+  if (!confirmed) return;
+  const { error: e1 } = await db.from('scores').delete().eq('round_id', roundId);
+  const { data: flights } = await db.from('flights').select('id').eq('round_id', roundId);
+  for (const f of (flights || [])) {
+    await db.from('flight_players').delete().eq('flight_id', f.id);
+  }
+  await db.from('flights').delete().eq('round_id', roundId);
+  const { error: e2 } = await db.from('rounds').delete().eq('id', roundId);
+  if (e2) {
+    alert('Kunne ikke slette runden. Du må være admin eller delta i runden for å slette den.\n\n' + e2.message);
+    return;
+  }
+  loadRounds();
+  loadDashboard();
+}
+
+async function openRound(roundId) {
+  const { data: round } = await db.from('rounds')
+    .select('*, courses(name, holes), tee_sets(name, slope, course_rating), flights(id, name, flight_players(id, player_id, handicap, profiles(display_name, username)))')
+    .eq('id', roundId).single();
+  if (!round) return;
+  if (!round.course_id) {
+    alert('Denne runden mangler bane og kan ikke åpnes. Slett den fra rundeoversikten.');
+    return;
+  }
+  const { data: holes } = await db.from('holes').select('*').eq('course_id', round.course_id).order('hole_number');
+  const { data: scores } = await db.from('scores').select('*').eq('round_id', roundId);
+  currentRound = round;
+  currentHole = 1;
+  roundHoles = holes || [];
+  roundFlights = round.flights || [];
+  roundScores = {};
+  (scores || []).forEach(s => {
+    if (!roundScores[s.player_id]) roundScores[s.player_id] = {};
+    roundScores[s.player_id][s.hole_number] = s.strokes;
+  });
+  document.getElementById('scCourseName').textContent = round.courses?.name || '';
+  document.getElementById('scRoundDate').textContent = round.date;
+
+  const isParticipant = roundFlights.some(f => f.flight_players?.some(fp => fp.player_id === currentProfile?.id));
+  const finishBtn = document.getElementById('scFinishBtn');
+  const nextBottom = document.getElementById('scNextHoleBottom');
+  if (finishBtn) finishBtn.style.display = isParticipant ? 'inline-block' : 'none';
+  if (nextBottom) nextBottom.style.display = isParticipant ? 'block' : 'none';
+
+  renderScoringHole();
+  document.getElementById('scoringScreen').style.display = 'flex';
+  document.getElementById('scoringScreen').style.flexDirection = 'column';
+}
+function closeScoringScreen() {
+  document.getElementById('scoringScreen').style.display = 'none';
+  loadRounds();
+  loadDashboard();
+}
+function renderScoringHole() {
+  const holeData = roundHoles.find(h => h.hole_number === currentHole) || { par: null, stroke_index: null };
+  const totalHoles = currentRound?.courses?.holes || 18;
+  const isLastHole = currentHole === totalHoles;
+  document.getElementById('scHoleNum').textContent = currentHole;
+  document.getElementById('scPar').textContent = holeData.par ?? '?';
+  document.getElementById('scSI').textContent = holeData.stroke_index ?? '?';
+  document.getElementById('scPrevHole').style.opacity = currentHole === 1 ? '0.3' : '1';
+  // Oppdater begge Neste-knapper
+  const nextTop = document.getElementById('scNextHole');
+  const nextBottom = document.getElementById('scNextHoleBottom');
+  if (nextTop) nextTop.textContent = isLastHole ? 'Avslutt →' : 'Neste →';
+  if (nextBottom) {
+    nextBottom.textContent = isLastHole ? '🏁 Avslutt runde' : 'Neste hull →';
+    nextBottom.style.background = isLastHole ? 'var(--green-mid)' : 'var(--gold)';
+    nextBottom.style.color = isLastHole ? 'var(--gold-light)' : 'var(--green-deep)';
+  }
+  if (!holeData.par) {
+    document.getElementById('scPar').style.color = 'var(--gold)';
+  } else {
+    document.getElementById('scPar').style.color = 'var(--cream)';
+  }
+  renderHoleStats(holeData);
+  renderPlayerInputs(holeData);
+  renderMiniLeaderboard();
+}
+async function renderHoleStats(holeData) {
+  const { data: allScores } = await db.from('scores')
+    .select('strokes, player_id, profiles(display_name)')
+    .eq('hole_number', currentHole)
+    .not('strokes', 'is', null);
+  const relevant = (allScores || []).filter(s => s.strokes > 0);
+  if (relevant.length) {
+    const avg = (relevant.reduce((sum, s) => sum + s.strokes, 0) / relevant.length).toFixed(1);
+    document.getElementById('scAvg').textContent = avg;
+    const playerTotals = {};
+    relevant.forEach(s => {
+      if (!playerTotals[s.player_id]) playerTotals[s.player_id] = { sum: 0, count: 0, name: s.profiles?.display_name || '?' };
+      playerTotals[s.player_id].sum += s.strokes;
+      playerTotals[s.player_id].count++;
+    });
+    const champion = Object.values(playerTotals).sort((a, b) => (a.sum/a.count) - (b.sum/b.count))[0];
+    if (champion) document.getElementById('scChampion').textContent = `${champion.name.split(' ')[0]} (${(champion.sum/champion.count).toFixed(1)})`;
+  } else {
+    document.getElementById('scAvg').textContent = '–';
+    document.getElementById('scChampion').textContent = '–';
+  }
+}
+function renderPlayerInputs(holeData) {
+  let html = '';
+  roundFlights.forEach(flight => {
+    const canEdit = flight.flight_players?.some(fp => fp.player_id === currentProfile?.id);
+    html += `<div style="margin-bottom:16px;">
+      <div style="font-size:11px; color:var(--cream-dim); letter-spacing:1.5px; text-transform:uppercase; margin-bottom:8px;">${flight.name}</div>`;
+    (flight.flight_players || []).forEach(fp => {
+      const player = fp.profiles;
+      const strokes = roundScores[fp.player_id]?.[currentHole] || 0;
+      const stableford = (holeData.par && holeData.stroke_index)
+        ? calcStableford(strokes, holeData.par, fp.handicap || 36, holeData.stroke_index)
+        : 0;
+      const scoreColor = holeData.par ? getScoreColor(strokes, holeData.par) : 'var(--cream)';
+      const scoreName = holeData.par ? getScoreName(strokes, holeData.par) : '';
+      // Beregn tildelte slag på dette hullet
+      const totalHoles = currentRound?.courses?.holes || 18;
+      let extraStrokes = 0;
+      if (holeData.stroke_index) {
+        extraStrokes = Math.floor((fp.handicap || 0) / totalHoles);
+        if (holeData.stroke_index <= ((fp.handicap || 0) % totalHoles)) extraStrokes++;
+      }
+      const strokesLabel = extraStrokes > 0
+        ? `<span style="color:var(--green-light); font-size:11px;">${extraStrokes === 1 ? '+1 slag' : `+${extraStrokes} slag`}</span>`
+        : '';
+      html += `
+      <div style="display:flex; align-items:center; gap:12px; padding:12px; background:rgba(0,0,0,0.2); border-radius:10px; margin-bottom:8px; border:1px solid rgba(255,255,255,0.06);">
+        <div style="width:36px; height:36px; border-radius:50%; background:var(--green-mid); border:2px solid var(--gold-dim); display:flex; align-items:center; justify-content:center; font-family:'Playfair Display',serif; font-size:14px; color:var(--gold-light); flex-shrink:0;">
+          ${(player?.display_name || '?')[0]}
+        </div>
+        <div style="flex:1;">
+          <div style="font-size:14px; color:var(--cream); font-weight:500;">${player?.display_name || '?'}</div>
+          <div style="font-size:11px; color:var(--cream-dim);">HCP ${fp.handicap || '–'} ${strokesLabel} ${strokes > 0 ? `· <span style="color:${scoreColor}">${scoreName}</span> · ${stableford}p` : ''}</div>
+        </div>
+        ${canEdit ? `
+        <div style="display:flex; align-items:center; gap:8px;">
+          <button onclick="adjustScore('${fp.player_id}', -1)" style="width:48px; height:48px; border-radius:50%; border:1px solid rgba(255,255,255,0.2); background:transparent; color:var(--cream); font-size:24px; cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1; touch-action:manipulation; -webkit-tap-highlight-color:transparent; user-select:none;">−</button>
+          <div id="score-${fp.player_id}" style="font-family:'Playfair Display',serif; font-size:36px; color:${scoreColor}; min-width:40px; text-align:center;">${strokes || '–'}</div>
+          <button onclick="adjustScore('${fp.player_id}', 1)" style="width:48px; height:48px; border-radius:50%; background:var(--green-mid); border:none; color:var(--cream); font-size:24px; cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1; touch-action:manipulation; -webkit-tap-highlight-color:transparent; user-select:none;">+</button>
+        </div>` : `
+        <div style="font-family:'Playfair Display',serif; font-size:32px; color:${scoreColor}; min-width:36px; text-align:center;">${strokes || '–'}</div>`}
+      </div>`;
+    });
+    html += '</div>';
+  });
+  document.getElementById('scPlayerScores').innerHTML = html;
+}
+function calcStableford(strokes, par, hcp, si) {
+  if (!strokes || !par || !si) return 0;
+  const totalHoles = currentRound?.courses?.holes || 18;
+  let extra = Math.floor(hcp / totalHoles);
+  if (si <= (hcp % totalHoles)) extra++;
+  return Math.max(0, par - (strokes - extra) + 2);
+}
+function calcStablefordWithHoles(strokes, par, hcp, si, totalHoles) {
+  if (!strokes || !par || !si) return 0;
+  let extra = Math.floor(hcp / totalHoles);
+  if (si <= (hcp % totalHoles)) extra++;
+  return Math.max(0, par - (strokes - extra) + 2);
+}
+function getScoreColor(strokes, par) {
+  if (!strokes || !par) return 'var(--cream)';
+  const d = strokes - par;
+  if (strokes === 1) return '#f5c518';
+  if (d <= -3) return '#f5c518';
+  if (d === -2) return '#f5c518';
+  if (d === -1) return 'var(--gold-light)';
+  if (d === 0) return 'var(--cream)';
+  if (d === 1) return '#e8a070';
+  return 'var(--danger)';
+}
+function getScoreName(strokes, par) {
+  if (!strokes || !par) return '';
+  if (strokes === 1) return 'Hole in One! 🏆';
+  const d = strokes - par;
+  if (d <= -3) return 'Albatross 🦅🦅';
+  if (d === -2) return 'Eagle 🦅';
+  if (d === -1) return 'Birdie 🐦';
+  if (d === 0) return 'Par';
+  if (d === 1) return 'Bogey';
+  if (d === 2) return 'Dobbelt';
+  if (d === 3) return 'Trippel';
+  return `+${d}`;
+}
+let _adjustScoreLock = false;
+async function adjustScore(playerId, delta) {
+  if (_adjustScoreLock) return;
+  _adjustScoreLock = true;
+  setTimeout(() => { _adjustScoreLock = false; }, 150);
+  if (!roundScores[playerId]) roundScores[playerId] = {};
+  const current = roundScores[playerId][currentHole] || 0;
+  const newVal = Math.max(1, Math.min(current + delta, 15));
+  // Ikke gå under 1 (bruk − for å komme til 0/tomt = slett score)
+  if (delta === -1 && current <= 1) {
+    roundScores[playerId][currentHole] = 0;
+    await db.from('scores').delete()
+      .eq('round_id', currentRound.id)
+      .eq('player_id', playerId)
+      .eq('hole_number', currentHole);
+  } else {
+    roundScores[playerId][currentHole] = newVal;
+    await db.from('scores').upsert({
+      round_id: currentRound.id, player_id: playerId,
+      hole_number: currentHole, strokes: newVal,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'round_id,player_id,hole_number' });
+  }
+  const holeData = roundHoles.find(h => h.hole_number === currentHole) || { par: null, stroke_index: null };
+  renderPlayerInputs(holeData);
+  renderMiniLeaderboard();
+}
+function changeHole(delta) {
+  const totalHoles = currentRound?.courses?.holes || 18;
+  const newHole = currentHole + delta;
+  if (newHole < 1) return;
+  if (newHole > totalHoles) { finishRound(); return; }
+  currentHole = newHole;
+  renderScoringHole();
+  document.getElementById('scoringScreen').scrollTo(0, 0);
+}
+function renderMiniLeaderboard() {
+  const totalHoles = currentRound?.courses?.holes || 18;
+  const allFP = roundFlights.flatMap(f => f.flight_players || []);
+  const standings = allFP.map(fp => {
+    let total = 0, holes = 0;
+    const hcp = fp.handicap || 36;
+    Object.entries(roundScores[fp.player_id] || {}).forEach(([h, s]) => {
+      if (s > 0) {
+        const hd = roundHoles.find(hh => hh.hole_number === parseInt(h));
+        if (hd?.par && hd?.stroke_index) {
+          // Beregn ekstraslag eksplisitt
+          let extra = Math.floor(hcp / totalHoles);
+          if (hd.stroke_index <= (hcp % totalHoles)) extra++;
+          const pts = Math.max(0, hd.par - (s - extra) + 2);
+          total += pts;
+        }
+        holes++;
+      }
+    });
+    return { name: fp.profiles?.display_name?.split(' ')[0] || '?', total, holes };
+  }).sort((a, b) => b.total - a.total);
+  document.getElementById('scMiniLeader').innerHTML = standings.map((p, i) => `
+    <div style="flex-shrink:0; text-align:center; padding:8px 14px; background:${i === 0 ? 'rgba(201,168,76,0.2)' : 'rgba(0,0,0,0.2)'}; border-radius:8px; border:1px solid ${i === 0 ? 'rgba(201,168,76,0.3)' : 'rgba(255,255,255,0.06)'};">
+      <div style="font-size:10px; color:var(--cream-dim);">${i + 1}. ${p.name}</div>
+      <div style="font-family:'Playfair Display',serif; font-size:20px; color:${i === 0 ? 'var(--gold)' : 'var(--cream)'};">${p.total}p</div>
+      <div style="font-size:10px; color:var(--cream-dim);">${p.holes} hull</div>
+    </div>
+  `).join('');
+}
+function showLeaderboard() {
+  const allFP = roundFlights.flatMap(f => f.flight_players || []);
+  const standings = allFP.map(fp => {
+    let stableford = 0, strokes = 0, holes = 0, eagles = 0, birdies = 0, pars = 0, bogeys = 0;
+    Object.entries(roundScores[fp.player_id] || {}).forEach(([h, s]) => {
+      if (s > 0) {
+        const hd = roundHoles.find(hh => hh.hole_number === parseInt(h)) || { par: null, stroke_index: null };
+        if (hd.par && hd.stroke_index) {
+          stableford += calcStableford(s, hd.par, fp.handicap || 36, hd.stroke_index);
+          const d = s - hd.par;
+          if (d <= -2) eagles++;
+          else if (d === -1) birdies++;
+          else if (d === 0) pars++;
+          else if (d === 1) bogeys++;
+        }
+        strokes += s;
+        holes++;
+      }
+    });
+    return { name: fp.profiles?.display_name || '?', stableford, strokes, holes, eagles, birdies, pars, bogeys };
+  }).sort((a, b) => b.stableford - a.stableford);
+  document.getElementById('leaderboardContent').innerHTML = standings.map((p, i) => `
+    <div style="display:flex; align-items:center; gap:14px; padding:14px 0; border-bottom:1px solid rgba(255,255,255,0.07);">
+      <div style="font-family:'Playfair Display',serif; font-size:24px; color:${i === 0 ? 'var(--gold)' : 'var(--cream-dim)'}; width:32px; text-align:center;">${i + 1}</div>
+      <div style="flex:1;">
+        <div style="font-size:15px; color:var(--cream); font-weight:500;">${p.name}</div>
+        <div style="font-size:12px; color:var(--cream-dim); margin-top:2px;">${p.holes} hull${p.eagles ? ` · 🦅${p.eagles}` : ''} · 🐦${p.birdies} · par${p.pars} · bog${p.bogeys}</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-family:'Playfair Display',serif; font-size:24px; color:var(--gold);">${p.stableford}p</div>
+        <div style="font-size:12px; color:var(--cream-dim);">${p.strokes || '–'} slag</div>
+      </div>
+    </div>
+  `).join('');
+  openModal('modalLeaderboard');
+}
+async function finishRound() {
+  const confirmed = await showConfirm('Avslutt runden og se sammendrag?', 'Avslutt');
+  if (!confirmed) return;
+  const roundId = currentRound.id;
+  await db.from('rounds').update({ status: 'completed' }).eq('id', roundId);
+  document.getElementById('scoringScreen').style.display = 'none';
+  await loadRounds();
+  await loadDashboard();
+  await showRoundSummary(roundId);
+}
+
+// ── ROUND SUMMARY ──
+async function showRoundSummary(roundId) {
+  if (!roundId) return;
+  document.getElementById('summaryTitle').textContent = 'Laster...';
+  openModal('modalRoundSummary');
+  const { data: round, error } = await db.from('rounds')
+    .select('*, courses(name, holes), tee_sets(name, slope, course_rating), flights(id, name, flight_players(id, player_id, handicap, profiles(display_name, username)))')
+    .eq('id', roundId).single();
+  if (error || !round) { document.getElementById('summaryTitle').textContent = 'Feil ved lasting'; return; }
+  const { data: scores } = await db.from('scores').select('*').eq('round_id', roundId);
+  const { data: holes } = await db.from('holes').select('*').eq('course_id', round.course_id).order('hole_number');
+  const sc = {};
+  (scores || []).forEach(s => {
+    if (!sc[s.player_id]) sc[s.player_id] = {};
+    sc[s.player_id][s.hole_number] = s.strokes;
+  });
+  document.getElementById('summaryTitle').textContent = `${round.courses?.name} · ${round.date}`;
+  const allFP = (round.flights || []).flatMap(f => f.flight_players || []);
+  const totalHoles = round.courses?.holes || 18;
+  const tabs = allFP.map((fp, i) =>
+    `<button class="tab ${i === 0 ? 'active' : ''}" onclick="showSummaryPlayer('${fp.player_id}', this)">${fp.profiles?.display_name?.split(' ')[0]}</button>`
+  ).join('');
+  document.getElementById('summaryTabs').innerHTML = tabs;
+  window._summaryData = { round, holes: holes || [], sc, allFP, totalHoles };
+  window._currentSummaryPlayer = null;
+  if (allFP[0]) showSummaryPlayer(allFP[0].player_id);
+}
+function showSummaryPlayer(playerId, btn) {
+  if (btn) {
+    document.querySelectorAll('#summaryTabs .tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+  }
+  const { round, holes, sc, allFP, totalHoles } = window._summaryData || {};
+  if (!allFP) return;
+  const fp = allFP.find(p => p.player_id === playerId);
+  if (!fp) return;
+  const playerScores = sc[playerId] || {};
+  let totalStabs = 0, totalStrokes = 0, birdies = 0, pars = 0, bogeys = 0, doubles = 0;
+  const rows = holes.map(h => {
+    const s = playerScores[h.hole_number] || 0;
+    const stab = s > 0 ? calcStablefordStatic(s, h.par, fp.handicap || 36, h.stroke_index, totalHoles) : 0;
+    totalStabs += stab;
+    totalStrokes += s;
+    const d = s > 0 ? s - h.par : null;
+    if (d !== null) {
+      if (d <= -1) birdies++;
+      else if (d === 0) pars++;
+      else if (d === 1) bogeys++;
+      else doubles++;
+    }
+    const color = s > 0 ? getScoreColor(s, h.par) : 'var(--cream-dim)';
+    return `<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+      <td style="padding:7px 10px; color:var(--cream-dim); font-size:13px;">${h.hole_number}</td>
+      <td style="padding:7px 10px; text-align:center; color:var(--cream-dim); font-size:13px;">${h.par}</td>
+      <td style="padding:7px 10px; text-align:center; color:var(--cream-dim); font-size:13px;">${h.stroke_index}</td>
+      <td style="padding:7px 10px; text-align:center; font-family:'Playfair Display',serif; font-size:16px; color:${color};">${s || '–'}</td>
+      <td style="padding:7px 10px; text-align:center; font-family:'Playfair Display',serif; font-size:16px; color:var(--gold);">${stab || '–'}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('summaryContent').innerHTML = `
+    <div style="display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap;">
+      <div style="flex:1; min-width:80px; background:rgba(0,0,0,0.2); border-radius:8px; padding:12px; text-align:center;">
+        <div style="font-size:10px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:1px;">Stableford</div>
+        <div style="font-family:'Playfair Display',serif; font-size:28px; color:var(--gold);">${totalStabs}</div>
+      </div>
+      <div style="flex:1; min-width:80px; background:rgba(0,0,0,0.2); border-radius:8px; padding:12px; text-align:center;">
+        <div style="font-size:10px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:1px;">Slag</div>
+        <div style="font-family:'Playfair Display',serif; font-size:28px; color:var(--cream);">${totalStrokes || '–'}</div>
+      </div>
+      <div style="flex:1; min-width:80px; background:rgba(0,0,0,0.2); border-radius:8px; padding:12px; text-align:center;">
+        <div style="font-size:10px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:1px;">🐦 Birdies</div>
+        <div style="font-family:'Playfair Display',serif; font-size:28px; color:var(--gold-light);">${birdies}</div>
+      </div>
+    </div>
+    <table style="width:100%; border-collapse:collapse; font-size:13px;">
+      <thead><tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
+        <th style="padding:6px 10px; text-align:left; color:var(--cream-dim); font-size:11px; font-weight:400; text-transform:uppercase; letter-spacing:1px;">Hull</th>
+        <th style="padding:6px 10px; text-align:center; color:var(--cream-dim); font-size:11px; font-weight:400; text-transform:uppercase; letter-spacing:1px;">Par</th>
+        <th style="padding:6px 10px; text-align:center; color:var(--cream-dim); font-size:11px; font-weight:400; text-transform:uppercase; letter-spacing:1px;">SI</th>
+        <th style="padding:6px 10px; text-align:center; color:var(--cream-dim); font-size:11px; font-weight:400; text-transform:uppercase; letter-spacing:1px;">Slag</th>
+        <th style="padding:6px 10px; text-align:center; color:var(--cream-dim); font-size:11px; font-weight:400; text-transform:uppercase; letter-spacing:1px;">Poeng</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+  window._currentSummaryPlayer = { fp, playerScores, holes, round, totalHoles };
+  const activeMode = document.getElementById('golfboxTableBtn')?.classList.contains('active') ? 'table' : 'speak';
+  showGolfboxMode(activeMode);
+}
+function calcStablefordStatic(strokes, par, hcp, si, totalHoles) {
+  if (!strokes || !par) return 0;
+  let extra = Math.floor(hcp / totalHoles);
+  if (si <= (hcp % totalHoles)) extra++;
+  return Math.max(0, par - (strokes - extra) + 2);
+}
+function showGolfboxMode(mode) {
+  const tableBtn = document.getElementById('golfboxTableBtn');
+  const speakBtn = document.getElementById('golfboxSpeakBtn');
+  if (tableBtn) tableBtn.classList.toggle('active', mode === 'table');
+  if (speakBtn) speakBtn.classList.toggle('active', mode === 'speak');
+  const el = document.getElementById('golfboxContent');
+  if (!el) return;
+  if (!window._currentSummaryPlayer) {
+    el.innerHTML = '<p style="color:var(--cream-dim);font-size:14px;">Ingen spillerdata. Velg en spiller over.</p>';
+    return;
+  }
+  const { playerScores, holes } = window._currentSummaryPlayer;
+  if (!holes || !holes.length) {
+    el.innerHTML = '<p style="color:var(--cream-dim);font-size:14px;">Ingen hull-data registrert for denne banen.</p>';
+    return;
+  }
+  if (mode === 'table') {
+    const rows = holes.map(h => {
+      const s = playerScores[h.hole_number];
+      const scoreColor = s ? getScoreColor(s, h.par) : 'var(--cream-dim)';
+      return `<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+        <td style="padding:10px 12px; color:var(--cream-dim); font-size:14px;">Hull ${h.hole_number} <span style="font-size:11px;">(Par ${h.par})</span></td>
+        <td style="padding:10px 12px; text-align:right; font-family:'Playfair Display',serif; font-size:22px; color:${scoreColor};">${s || '–'}</td>
+      </tr>`;
+    }).join('');
+    el.innerHTML = `
+      <p style="font-size:13px; color:var(--cream-dim); margin-bottom:12px;">Les av og tast inn i Golfbox/Gimmie:</p>
+      <table style="width:100%; border-collapse:collapse; background:rgba(0,0,0,0.2); border-radius:8px; overflow:hidden;">${rows}</table>`;
+  } else {
+    el.innerHTML = `
+      <p style="font-size:13px; color:var(--cream-dim); margin-bottom:12px;">Trykk på hullet for å lese opp:</p>
+      <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
+        ${holes.map(h => {
+          const s = playerScores[h.hole_number];
+          return `<button onclick="speakHole(${h.hole_number}, ${s||0}, ${h.par})" style="padding:10px 14px; background:rgba(0,0,0,0.2); border:1px solid ${s ? 'rgba(201,168,76,0.3)' : 'rgba(255,255,255,0.1)'}; border-radius:8px; color:${s ? 'var(--gold-light)' : 'var(--cream-dim)'}; cursor:pointer; font-family:'DM Sans',sans-serif; font-size:14px;">
+            Hull ${h.hole_number}: <strong>${s || '–'}</strong>
+          </button>`;
+        }).join('')}
+      </div>
+      <button id="speakAllBtn" onclick="speakAllHoles()" style="width:100%; padding:12px; background:var(--green-mid); border:1px solid rgba(201,168,76,0.3); color:var(--gold-light); border-radius:8px; cursor:pointer; font-family:'DM Sans',sans-serif; font-size:14px; touch-action:manipulation; -webkit-tap-highlight-color:transparent;">
+        🔊 Les opp alle hull
+      </button>`;
+  }
+}
+let _isSpeaking = false;
+
+function speakHole(hole, strokes, par) {
+  if (!strokes) { alert(`Hull ${hole}: ikke registrert`); return; }
+  window.speechSynthesis.cancel();
+  const msg = new SpeechSynthesisUtterance(`Hull ${hole}, ${strokes} slag, ${getScoreName(strokes, par).replace(/[🏆🦅🐦]/g, '')}`);
+  msg.lang = 'no-NO';
+  window.speechSynthesis.speak(msg);
+}
+
+function speakAllHoles() {
+  const btn = document.getElementById('speakAllBtn');
+  if (_isSpeaking) {
+    _isSpeaking = false;
+    window.speechSynthesis.cancel();
+    if (btn) { btn.textContent = '🔊 Les opp alle hull'; btn.style.background = 'var(--green-mid)'; }
+    return;
+  }
+  const { playerScores, holes } = window._currentSummaryPlayer;
+  const items = holes.map(h => {
+    const s = playerScores[h.hole_number];
+    return s ? { text: `Hull ${h.hole_number}, ${s} slag`, hole: h.hole_number } : null;
+  }).filter(Boolean);
+  if (!items.length) return;
+  _isSpeaking = true;
+  if (btn) { btn.textContent = '⏹ Stopp'; btn.style.background = 'var(--danger)'; }
+  window.speechSynthesis.cancel();
+  let i = 0;
+  function speakNext() {
+    if (!_isSpeaking || i >= items.length) {
+      _isSpeaking = false;
+      if (btn) { btn.textContent = '🔊 Les opp alle hull'; btn.style.background = 'var(--green-mid)'; }
+      return;
+    }
+    const msg = new SpeechSynthesisUtterance(items[i].text);
+    msg.lang = 'no-NO';
+    msg.rate = 0.9;
+    msg.onend = () => {
+      i++;
+      setTimeout(speakNext, 300); // liten pause mellom hull
+    };
+    msg.onerror = () => {
+      i++;
+      setTimeout(speakNext, 300);
+    };
+    window.speechSynthesis.speak(msg);
+  }
+  speakNext();
+}
+async function loadDashboard() {
+  // Aktiv runde (brukerens egen)
+  const { data: active } = await db.from('rounds')
+    .select('*, courses(name), flights(id, flight_players(player_id))')
+    .eq('status', 'active')
+    .order('created_at', { ascending: false });
+  const myActive = (active || []).filter(r =>
+    r.flights?.some(f => f.flight_players?.some(fp => fp.player_id === currentProfile?.id))
+  );
+  const dashActive = document.getElementById('dashActiveRound');
+  if (myActive.length) {
+    dashActive.style.display = 'block';
+    dashActive.innerHTML = `<div onclick="openRound('${myActive[0].id}')" style="padding:18px 20px; background:rgba(201,168,76,0.1); border:1px solid rgba(201,168,76,0.3); border-radius:12px; margin-bottom:20px; cursor:pointer;">
+      <div style="font-size:11px; color:var(--gold); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:6px;">🟢 Aktiv runde</div>
+      <div style="font-size:18px; color:var(--cream); font-weight:500;">${myActive[0].courses?.name}</div>
+      <div style="font-size:13px; color:var(--cream-dim); margin-top:4px;">${myActive[0].date} · Trykk for å fortsette</div>
+    </div>`;
+  } else {
+    dashActive.style.display = 'none';
+  }
+
+  // Sist spilte runder (alle, sortert på dato)
+  const { data: recent } = await db.from('rounds')
+    .select('*, courses(name), flights(id, flight_players(player_id, handicap, profiles(display_name)))')
+    .eq('status', 'finished')
+    .order('date', { ascending: false })
+    .limit(8);
+  const recentEl = document.getElementById('dashRecentRounds');
+  if (!recent?.length) {
+    recentEl.innerHTML = '<div style="text-align:center; padding:40px 20px; color:var(--cream-dim); font-size:14px;">Ingen runder spilt ennå</div>';
+  } else {
+    recentEl.innerHTML = recent.map(r => {
+      const allPlayers = (r.flights || []).flatMap(f => f.flight_players || []);
+      const playerNames = allPlayers
+        .map(fp => fp.profiles?.display_name?.split(' ')[0] || '?')
+        .join(' · ');
+      return `<div style="padding:14px 18px; background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.06); border-radius:12px; margin-bottom:8px; cursor:pointer; transition:border-color 0.2s;" onclick="showPage('rounds');" onmouseover="this.style.borderColor='rgba(201,168,76,0.25)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.06)'">
+        <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:4px;">
+          <div style="font-size:15px; color:var(--cream); font-weight:500;">${r.courses?.name || '–'}</div>
+          <div style="font-size:12px; color:var(--cream-dim);">${r.date}</div>
+        </div>
+        <div style="font-size:12px; color:var(--cream-dim);">${playerNames || 'Ingen spillere registrert'}</div>
+      </div>`;
+    }).join('');
+  }
+
+  // Admin: ventende brukere
+  const pendingBanner = document.getElementById('dashPendingBanner');
+  if (currentProfile?.is_admin) {
+    const { data: pending } = await db.from('profiles').select('id').eq('is_approved', false);
+    const count = pending?.length || 0;
+    if (count > 0) {
+      pendingBanner.innerHTML = `
+        <div style="padding:14px 18px; background:rgba(201,168,76,0.1); border:1px solid rgba(201,168,76,0.4); border-radius:12px; display:flex; justify-content:space-between; align-items:center; gap:12px;">
+          <div>
+            <div style="font-size:11px; color:var(--gold); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:4px;">⏳ Ventende godkjenning</div>
+            <div style="font-size:15px; color:var(--cream);">${count} bruker${count === 1 ? '' : 'e'} venter</div>
+          </div>
+          <button onclick="openPendingUsers()" class="btn btn-auto" style="font-size:13px; padding:8px 18px; flex-shrink:0;">Godkjenn nå</button>
+        </div>`;
+    } else {
+      pendingBanner.innerHTML = '';
+    }
+  } else {
+    pendingBanner.innerHTML = '';
+  }
+
+  // Notifikasjonsbadge
+  const { data: notifs } = await db.from('notifications')
+    .select('*').eq('player_id', currentProfile?.id).eq('read', false);
+  const badge = document.getElementById('notifBadge');
+  if (notifs?.length) {
+    badge.style.display = 'inline-flex'; badge.style.alignItems = 'center'; badge.style.justifyContent = 'center';
+    badge.textContent = notifs.length;
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+// ── PENDING USERS (ADMIN) ──
+async function openPendingUsers() {
+  openModal('modalPendingUsers');
+  await loadPendingUsersList();
+}
+async function loadPendingUsersList() {
+  const el = document.getElementById('pendingUsersList');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div> Laster...</div>';
+  const { data: pending } = await db.from('profiles').select('id, display_name, username, created_at').eq('is_approved', false).order('created_at', { ascending: true });
+  if (!pending?.length) {
+    el.innerHTML = '<div style="text-align:center; padding:32px; color:var(--cream-dim); font-size:14px;">Ingen ventende brukere 🎉</div>';
+    document.getElementById('dashPendingBanner').innerHTML = '';
+    return;
+  }
+  el.innerHTML = pending.map(u => `
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 0; border-bottom:1px solid rgba(255,255,255,0.07);">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <div style="width:38px; height:38px; border-radius:50%; background:var(--green-mid); border:2px solid var(--gold-dim); display:flex; align-items:center; justify-content:center; font-family:'Playfair Display',serif; font-size:14px; font-weight:700; color:var(--gold-light); flex-shrink:0;">${u.display_name?.[0] || '?'}</div>
+        <div>
+          <div style="font-size:14px; color:var(--cream); font-weight:500;">${u.display_name}</div>
+          <div style="font-size:12px; color:var(--cream-dim);">@${u.username}</div>
+        </div>
+      </div>
+      <div style="display:flex; gap:8px; flex-shrink:0;">
+        <button onclick="approvePendingUser('${u.id}','${u.display_name}')" style="padding:7px 14px; border-radius:6px; border:1px solid rgba(82,183,136,0.5); background:rgba(82,183,136,0.15); color:var(--green-light); font-size:13px; cursor:pointer; font-family:'DM Sans',sans-serif; transition:all 0.2s;" onmouseover="this.style.background='rgba(82,183,136,0.3)'" onmouseout="this.style.background='rgba(82,183,136,0.15)'">✓ Godkjenn</button>
+        <button onclick="rejectPendingUser('${u.id}','${u.display_name}')" style="padding:7px 14px; border-radius:6px; border:1px solid rgba(192,57,43,0.4); background:rgba(192,57,43,0.1); color:#e88; font-size:13px; cursor:pointer; font-family:'DM Sans',sans-serif; transition:all 0.2s;" onmouseover="this.style.background='rgba(192,57,43,0.25)'" onmouseout="this.style.background='rgba(192,57,43,0.1)'">✕ Avvis</button>
+      </div>
+    </div>`).join('');
+}
+async function approvePendingUser(userId, displayName) {
+  const { error } = await db.from('profiles').update({ is_approved: true }).eq('id', userId);
+  if (error) { alert('Feil: ' + error.message); return; }
+  await loadPendingUsersList();
+  await loadDashboard();
+}
+async function rejectPendingUser(userId, displayName) {
+  const confirmed = await showConfirm(`Avvis og slett kontoen til ${displayName}?`, 'Avvis');
+  if (!confirmed) return;
+  await db.from('profiles').delete().eq('id', userId);
+  await loadPendingUsersList();
+  await loadDashboard();
+}
+
+// ── LIVE PAGE ──
+let _liveRefreshInterval = null;
+let _currentLiveRoundId = null;
+
+async function loadLivePage() {
+  const el = document.getElementById('liveContent');
+  const sub = document.getElementById('liveSubtitle');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div> Laster...</div>';
+
+  const { data: active } = await db.from('rounds')
+    .select('*, courses(name, holes), tee_sets(name), flights(id, name, flight_players(id, player_id, handicap, profiles(display_name)))')
+    .eq('status', 'active')
+    .order('created_at', { ascending: false });
+
+  if (!active?.length) {
+    sub.textContent = 'Ingen aktive runder akkurat nå';
+    el.innerHTML = `
+      <div style="text-align:center; padding:60px 20px; color:var(--cream-dim);">
+        <div style="font-size:48px; margin-bottom:16px;">⛳</div>
+        <div style="font-size:16px; margin-bottom:8px; color:var(--cream);">Ingen aktive runder</div>
+        <div style="font-size:13px;">Når noen starter en runde vil den vises her</div>
+      </div>`;
+    return;
+  }
+
+  const round = active[0];
+  _currentLiveRoundId = round.id;
+  sub.textContent = round.courses?.name + ' · ' + round.date;
+
+  await renderLiveView(round);
+
+  if (_liveRefreshInterval) clearInterval(_liveRefreshInterval);
+  _liveRefreshInterval = setInterval(() => loadLivePage(), 20000);
+}
+
+async function renderLiveView(round) {
+  const el = document.getElementById('liveContent');
+  const roundId = round.id;
+
+  const { data: scores } = await db.from('scores').select('*').eq('round_id', roundId);
+  const allFP = (round.flights || []).flatMap(f => f.flight_players || []);
+  const holeCount = round.courses?.holes || 18;
+
+  // Build score map
+  const scoreMap = {};
+  (scores || []).forEach(s => {
+    if (!scoreMap[s.player_id]) scoreMap[s.player_id] = {};
+    scoreMap[s.player_id][s.hole_number] = s.strokes;
+  });
+
+  // Get hole data
+  const { data: holes } = await db.from('holes').select('*').eq('course_id', round.course_id).order('hole_number');
+  const holeMap = {};
+  (holes || []).forEach(h => { holeMap[h.hole_number] = h; });
+
+  // Calculate standings
+  const standings = allFP.map(fp => {
+    const playerScores = scoreMap[fp.player_id] || {};
+    let stableford = 0;
+    let holesPlayed = 0;
+    Object.entries(playerScores).forEach(([hn, strokes]) => {
+      if (strokes > 0) {
+        holesPlayed++;
+        const h = holeMap[parseInt(hn)];
+        if (h?.par && h?.stroke_index) {
+          stableford += calcStablefordLive(strokes, h.par, fp.handicap || 36, h.stroke_index, holeCount);
+        }
+      }
+    });
+    return { fp, name: fp.profiles?.display_name || '?', stableford, holesPlayed, scores: playerScores };
+  }).sort((a, b) => b.stableford - a.stableford);
+
+  const maxHole = standings.reduce((max, s) => Math.max(max, s.holesPlayed), 0);
+
+  // Build feed events
+  const feedEvents = [];
+  (scores || []).sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')).slice(0, 12).forEach(s => {
+    if (!s.strokes) return;
+    const h = holeMap[s.hole_number];
+    const fp = allFP.find(p => p.player_id === s.player_id);
+    if (!fp || !h?.par) return;
+    const diff = s.strokes - h.par;
+    let label = '', dot = '#888780', emoji = '';
+    if (s.strokes === 1) { label = 'Hole in One'; dot = '#fac775'; emoji = '🏆'; }
+    else if (diff <= -2) { label = 'Eagle'; dot = '#fac775'; emoji = '🦅'; }
+    else if (diff === -1) { label = 'Birdie'; dot = '#85b7eb'; emoji = '🐦'; }
+    else if (diff === 0) { label = 'Par'; dot = '#888780'; emoji = ''; }
+    else if (diff === 1) { label = 'Bogey'; dot = '#f09595'; emoji = ''; }
+    else { label = `+${diff}`; dot = '#e24b4a'; emoji = ''; }
+    const firstName = (fp.profiles?.display_name || '?').split(' ')[0];
+    feedEvents.push({ hole: s.hole_number, par: h.par, label, dot, emoji, firstName, strokes: s.strokes, created_at: s.created_at });
+  });
+
+  // Scorecards for all players — PGA style
+  const holes9 = Array.from({length: Math.min(9, holeCount)}, (_, i) => i + 1);
+  function buildScorecard(playerScores, hcp) {
+    return holes9.map(hn => {
+      const h = holeMap[hn];
+      const strokes = playerScores[hn];
+      if (!strokes || !h?.par) return `
+        <div style="text-align:center; padding:2px 1px;">
+          <div style="width:28px; height:28px; margin:0 auto; display:flex; align-items:center; justify-content:center; font-size:13px; color:rgba(255,255,255,0.2);">–</div>
+          <div style="font-size:9px; color:rgba(255,255,255,0.15); margin-top:1px;">–</div>
+        </div>`;
+      const diff = strokes - h.par;
+      const pts = h.stroke_index ? calcStablefordLive(strokes, h.par, hcp || 36, h.stroke_index, holeCount) : 0;
+
+      // PGA shapes
+      let cellStyle = '';
+      let textColor = 'var(--cream)';
+      if (strokes === 1) {
+        // Hole in one — gull dobbel sirkel
+        cellStyle = `width:28px;height:28px;border-radius:50%;background:#fac775;color:#412402;outline:2px solid #ef9f27;outline-offset:2px;`;
+      } else if (diff <= -2) {
+        // Eagle — gul firkant med dobbel border
+        cellStyle = `width:26px;height:26px;border-radius:2px;background:#faeeda;color:#633806;outline:2px solid #fac775;outline-offset:2px;`;
+      } else if (diff === -1) {
+        // Birdie — blå sirkel
+        cellStyle = `width:28px;height:28px;border-radius:50%;background:transparent;color:#85b7eb;border:2px solid #85b7eb;`;
+      } else if (diff === 0) {
+        // Par — ingen markering
+        cellStyle = `width:28px;height:28px;border-radius:2px;background:transparent;color:var(--cream);`;
+      } else if (diff === 1) {
+        // Bogey — enkel firkant
+        cellStyle = `width:26px;height:26px;border-radius:2px;background:transparent;color:#f09595;border:2px solid #f09595;`;
+      } else {
+        // Dobbelt+ — dobbel firkant (rød fylt)
+        cellStyle = `width:26px;height:26px;border-radius:2px;background:#e24b4a;color:#fff;outline:2px solid #e24b4a;outline-offset:2px;`;
+      }
+
+      return `
+        <div style="text-align:center; padding:2px 1px;">
+          <div style="margin:0 auto; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:600; ${cellStyle}">${strokes}</div>
+          <div style="font-size:9px; color:${pts >= 3 ? '#fac775' : pts === 2 ? 'var(--cream-dim)' : '#f09595'}; margin-top:2px; font-weight:500;">${pts}p</div>
+        </div>`;
+    }).join('');
+  }
+  const allScorecardsHtml = standings.map(s => `
+    <div style="margin-bottom:14px;">
+      <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px; padding-left:2px;">
+        <div style="font-size:13px; color:var(--cream); font-weight:500;">${s.name}</div>
+        <div style="font-size:12px; color:var(--gold);">${s.stableford}p totalt</div>
+      </div>
+      <div style="background:rgba(0,0,0,0.2); border-radius:10px; padding:10px 12px; border:1px solid rgba(255,255,255,0.06);">
+        <div style="display:grid; grid-template-columns:repeat(9,1fr); gap:2px; margin-bottom:4px;">
+          ${holes9.map(hn => {
+            const h = holeMap[hn];
+            return `<div style="text-align:center; font-size:10px; color:var(--cream-dim); padding:1px;">${hn}${h?.par ? `<span style="color:rgba(255,255,255,0.25);font-size:8px;"> p${h.par}</span>` : ''}</div>`;
+          }).join('')}
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(9,1fr); gap:2px;">
+          ${buildScorecard(s.scores, s.fp.handicap)}
+        </div>
+      </div>
+    </div>`).join('');
+
+  el.innerHTML = `
+    <div style="background:rgba(201,168,76,0.08); border:1px solid rgba(201,168,76,0.25); border-radius:12px; padding:14px 16px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center;">
+      <div>
+        <div style="font-size:11px; color:var(--gold); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:4px;">🟢 Live · Hull ${maxHole} av ${holeCount}</div>
+        <div style="font-size:16px; color:var(--cream); font-weight:500;">${round.courses?.name}</div>
+        <div style="font-size:12px; color:var(--cream-dim); margin-top:2px;">${round.date} · ${round.tee_sets?.name || ''}</div>
+      </div>
+      <button onclick="shareLiveLink('${roundId}', '${round.courses?.name || ''}')" style="background:rgba(201,168,76,0.15); border:1px solid rgba(201,168,76,0.3); color:var(--gold); padding:10px 14px; border-radius:10px; cursor:pointer; font-size:13px; font-family:'DM Sans',sans-serif; white-space:nowrap;">📤 Del</button>
+    </div>
+
+    <div style="font-size:11px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px;">Leaderboard</div>
+    <div style="background:rgba(0,0,0,0.2); border-radius:12px; overflow:hidden; margin-bottom:16px; border:1px solid rgba(255,255,255,0.06);">
+      ${standings.map((s, i) => {
+        const isLead = i === 0;
+        return `<div style="display:flex; align-items:center; gap:12px; padding:13px 16px; ${i < standings.length-1 ? 'border-bottom:1px solid rgba(255,255,255,0.05)' : ''}; ${isLead ? 'background:rgba(201,168,76,0.07)' : ''};">
+          <div style="font-size:13px; color:var(--cream-dim); min-width:20px; text-align:center;">${i+1}</div>
+          <div style="flex:1;">
+            <div style="font-size:14px; color:var(--cream); font-weight:${isLead ? '600' : '400'};">${s.name}</div>
+            <div style="font-size:11px; color:var(--cream-dim);">HCP ${s.fp.handicap || '–'} · thru ${s.holesPlayed}</div>
+          </div>
+          <div style="font-size:22px; font-weight:600; color:var(--gold); min-width:40px; text-align:right;">${s.stableford}p</div>
+        </div>`;
+      }).join('')}
+    </div>
+
+    ${feedEvents.length ? `
+    <div style="font-size:11px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px;">Live feed</div>
+    <div style="background:rgba(0,0,0,0.2); border-radius:12px; padding:14px 16px; margin-bottom:16px; border:1px solid rgba(255,255,255,0.06);">
+      ${feedEvents.slice(0, 6).map((e, i) => `
+        <div style="display:flex; gap:10px; align-items:flex-start; ${i > 0 ? 'margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.05);' : ''}">
+          <div style="width:8px; height:8px; border-radius:50%; background:${e.dot}; flex-shrink:0; margin-top:5px;"></div>
+          <div>
+            <div style="font-size:13px; font-weight:500; color:var(--cream);">Hull ${e.hole} · Par ${e.par}</div>
+            <div style="font-size:12px; color:var(--cream-dim); margin-top:2px;">${e.firstName} slo ${e.label}${e.emoji ? ' ' + e.emoji : ''} · ${e.strokes} slag</div>
+          </div>
+        </div>`).join('')}
+    </div>` : ''}
+
+    <div style="font-size:11px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px;">Scorecards</div>
+    ${allScorecardsHtml}
+
+    <div style="font-size:11px; color:var(--cream-dim); text-align:center; margin-top:8px;">Oppdateres automatisk hvert 20 sek</div>
+  `;
+}
+
+function calcStablefordLive(strokes, par, hcp, si, totalHoles) {
+  let extra = Math.floor(hcp / totalHoles);
+  if (si <= (hcp % totalHoles)) extra++;
+  return Math.max(0, par - (strokes - extra) + 2);
+}
+
+function showShareRoundModal(roundId, courseName, date) {
+  document.getElementById('shareRoundDesc').textContent = `${courseName} · ${date}`;
+  window._shareRoundId = roundId;
+  window._shareCourseName = courseName;
+  openModal('modalShareRound');
+}
+
+function doShareRound() {
+  shareLiveLink(window._shareRoundId, window._shareCourseName);
+}
+
+function shareLiveLink(roundId, courseName) {
+  const url = `${location.origin}${location.pathname}#live`;
+  const text = `🏌️ ${courseName || 'Golfrunde'} er i gang – følg med live!\n${url}`;
+  if (navigator.share) {
+    navigator.share({ title: 'The Fantastic FORE! – Live', text, url })
+      .catch(() => {});
+  } else {
+    navigator.clipboard?.writeText(url).then(() => {
+      alert('Live-lenke kopiert til utklippstavlen!');
+    }).catch(() => {
+      prompt('Kopier lenken:', url);
+    });
+  }
+}
+
+// URL routing: #live åpner Live-tab direkte
+
+// ── CLAUDE PROXY HELPER ──
+async function callClaudeProxy(fileData, fileType, prompt, maxTokens = 1500) {
+  const mediaType = fileType === 'application/pdf' ? 'application/pdf' : fileType;
+  const contentType = fileType === 'application/pdf' ? 'document' : 'image';
+  const response = await fetch(CLAUDE_PROXY, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SUPABASE_ANON },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: maxTokens,
+      messages: [{ role: 'user', content: [
+        { type: contentType, source: { type: 'base64', media_type: mediaType, data: fileData } },
+        { type: 'text', text: prompt }
+      ]}]
+    })
+  });
+  if (!response.ok) {
+    const errText = await response.text().catch(() => '');
+    throw new Error(`Proxy-feil (${response.status})${errText ? ': ' + errText.slice(0, 200) : ''}`);
+  }
+  const data = await response.json();
+  if (data.error) throw new Error(typeof data.error === 'string' ? data.error : JSON.stringify(data.error));
+  const text = (data.content || []).map(c => c.text || '').join('');
+  if (!text) throw new Error('Tomt svar fra Claude – prøv igjen');
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error('Fant ingen JSON i svaret: ' + text.slice(0, 120));
+  return JSON.parse(jsonMatch[0]);
+}
+
+// ── SLOPE UPLOAD (frittstående fra Baner-siden) ──
+let _slopeFileData = null;
+let _slopeFileType = null;
+let _parsedTees = null;
+function openSlopeUpload() {
+  _slopeFileData = null;
+  _parsedTees = null;
+  document.getElementById('slopeStep1').style.display = 'block';
+  document.getElementById('slopeStep2').style.display = 'none';
+  document.getElementById('slopeStep1Actions').style.display = 'flex';
+  document.getElementById('slopeUploadAlert').innerHTML = '';
+  document.getElementById('slopePreview').style.display = 'none';
+  document.getElementById('slopeAnalyzeBtn').style.display = 'none';
+  document.getElementById('slopeFileImage').value = '';
+  document.getElementById('slopeFilePDF').value = '';
+  document.getElementById('slopeFileName').style.display = 'none';
+  db.from('courses').select('id, name').order('name').then(({ data }) => {
+    const sel = document.getElementById('slopeCourseSelect');
+    sel.innerHTML = '<option value="">Velg bane...</option>' +
+      (data || []).map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  });
+  openModal('modalSlopeUpload');
+}
+function handleSlopeFile(file) {
+  if (!file) return;
+  _slopeFileType = file.type;
+  const nameEl = document.getElementById('slopeFileName');
+  if (nameEl) { nameEl.textContent = '✓ ' + file.name; nameEl.style.display = 'block'; }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    _slopeFileData = e.target.result.split(',')[1];
+    if (file.type.startsWith('image/')) {
+      document.getElementById('slopePreviewImg').src = e.target.result;
+      document.getElementById('slopePreview').style.display = 'block';
+    } else {
+      document.getElementById('slopePreview').style.display = 'none';
+    }
+    checkSlopeReady();
+  };
+  reader.readAsDataURL(file);
+}
+function checkSlopeReady() {
+  const courseSelected = document.getElementById('slopeCourseSelect').value;
+  const hasFile = !!_slopeFileData;
+  document.getElementById('slopeAnalyzeBtn').style.display = (courseSelected && hasFile) ? 'block' : 'none';
+}
+async function analyzeSlopeImage() {
+  const btn = document.getElementById('slopeAnalyzeBtn');
+  btn.textContent = '⏳ Analyserer...';
+  btn.disabled = true;
+  showAlert('slopeUploadAlert', '⏳ Sender til Claude – dette tar noen sekunder...', 'success');
+  try {
+    const parsed = await callClaudeProxy(
+      _slopeFileData, _slopeFileType,
+      'Dette er en slopetabell fra en norsk golfbane. Trekk ut alle tee-sett og returner KUN gyldig JSON:\n{"course_name":"Banens navn","tees":[{"name":"tee-navn","course_rating":72.6,"slope":129,"color":"#hexfarge"}]}\nFarger: gul=#FFD700, hvit=#FFFFFF, blå=#3366CC, rød=#CC3333, svart=#222222. Kun JSON.',
+      1200
+    );
+    _parsedTees = parsed.tees || [];
+    showAlert('slopeUploadAlert', '', 'success');
+    showSlopeReview(parsed);
+  } catch(e) {
+    showAlert('slopeUploadAlert', '⚠️ Analyse feilet: ' + e.message, 'error');
+    btn.textContent = '🔍 Analyser med Claude';
+    btn.disabled = false;
+  }
+}
+function showSlopeReview(parsed) {
+  document.getElementById('slopeStep1').style.display = 'none';
+  document.getElementById('slopeStep1Actions').style.display = 'none';
+  document.getElementById('slopeStep2').style.display = 'block';
+  document.getElementById('slopeReviewContent').innerHTML = `
+    ${parsed.course_name ? `<p style="font-size:14px; color:var(--gold-light); margin-bottom:16px;">📍 Bane: <strong>${parsed.course_name}</strong></p>` : ''}
+    <div style="font-size:11px; color:var(--cream-dim); margin-bottom:8px; display:grid; grid-template-columns:60px 1fr 80px 80px 60px; gap:8px; padding:0 4px;">
+      <span>Farge</span><span>Navn</span><span style="text-align:center;">CR</span><span style="text-align:center;">Slope</span><span></span>
+    </div>
+    ${(parsed.tees || []).map((t, i) => `
+      <div style="display:grid; grid-template-columns:60px 1fr 80px 80px 60px; gap:8px; align-items:center; margin-bottom:8px;">
+        <input type="color" id="review-color-${i}" value="${t.color || '#FFD700'}" style="height:38px; width:100%; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:none; cursor:pointer; padding:2px;">
+        <input type="text" id="review-name-${i}" value="${t.name || ''}" placeholder="Navn" style="padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.3); color:var(--cream); font-size:13px; font-family:'DM Sans',sans-serif;">
+        <input type="number" id="review-cr-${i}" value="${t.course_rating || ''}" placeholder="CR" step="0.1" style="padding:8px 6px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.3); color:var(--cream); font-size:13px; font-family:'DM Sans',sans-serif; text-align:center;">
+        <input type="number" id="review-slope-${i}" value="${t.slope || ''}" placeholder="Slope" style="padding:8px 6px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.3); color:var(--cream); font-size:13px; font-family:'DM Sans',sans-serif; text-align:center;">
+        <button onclick="this.parentElement.remove()" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:18px;padding:4px;">×</button>
+      </div>
+    `).join('')}
+    <button onclick="addReviewRow()" class="btn-sm" style="margin-top:8px;">+ Legg til rad</button>
+  `;
+}
+let _reviewRowCount = 0;
+function addReviewRow() {
+  _reviewRowCount++;
+  const i = 'new_' + _reviewRowCount;
+  const div = document.createElement('div');
+  div.style.cssText = 'display:grid; grid-template-columns:60px 1fr 80px 80px 60px; gap:8px; align-items:center; margin-bottom:8px;';
+  div.innerHTML = `
+    <input type="color" id="review-color-${i}" value="#FFD700" style="height:38px; width:100%; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:none; cursor:pointer; padding:2px;">
+    <input type="text" id="review-name-${i}" value="" placeholder="Navn" style="padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.3); color:var(--cream); font-size:13px; font-family:'DM Sans',sans-serif;">
+    <input type="number" id="review-cr-${i}" value="" placeholder="CR" step="0.1" style="padding:8px 6px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.3); color:var(--cream); font-size:13px; font-family:'DM Sans',sans-serif; text-align:center;">
+    <input type="number" id="review-slope-${i}" value="" placeholder="Slope" style="padding:8px 6px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.3); color:var(--cream); font-size:13px; font-family:'DM Sans',sans-serif; text-align:center;">
+    <button onclick="this.parentElement.remove()" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:18px;padding:4px;">×</button>
+  `;
+  document.getElementById('slopeReviewContent').appendChild(div);
+}
+async function saveSlopeTees() {
+  const courseId = document.getElementById('slopeCourseSelect').value;
+  if (!courseId) { showAlert('slopeUploadAlert', 'Velg en bane først', 'error'); return; }
+  const tees = [];
+  const content = document.getElementById('slopeReviewContent');
+  if (_parsedTees) {
+    for (let i = 0; i < _parsedTees.length; i++) {
+      const name = document.getElementById(`review-name-${i}`)?.value?.trim();
+      const cr = parseFloat(document.getElementById(`review-cr-${i}`)?.value);
+      const slope = parseInt(document.getElementById(`review-slope-${i}`)?.value);
+      const color = document.getElementById(`review-color-${i}`)?.value;
+      if (name) tees.push({ course_id: courseId, name, course_rating: cr || null, slope: slope || null, color: color || null });
+    }
+  }
+  content.querySelectorAll('div[style*="grid-template-columns"]').forEach(row => {
+    const nameEl = row.querySelector('input[type="text"]');
+    const inputs = row.querySelectorAll('input[type="number"]');
+    const colorEl = row.querySelector('input[type="color"]');
+    if (!nameEl) return;
+    const name = nameEl.value.trim();
+    const cr = parseFloat(inputs[0]?.value);
+    const slope = parseInt(inputs[1]?.value);
+    const color = colorEl?.value;
+    if (name && !tees.find(t => t.name === name)) {
+      tees.push({ course_id: courseId, name, course_rating: cr || null, slope: slope || null, color: color || null });
+    }
+  });
+  if (!tees.length) { showAlert('slopeUploadAlert', 'Ingen tee-sett å lagre', 'error'); return; }
+  await db.from('tee_sets').delete().eq('course_id', courseId);
+  const { error } = await db.from('tee_sets').insert(tees);
+  if (error) { showAlert('slopeUploadAlert', 'Feil: ' + error.message, 'error'); return; }
+  closeModal('modalSlopeUpload');
+  loadCourses();
+}
+function backToSlopeUpload() {
+  document.getElementById('slopeStep1').style.display = 'block';
+  document.getElementById('slopeStep1Actions').style.display = 'flex';
+  document.getElementById('slopeStep2').style.display = 'none';
+  const btn = document.getElementById('slopeAnalyzeBtn');
+  btn.textContent = '🔍 Analyser med Claude';
+  btn.disabled = false;
+}
+
+// ── TEE SET EDIT / ADD ──
+function toggleTeeEdit(teeId) {
+  const el = document.getElementById('teeEdit-' + teeId);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+function showAddTeeForm(courseId) {
+  const el = document.getElementById('addTeeForm-' + courseId);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+async function saveTeeEdit(teeId) {
+  const name = document.getElementById('editName-' + teeId)?.value?.trim();
+  if (!name) { alert('Navn er påkrevd'); return; }
+  const slope = parseInt(document.getElementById('editSlope-' + teeId)?.value) || null;
+  const cr = parseFloat(document.getElementById('editCR-' + teeId)?.value) || null;
+  const color = document.getElementById('editColor-' + teeId)?.value || null;
+  const { error } = await db.from('tee_sets').update({ name, slope, course_rating: cr, color }).eq('id', teeId);
+  if (error) { alert('Feil: ' + error.message); return; }
+  openCourseDetail(currentCourseId);
+}
+async function saveNewTee(courseId) {
+  const name = document.getElementById('newTee-name-' + courseId)?.value?.trim();
+  if (!name) { alert('Navn er påkrevd'); return; }
+  const slope = parseInt(document.getElementById('newTee-slope-' + courseId)?.value) || null;
+  const cr = parseFloat(document.getElementById('newTee-cr-' + courseId)?.value) || null;
+  const color = document.getElementById('newTee-color-' + courseId)?.value || null;
+  const { error } = await db.from('tee_sets').insert({ course_id: courseId, name, slope, course_rating: cr, color });
+  if (error) { alert('Feil: ' + error.message); return; }
+  openCourseDetail(currentCourseId);
+}
+
+// ── DELETE FUNCTIONS ──
+async function deleteCourse() {
+  const courseId = currentCourseId;
+  if (!courseId) return;
+  const courseName = document.getElementById('detailCourseName').textContent;
+  const confirmed = await showConfirm('Slette "' + courseName + '"? Dette sletter banen og alle tee-sett.');
+  if (!confirmed) return;
+  await db.from('rounds').update({ course_id: null }).eq('course_id', courseId);
+  const { data: tees } = await db.from('tee_sets').select('id').eq('course_id', courseId);
+  for (const t of (tees || [])) {
+    await db.from('rounds').update({ tee_set_id: null }).eq('tee_set_id', t.id);
+    await db.from('flight_players').update({ tee_set_id: null }).eq('tee_set_id', t.id);
+  }
+  await db.from('tee_sets').delete().eq('course_id', courseId);
+  await db.from('holes').delete().eq('course_id', courseId);
+  await db.from('courses').delete().eq('id', courseId);
+  closeModal('modalCourseDetail');
+  loadCourses();
+}
+async function deleteTeeSet(teeId) {
+  const confirmed = await showConfirm('Slette dette tee-settet?');
+  if (!confirmed) return;
+  await db.from('rounds').update({ tee_set_id: null }).eq('tee_set_id', teeId);
+  await db.from('flight_players').update({ tee_set_id: null }).eq('tee_set_id', teeId);
+  await db.from('tee_sets').delete().eq('id', teeId);
+  openCourseDetail(currentCourseId);
+}
+
+// ── CONFIRM DIALOG ──
+function showConfirm(message, confirmText = 'Slett') {
+  return new Promise(resolve => {
+    const overlay = document.createElement("div");
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;";
+    const box = document.createElement("div");
+    box.style.cssText = "background:var(--green-dark);border:1px solid rgba(201,168,76,0.3);border-radius:12px;padding:28px;max-width:400px;width:100%;";
+    const p = document.createElement("p");
+    p.style.cssText = "color:var(--cream);font-size:15px;margin-bottom:24px;line-height:1.5;";
+    p.textContent = message;
+    const btns = document.createElement("div");
+    btns.style.cssText = "display:flex;gap:12px;justify-content:flex-end;";
+    const no = document.createElement("button");
+    no.textContent = "Avbryt";
+    no.style.cssText = "padding:10px 20px;border-radius:8px;border:1px solid rgba(201,168,76,0.4);background:transparent;color:var(--gold);font-size:14px;cursor:pointer;touch-action:manipulation;";
+    const yes = document.createElement("button");
+    yes.textContent = confirmText;
+    yes.style.cssText = "padding:10px 20px;border-radius:8px;border:none;background:var(--danger);color:white;font-size:14px;cursor:pointer;font-weight:600;touch-action:manipulation;";
+    btns.appendChild(no);
+    btns.appendChild(yes);
+    box.appendChild(p);
+    box.appendChild(btns);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    yes.onclick = () => { overlay.remove(); resolve(true); };
+    no.onclick = () => { overlay.remove(); resolve(false); };
+  });
+}
+
+// ── HULL SCORECARD UPLOAD (fra hull-fanen) ──
+async function analyzeHullScorecard(file, courseId, holeCount) {
+  if (!file) return;
+  const statusEl = document.getElementById('hullScorecardStatus');
+  if (statusEl) statusEl.innerHTML = '<div class="alert alert-success">⏳ Leser fil...</div>';
+  const reader = new FileReader();
+  reader.onerror = () => {
+    if (statusEl) statusEl.innerHTML = '<div class="alert alert-error">⚠️ Kunne ikke lese filen</div>';
+  };
+  reader.onload = async (e) => {
+    const fileData = e.target.result.split(',')[1];
+    if (statusEl) statusEl.innerHTML = '<div class="alert alert-success">⏳ Sender til Claude – vent...</div>';
+    const startHole = parseInt(document.getElementById('nineHullStart')?.value || '1');
+    const hullInfo = (holeCount === 9 && startHole === 10)
+      ? 'Les hull 10-18 (inn-runden). Numerer dem som 1-9 i output.'
+      : (holeCount === 9 ? 'Les hull 1-9 (ut-runden).' : 'Les alle ' + holeCount + ' hull.');
+    try {
+      const parsed = await callClaudeProxy(
+        fileData, file.type,
+        'Dette er et scorekort fra en norsk golfbane. ' + hullInfo + ' Trekk ut par og stroke index (SI/Index/Hcp) per hull. Returner KUN gyldig JSON: {"holes":[{"hole":1,"par":4,"si":7}]}. Kun JSON.',
+        2000
+      );
+      const holes = parsed.holes || [];
+      if (!holes.length) throw new Error('Fant ingen hull i scorekortet');
+      holes.forEach(h => {
+        const parEl = document.getElementById('hpar-' + h.hole);
+        const siEl = document.getElementById('hsi-' + h.hole);
+        if (parEl) parEl.value = h.par;
+        if (siEl) siEl.value = h.si;
+      });
+      if (statusEl) statusEl.innerHTML = '<div class="alert alert-success">✅ Fant ' + holes.length + ' hull. Sjekk verdiene og trykk Lagre hull-data.</div>';
+    } catch(e) {
+      if (statusEl) statusEl.innerHTML = '<div class="alert alert-error">⚠️ Analyse feilet: ' + e.message + '</div>';
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+// ── SCORECARD UPLOAD (steg 3 ved ny bane) ──
+let _scorecardFileData = null;
+let _scorecardFileType = null;
+let _newCourseId = null;
+function openScorecardStep(courseId) {
+  _newCourseId = courseId;
+  _scorecardFileData = null;
+  document.getElementById('courseStep2').style.display = 'none';
+  document.getElementById('courseStep3').style.display = 'block';
+  document.getElementById('scorecardAlert').innerHTML = '';
+  document.getElementById('scorecardFileName').style.display = 'none';
+  document.getElementById('scorecardPreview').style.display = 'none';
+  document.getElementById('scorecardReview').style.display = 'none';
+  document.getElementById('scorecardAnalyzeBtn').style.display = 'none';
+  const inp = document.getElementById('scorecardFileInput');
+  if (inp) inp.value = '';
+}
+function handleScorecardFile(file) {
+  if (!file) return;
+  _scorecardFileType = file.type;
+  const nameEl = document.getElementById('scorecardFileName');
+  if (nameEl) { nameEl.textContent = '✓ ' + file.name; nameEl.style.display = 'block'; }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    _scorecardFileData = e.target.result.split(',')[1];
+    if (file.type.startsWith('image/')) {
+      document.getElementById('scorecardPreviewImg').src = e.target.result;
+      document.getElementById('scorecardPreview').style.display = 'block';
+    }
+    document.getElementById('scorecardAnalyzeBtn').style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+}
+async function analyzeScorecard() {
+  const btn = document.getElementById('scorecardAnalyzeBtn');
+  btn.textContent = '⏳ Leser scorekort...';
+  btn.disabled = true;
+  showAlert('scorecardAlert', '⏳ Sender til Claude – vent...', 'success');
+  const holeCount = window._newCourseHoles || 18;
+  const startHole = parseInt(document.getElementById('nineHullStart')?.value || '1');
+  const hullInfo = (holeCount === 9 && startHole === 10)
+    ? 'Les hull 10-18 (inn-runden) og numerer dem 1-9 i output.'
+    : (holeCount === 9 ? 'Les hull 1-9 (ut-runden).' : 'Les alle ' + holeCount + ' hull.');
+  try {
+    const parsed = await callClaudeProxy(
+      _scorecardFileData, _scorecardFileType,
+      'Dette er et scorekort fra en norsk golfbane. ' + hullInfo + ' Trekk ut par og SI/Index/Hcp per hull. Returner KUN JSON: {"holes":[{"hole":1,"par":4,"si":7}]}.',
+      2000
+    );
+    const holes = parsed.holes || [];
+    if (!holes.length) throw new Error('Fant ingen hull i scorekortet');
+    showScorecardReview(holes);
+    showAlert('scorecardAlert', '✅ Fant ' + holes.length + ' hull. Sjekk dataene og trykk Lagre.', 'success');
+  } catch(e) {
+    showAlert('scorecardAlert', '⚠️ Kunne ikke lese scorekort: ' + e.message, 'error');
+  }
+  btn.textContent = '📖 Les scorekort';
+  btn.disabled = false;
+}
+function showScorecardReview(holes) {
+  const reviewEl = document.getElementById('scorecardReview');
+  reviewEl.style.display = 'block';
+  reviewEl.innerHTML = '<div style="max-height:300px;overflow-y:auto;"><table class="hole-table"><thead><tr><th>Hull</th><th>Par</th><th>SI</th></tr></thead><tbody>' +
+    holes.map(h => '<tr><td class="hole-num">' + h.hole + '</td><td><input type="number" id="sc-par-' + h.hole + '" value="' + (h.par||'') + '" min="3" max="5" style="width:60px;"></td><td><input type="number" id="sc-si-' + h.hole + '" value="' + (h.si||'') + '" min="1" max="18" style="width:60px;"></td></tr>').join('') +
+    '</tbody></table></div>' +
+    '<button class="btn" style="margin-top:12px;" onclick="saveScorecardHoles()">Lagre hull-data</button>';
+}
+async function saveScorecardHoles() {
+  const courseId = _newCourseId;
+  if (!courseId) return;
+  const holes = [];
+  const rows = document.getElementById('scorecardReview').querySelectorAll('tbody tr');
+  for (const row of rows) {
+    const cells = row.querySelectorAll('td');
+    const holeNum = parseInt(cells[0]?.textContent?.trim());
+    if (!holeNum || isNaN(holeNum)) continue;
+    const par = parseInt(document.getElementById('sc-par-' + holeNum)?.value);
+    const si = parseInt(document.getElementById('sc-si-' + holeNum)?.value);
+    if (par && si) holes.push({ course_id: courseId, hole_number: holeNum, par, stroke_index: si });
+  }
+  if (holes.length) {
+    const { error } = await db.from('holes').upsert(holes, { onConflict: 'course_id,hole_number' });
+    if (error) { showAlert('scorecardAlert', 'Feil: ' + error.message, 'error'); return; }
+  }
+  closeModal('modalAddCourse');
+  loadCourses();
+  setTimeout(async () => { await openCourseDetail(courseId); }, 300);
+}
+function skipScorecard() {
+  closeModal('modalAddCourse');
+  loadCourses();
+  if (_newCourseId) {
+    setTimeout(async () => { await openCourseDetail(_newCourseId); setTimeout(() => showCourseTab('holes'), 100); }, 300);
+  }
+}
+
+// ── START ──
+if ('serviceWorker' in navigator) {
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hadController) {
+      const toast = document.getElementById('updateToast');
+      if (toast) toast.style.display = 'block';
+    }
+  });
+}
+init();
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && currentProfile) {
+    const activePage = document.querySelector('.page.active')?.id?.replace('page-', '');
+    if (activePage === 'dashboard') loadDashboard();
+    else if (activePage === 'rounds') loadRounds();
+    else if (activePage === 'live') loadLivePage();
+    else if (activePage === 'profile') loadProfilePage();
+  }
+});
+</script>
+<div id="updateToast" onclick="location.reload()" style="display:none; position:fixed; bottom:80px; left:50%; transform:translateX(-50%); z-index:1500; background:var(--green-dark); border:1px solid rgba(201,168,76,0.5); border-radius:10px; padding:12px 20px; font-size:13px; color:var(--cream); cursor:pointer; box-shadow:0 4px 24px rgba(0,0,0,0.5); white-space:nowrap; animation:slideUp 0.3s ease;">
+  🔄 Ny versjon tilgjengelig – trykk for å oppdatere
+</div>
+<style>
+  @keyframes slideUp { from { opacity:0; transform:translateX(-50%) translateY(12px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
+</style>
+</body>
+</html>
