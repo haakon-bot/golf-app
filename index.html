@@ -779,6 +779,49 @@
     </button>
   </div>
 </div>
+<!-- MODAL: Golfbox Import -->
+<div class="modal-overlay" id="modalGolfboxImport" style="display:none;" onclick="closeModalOnOverlay(event,'modalGolfboxImport')">
+  <div class="modal" style="max-width:520px;" onclick="event.stopPropagation()">
+    <h2>📷 Importer fra Golfbox</h2>
+    <div id="gbImportAlert"></div>
+    <div id="gbStep1">
+      <div style="background:rgba(201,168,76,0.08); border:1px solid rgba(201,168,76,0.2); border-radius:10px; padding:16px; margin-bottom:20px;">
+        <p style="font-size:13px; color:var(--cream); font-weight:500; margin-bottom:8px;">Slik gjør du det:</p>
+        <ol style="font-size:13px; color:var(--cream-dim); padding-left:18px; line-height:1.8; margin:0;">
+          <li>Åpne <strong style="color:var(--cream);">Golfbox</strong> eller <strong style="color:var(--cream);">Gimmie</strong> og logg inn</li>
+          <li>Gå til <strong style="color:var(--cream);">Score-siden din</strong></li>
+          <li>Ta bilde av tabellen med <strong style="color:var(--cream);">dato</strong> og <strong style="color:var(--cream);">«HCP spilt til»</strong></li>
+          <li>Last opp ett eller flere bilder under</li>
+        </ol>
+      </div>
+      <label style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; border:2px dashed rgba(201,168,76,0.3); border-radius:12px; padding:24px 20px; text-align:center; cursor:pointer; background:rgba(0,0,0,0.1); margin-bottom:14px;">
+        <div style="font-size:36px;">📷</div>
+        <div style="color:var(--cream); font-size:14px; font-weight:500;">Velg bilder</div>
+        <div style="color:var(--cream-dim); font-size:12px;">PNG, JPG – velg gjerne flere</div>
+        <input type="file" id="gbImportFileInput" accept="image/png,image/jpeg,image/jpg,image/heic,image/heif" multiple style="display:none;" onchange="handleGolfboxFiles(this)">
+      </label>
+      <div id="gbFileList" style="margin-bottom:14px;"></div>
+      <button class="btn" id="gbAnalyzeBtn" onclick="analyzeGolfboxImages()" style="display:none; width:100%; margin-bottom:4px;">🔍 Analyser med Claude</button>
+      <div class="modal-actions" style="margin-top:16px;">
+        <button class="btn btn-outline" onclick="closeModal('modalGolfboxImport')">Avbryt</button>
+      </div>
+    </div>
+    <div id="gbStep2" style="display:none;">
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
+        <button onclick="document.getElementById('gbStep1').style.display='block';document.getElementById('gbStep2').style.display='none';" style="background:none;border:none;color:var(--gold);cursor:pointer;font-size:22px;">←</button>
+        <div>
+          <h3 id="gbPreviewCount" style="font-family:'Playfair Display',serif; color:var(--cream); font-size:17px;"></h3>
+          <p style="font-size:12px; color:var(--cream-dim);">Sjekk at dataene ser riktige ut – fjern feil med ✕</p>
+        </div>
+      </div>
+      <div id="gbPreviewList" style="max-height:300px; overflow-y:auto; margin-bottom:16px;"></div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal('modalGolfboxImport')">Avbryt</button>
+        <button class="btn" id="gbSaveBtn" onclick="saveGolfboxHistory()">Lagre historikk</button>
+      </div>
+    </div>
+  </div>
+</div>
 <script>
 // ── SUPABASE INIT ──
 const SUPABASE_URL = 'https://fqiwnsmhypxtsdipzntm.supabase.co';
@@ -1661,12 +1704,24 @@ async function loadProfilePage() {
       <div class="form-group"><label>Bekreft nytt passord</label><input type="password" id="newPassword2" placeholder="Gjenta passord"></div>
       <button class="btn btn-auto" onclick="changePassword()">Endre passord</button>
     </div>
+    <div class="card">
+      <h3 style="font-family:'Playfair Display',serif; margin-bottom:6px;">Historikk fra Golfbox</h3>
+      <p style="font-size:13px; color:var(--cream-dim); margin-bottom:16px;">Importer dine tidligere runder fra Golfbox eller Gimmie ved å ta bilde av poenglisten.</p>
+      <button class="btn btn-outline btn-auto" onclick="openGolfboxImport()">📷 Importer fra Golfbox</button>
+      <div id="golfboxImportList" style="margin-top:16px;"><div style="height:24px;"></div></div>
+    </div>
+    <div class="card">
+      <h3 style="font-family:'Playfair Display',serif; margin-bottom:16px;">Min historikk</h3>
+      <div id="hcpGraph" style="margin-bottom:20px;"></div>
+      <div id="hcpHistoryList"><div class="loading"><div class="spinner"></div></div></div>
+    </div>
     ${p.is_admin ? `
     <div class="card" style="margin-top:16px;">
       <h3 style="font-family:'Playfair Display',serif; margin-bottom:16px;">Admin</h3>
       <button class="btn btn-outline btn-auto" onclick="showPage('players')" style="width:100%; margin-bottom:8px;">Administrer spillere</button>
     </div>` : ''}
   `;
+  loadAndRenderDifferentials();
 }
 async function changePassword() {
   const p1 = document.getElementById('newPassword1').value;
@@ -1688,6 +1743,198 @@ async function saveProfile() {
   currentProfile.handicap = hcp;
   showAlert('profileAlert', 'Profil oppdatert!', 'success');
   document.getElementById('topbarUsername').textContent = currentProfile.username;
+}
+
+// ── GOLFBOX IMPORT ──
+let _golfboxFiles = [];
+let _golfboxParsed = [];
+
+function openGolfboxImport() {
+  _golfboxFiles = [];
+  _golfboxParsed = [];
+  document.getElementById('gbImportAlert').innerHTML = '';
+  document.getElementById('gbFileList').innerHTML = '';
+  document.getElementById('gbStep1').style.display = 'block';
+  document.getElementById('gbStep2').style.display = 'none';
+  document.getElementById('gbAnalyzeBtn').style.display = 'none';
+  document.getElementById('gbImportFileInput').value = '';
+  openModal('modalGolfboxImport');
+}
+
+function handleGolfboxFiles(input) {
+  _golfboxFiles = Array.from(input.files);
+  const list = document.getElementById('gbFileList');
+  if (!_golfboxFiles.length) { list.innerHTML = ''; document.getElementById('gbAnalyzeBtn').style.display = 'none'; return; }
+  list.innerHTML = _golfboxFiles.map(f => `
+    <div style="display:flex; align-items:center; gap:8px; padding:8px 12px; background:rgba(0,0,0,0.2); border-radius:8px; margin-bottom:6px;">
+      <span style="font-size:18px;">🖼️</span>
+      <span style="font-size:13px; color:var(--cream); flex:1;">${f.name}</span>
+      <span style="font-size:11px; color:var(--cream-dim);">${(f.size/1024).toFixed(0)} KB</span>
+    </div>`).join('');
+  document.getElementById('gbAnalyzeBtn').style.display = 'block';
+}
+
+async function analyzeGolfboxImages() {
+  if (!_golfboxFiles.length) return;
+  const btn = document.getElementById('gbAnalyzeBtn');
+  const alertEl = document.getElementById('gbImportAlert');
+  btn.disabled = true;
+  alertEl.innerHTML = '';
+  _golfboxParsed = [];
+  const prompt = `Du ser et skjermbilde eller foto av en poengliste fra Golfbox eller Gimmie (norske golf-apper).
+Trekk ut ALLE synlige runder. For hver runde returner:
+- date: dato i format YYYY-MM-DD
+- differential: "HCP spilt til"-verdien (desimaltall, f.eks. 24.3)
+- hcp_before: handicap FØR runden, hvis synlig (null ellers)
+- hcp_after: handicap ETTER runden, hvis synlig (null ellers)
+- course_name: banens navn, hvis synlig (null ellers)
+- source: "gimmie" hvis Gimmie-appen, "golfbox" hvis Golfbox
+
+Returner KUN dette JSON-objektet (ingen annen tekst):
+{"rounds":[{"date":"2024-03-15","differential":12.4,"hcp_before":13.2,"hcp_after":12.9,"course_name":"Hvam Golf","source":"golfbox"}]}
+Hvis ingen runder er lesbare, returner {"rounds":[]}.`;
+
+  for (let i = 0; i < _golfboxFiles.length; i++) {
+    btn.textContent = `⏳ Analyserer bilde ${i + 1} av ${_golfboxFiles.length}…`;
+    try {
+      const base64 = await _fileToBase64(_golfboxFiles[i]);
+      const result = await callClaudeProxy(base64, _golfboxFiles[i].type, prompt, 2000);
+      if (result.rounds && Array.isArray(result.rounds)) _golfboxParsed.push(...result.rounds);
+    } catch (e) {
+      alertEl.innerHTML = `<div class="alert alert-error">Feil på bilde ${i + 1}: ${e.message}</div>`;
+    }
+  }
+  btn.disabled = false;
+  btn.textContent = '🔍 Analyser med Claude';
+  if (!_golfboxParsed.length) {
+    alertEl.innerHTML = '<div class="alert alert-error">Ingen runder funnet. Prøv klarere bilder med dato og HCP-kolonne synlig.</div>';
+    return;
+  }
+  _golfboxParsed.sort((a, b) => new Date(b.date) - new Date(a.date));
+  document.getElementById('gbStep1').style.display = 'none';
+  document.getElementById('gbStep2').style.display = 'block';
+  _renderGolfboxPreview();
+}
+
+function _renderGolfboxPreview() {
+  document.getElementById('gbPreviewCount').textContent = _golfboxParsed.length + ' runder funnet';
+  document.getElementById('gbPreviewList').innerHTML = _golfboxParsed.map((r, i) => `
+    <div style="display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid rgba(255,255,255,0.06);">
+      <div style="flex:1;">
+        <div style="font-size:13px; color:var(--cream);">${r.date}${r.course_name ? ' · ' + r.course_name : ''}</div>
+        <div style="font-size:11px; color:var(--cream-dim);">Diff: ${r.differential ?? '–'}${r.hcp_before != null ? ' · HCP: ' + r.hcp_before + ' → ' + (r.hcp_after ?? '?') : ''}</div>
+      </div>
+      <span style="font-size:11px; padding:2px 7px; border-radius:4px; background:rgba(201,168,76,0.15); color:var(--gold-dim);">${r.source || 'golfbox'}</span>
+      <button onclick="_removeGolfboxEntry(${i})" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:16px;padding:0 4px;">✕</button>
+    </div>`).join('');
+}
+
+function _removeGolfboxEntry(i) { _golfboxParsed.splice(i, 1); _renderGolfboxPreview(); }
+
+async function saveGolfboxHistory() {
+  if (!_golfboxParsed.length) return;
+  const btn = document.getElementById('gbSaveBtn');
+  btn.disabled = true; btn.textContent = '⏳ Lagrer…';
+  const rows = _golfboxParsed.map(r => ({
+    player_id: currentProfile.id,
+    date: r.date,
+    differential: r.differential,
+    source: r.source || 'golfbox',
+    course_name: r.course_name || null,
+    hcp_before: r.hcp_before ?? null,
+    hcp_after: r.hcp_after ?? null,
+  }));
+  const { error } = await db.from('score_differentials').upsert(rows, { onConflict: 'player_id,date,source' });
+  btn.disabled = false; btn.textContent = 'Lagre historikk';
+  if (error) {
+    document.getElementById('gbImportAlert').innerHTML = `<div class="alert alert-error">Feil: ${error.message}</div>`;
+    return;
+  }
+  closeModal('modalGolfboxImport');
+  loadProfilePage();
+}
+
+function _fileToBase64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = e => res(e.target.result.split(',')[1]);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+}
+
+async function loadAndRenderDifferentials() {
+  const { data } = await db.from('score_differentials')
+    .select('*').eq('player_id', currentProfile.id).order('date', { ascending: true });
+  const diffs = data || [];
+  _renderGolfboxImportList(diffs);
+  _renderHcpGraph(diffs);
+  _renderHcpHistoryList(diffs);
+}
+
+function _renderGolfboxImportList(diffs) {
+  const el = document.getElementById('golfboxImportList');
+  if (!el) return;
+  const imported = diffs.filter(d => d.source !== 'fore').sort((a, b) => new Date(b.date) - new Date(a.date));
+  if (!imported.length) { el.innerHTML = '<p style="font-size:13px; color:var(--cream-dim); margin-top:8px;">Ingen importerte runder ennå.</p>'; return; }
+  const show = imported.slice(0, 5);
+  el.innerHTML = show.map(d => `
+    <div style="display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.06);">
+      <div style="flex:1;">
+        <div style="font-size:13px; color:var(--cream);">${d.date}${d.course_name ? ' · ' + d.course_name : ''}</div>
+        <div style="font-size:11px; color:var(--cream-dim);">Differential: ${d.differential ?? '–'}</div>
+      </div>
+      <span style="font-size:11px; padding:2px 7px; border-radius:4px; background:rgba(201,168,76,0.15); color:var(--gold-dim);">${d.source}</span>
+    </div>`).join('') + (imported.length > 5 ? `<p style="font-size:12px; color:var(--cream-dim); margin-top:8px;">+ ${imported.length - 5} eldre runder i historikken under</p>` : '');
+}
+
+function _renderHcpGraph(diffs) {
+  const el = document.getElementById('hcpGraph');
+  if (!el) return;
+  const pts = diffs.filter(d => d.hcp_after != null).map(d => ({ date: d.date, hcp: parseFloat(d.hcp_after) }));
+  if (pts.length < 2) { el.innerHTML = '<p style="font-size:13px; color:var(--cream-dim); text-align:center; padding:12px 0;">Importér minst 2 runder med HCP-verdi for å se grafen.</p>'; return; }
+  const W = 340, H = 130, pL = 34, pR = 10, pT = 10, pB = 22;
+  const hcps = pts.map(p => p.hcp);
+  const minH = Math.min(...hcps), maxH = Math.max(...hcps), range = maxH - minH || 1;
+  const xS = i => pL + (i / (pts.length - 1)) * (W - pL - pR);
+  const yS = h => pT + (1 - (h - minH) / range) * (H - pT - pB);
+  const poly = pts.map((p, i) => `${xS(i).toFixed(1)},${yS(p.hcp).toFixed(1)}`).join(' ');
+  const dots = pts.map((p, i) => `<circle cx="${xS(i).toFixed(1)}" cy="${yS(p.hcp).toFixed(1)}" r="3.5" fill="var(--gold)" stroke="var(--green-deep)" stroke-width="1.5"/>`).join('');
+  const yLabels = [minH, (minH+maxH)/2, maxH].map(h => `<text x="${pL-5}" y="${yS(h).toFixed(1)}" fill="rgba(255,255,255,0.4)" font-size="9" text-anchor="end" dominant-baseline="middle">${h.toFixed(1)}</text>`).join('');
+  const lastIdx = pts.length - 1;
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;overflow:visible;" xmlns="http://www.w3.org/2000/svg">
+    <line x1="${pL}" y1="${pT}" x2="${pL}" y2="${H-pB}" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+    <line x1="${pL}" y1="${H-pB}" x2="${W-pR}" y2="${H-pB}" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+    ${yLabels}
+    <text x="${xS(0).toFixed(1)}" y="${H-5}" fill="rgba(255,255,255,0.4)" font-size="9" text-anchor="start">${pts[0].date.slice(5)}</text>
+    <text x="${xS(lastIdx).toFixed(1)}" y="${H-5}" fill="rgba(255,255,255,0.4)" font-size="9" text-anchor="end">${pts[lastIdx].date.slice(5)}</text>
+    <polyline points="${poly}" fill="none" stroke="var(--gold)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    ${dots}
+  </svg>`;
+}
+
+function _renderHcpHistoryList(diffs) {
+  const el = document.getElementById('hcpHistoryList');
+  if (!el) return;
+  if (!diffs.length) { el.innerHTML = '<p style="font-size:13px; color:var(--cream-dim);">Ingen historikk ennå.</p>'; return; }
+  const sorted = [...diffs].sort((a, b) => new Date(b.date) - new Date(a.date));
+  el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px;">
+    <thead><tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
+      <th style="padding:6px 4px;text-align:left;color:var(--cream-dim);font-size:11px;font-weight:400;text-transform:uppercase;letter-spacing:1px;">Dato</th>
+      <th style="padding:6px 4px;text-align:left;color:var(--cream-dim);font-size:11px;font-weight:400;text-transform:uppercase;letter-spacing:1px;">Bane</th>
+      <th style="padding:6px 4px;text-align:right;color:var(--cream-dim);font-size:11px;font-weight:400;text-transform:uppercase;letter-spacing:1px;">Diff</th>
+      <th style="padding:6px 4px;text-align:right;color:var(--cream-dim);font-size:11px;font-weight:400;text-transform:uppercase;letter-spacing:1px;">HCP</th>
+      <th style="padding:6px 4px;text-align:center;color:var(--cream-dim);font-size:11px;font-weight:400;text-transform:uppercase;letter-spacing:1px;">Kilde</th>
+    </tr></thead>
+    <tbody>${sorted.map(d => `
+      <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+        <td style="padding:8px 4px;color:var(--cream);">${d.date}</td>
+        <td style="padding:8px 4px;color:var(--cream-dim);font-size:12px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${d.course_name || '–'}</td>
+        <td style="padding:8px 4px;text-align:right;font-family:'Playfair Display',serif;color:var(--gold);">${d.differential != null ? d.differential : '–'}</td>
+        <td style="padding:8px 4px;text-align:right;color:var(--cream-dim);font-size:12px;">${d.hcp_before != null ? d.hcp_before + ' → ' + (d.hcp_after ?? '?') : (d.hcp_after != null ? d.hcp_after : '–')}</td>
+        <td style="padding:8px 4px;text-align:center;"><span style="font-size:10px;padding:2px 6px;border-radius:4px;background:rgba(201,168,76,0.15);color:var(--gold-dim);">${d.source || '–'}</span></td>
+      </tr>`).join('')}
+    </tbody></table>`;
 }
 
 // ── UTILITIES ──
@@ -2173,10 +2420,45 @@ async function finishRound() {
   if (!confirmed) return;
   const roundId = currentRound.id;
   await db.from('rounds').update({ status: 'completed' }).eq('id', roundId);
+  _saveForeScoreDifferentials().catch(() => {});
   document.getElementById('scoringScreen').style.display = 'none';
   await loadRounds();
   await loadDashboard();
   await showRoundSummary(roundId);
+}
+
+async function _saveForeScoreDifferentials() {
+  const slope = currentRound.tee_sets?.slope;
+  const courseRating = currentRound.tee_sets?.course_rating;
+  if (!slope || !courseRating) return;
+  const totalHoles = currentRound.courses?.holes || 18;
+  const allFP = roundFlights.flatMap(f => f.flight_players || []);
+  for (const fp of allFP) {
+    const hcp = fp.handicap || 36;
+    const playerScores = roundScores[fp.player_id] || {};
+    let adjusted = 0, holesPlayed = 0;
+    for (const hole of roundHoles) {
+      const strokes = playerScores[hole.hole_number] || 0;
+      if (strokes > 0) {
+        holesPlayed++;
+        let extra = Math.floor(hcp / totalHoles);
+        if (hole.stroke_index <= (hcp % totalHoles)) extra++;
+        adjusted += Math.min(strokes, hole.par + 2 + extra);
+      }
+    }
+    if (holesPlayed < 7) continue;
+    const scaledGross = holesPlayed < totalHoles ? (adjusted * totalHoles / holesPlayed) : adjusted;
+    const differential = parseFloat(((113 / slope) * (scaledGross - courseRating)).toFixed(1));
+    await db.from('score_differentials').upsert({
+      player_id: fp.player_id,
+      date: currentRound.date,
+      differential,
+      source: 'fore',
+      course_name: currentRound.courses?.name || null,
+      hcp_before: fp.handicap || null,
+      hcp_after: null,
+    }, { onConflict: 'player_id,date,source' });
+  }
 }
 
 // ── ROUND SUMMARY ──
