@@ -404,7 +404,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.27</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.28</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -498,20 +498,7 @@
       <div id="roundHoleWarning" style="display:none; padding:12px 16px; border-radius:8px; background:rgba(201,168,76,0.1); border:1px solid rgba(201,168,76,0.4); color:var(--gold-light); font-size:13px; margin-bottom:12px;">
         ⚠️ Denne banen mangler hull-data (par og SI). Stableford og par vil ikke fungere under runde. <br>Gå til <strong>Baner → Hull-data</strong> og legg inn data først.
       </div>
-      <div id="roundHoleRangeDiv" class="form-group" style="display:none;">
-        <label>Hvilke hull spilles?</label>
-        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
-          <label style="display:flex;align-items:center;gap:6px;padding:10px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);cursor:pointer;font-size:14px;color:var(--cream-dim);">
-            <input type="radio" name="roundHoleRange" value="all" checked style="accent-color:var(--gold);"> Hele 18
-          </label>
-          <label style="display:flex;align-items:center;gap:6px;padding:10px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);cursor:pointer;font-size:14px;color:var(--cream-dim);">
-            <input type="radio" name="roundHoleRange" value="front9" style="accent-color:var(--gold);"> Første 9 (1–9)
-          </label>
-          <label style="display:flex;align-items:center;gap:6px;padding:10px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);cursor:pointer;font-size:14px;color:var(--cream-dim);">
-            <input type="radio" name="roundHoleRange" value="back9" style="accent-color:var(--gold);"> Siste 9 (10–18)
-          </label>
-        </div>
-      </div>
+      <div id="roundHoleRangeDiv" class="form-group" style="display:none;"></div>
       <div class="form-group">
         <label>Tee-sett *</label>
         <select id="roundTee" style="width:100%; padding:12px 16px; border-radius:8px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.3); color:var(--cream); font-size:15px; font-family:'DM Sans',sans-serif;">
@@ -690,8 +677,6 @@
       <div id="acStepDot2" style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.1);color:var(--cream-dim);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0;">2</div>
       <div id="acLine2" style="flex:1;height:2px;background:rgba(255,255,255,0.1);"></div>
       <div id="acStepDot3" style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.1);color:var(--cream-dim);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0;">3</div>
-      <div id="acLine3" style="flex:1;height:2px;background:rgba(255,255,255,0.1);"></div>
-      <div id="acStepDot4" style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.1);color:var(--cream-dim);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0;">4</div>
     </div>
     <div id="acAlert"></div>
 
@@ -700,17 +685,6 @@
       <h2 style="margin-bottom:16px;">Baneinfo</h2>
       <div class="form-group"><label>Banenavn *</label><input type="text" id="acName" placeholder="f.eks. Bogstad Golf"></div>
       <div class="form-group"><label>Sted</label><input type="text" id="acLocation" placeholder="f.eks. Oslo"></div>
-      <div class="form-group">
-        <label>Antall hull</label>
-        <div style="display:flex; gap:12px; margin-top:8px;">
-          <label id="acHoles18Lbl" onclick="acSyncHoleRadio()" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:14px;border-radius:10px;border:2px solid rgba(201,168,76,0.6);background:rgba(201,168,76,0.1);cursor:pointer;font-size:15px;font-weight:500;color:var(--gold-light);">
-            <input type="radio" name="acHoles" value="18" checked style="accent-color:var(--gold);">18 hull
-          </label>
-          <label id="acHoles9Lbl" onclick="acSyncHoleRadio()" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:14px;border-radius:10px;border:2px solid rgba(255,255,255,0.1);background:transparent;cursor:pointer;font-size:15px;font-weight:500;color:var(--cream-dim);">
-            <input type="radio" name="acHoles" value="9" style="accent-color:var(--gold);">9 hull
-          </label>
-        </div>
-      </div>
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="closeModal('modalAddCourse')">Avbryt</button>
         <button class="btn" onclick="acNext(1)">Neste →</button>
@@ -742,7 +716,7 @@
     <!-- Step 3: Scorekort -->
     <div id="acStep3" style="display:none;">
       <h2 style="margin-bottom:4px;">Hull-data</h2>
-      <p style="font-size:13px;color:var(--cream-dim);margin-bottom:16px;">Last opp scorekort – Claude leser inn par og SI for alle hull automatisk.</p>
+      <p style="font-size:13px;color:var(--cream-dim);margin-bottom:16px;">Last opp scorekort – Claude leser hull og detekterer automatisk om det er front 9, bak 9, eller alle 18 hull.</p>
       <label style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;border:2px dashed rgba(201,168,76,0.3);border-radius:10px;padding:20px;text-align:center;cursor:pointer;background:rgba(0,0,0,0.1);margin-bottom:12px;">
         <div id="acScorecardIcon" style="font-size:28px;">📸</div>
         <div id="acScorecardLabel" style="color:var(--cream);font-size:13px;font-weight:500;">Last opp scorekort</div>
@@ -754,19 +728,9 @@
       <div id="acHoleTable" style="display:none;margin-bottom:12px;max-height:300px;overflow-y:auto;"></div>
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="acStep(2)">← Tilbake</button>
-        <button class="btn btn-outline" onclick="acNext(3,true)">Hopp over</button>
+        <button class="btn btn-outline" onclick="acSkipAndSave()">Hopp over</button>
         <button class="btn" id="acAnalyzeBtn" onclick="acAnalyzeScorecard()" style="display:none;">📖 Les scorekort</button>
-        <button class="btn" id="acStep3NextBtn" onclick="acNext(3)" style="display:none;">Neste →</button>
-      </div>
-    </div>
-
-    <!-- Step 4: Bekreft og lagre -->
-    <div id="acStep4" style="display:none;">
-      <h2 style="margin-bottom:4px;">Bekreft og lagre</h2>
-      <div id="acSummary" style="margin-bottom:16px;"></div>
-      <div class="modal-actions">
-        <button class="btn btn-outline" onclick="acStep(3)">← Tilbake</button>
-        <button class="btn" id="acSaveBtn" onclick="acSave()">✅ Lagre bane</button>
+        <button class="btn" id="acSaveBtn" onclick="acSave()" style="display:none;">✅ Lagre bane</button>
       </div>
     </div>
   </div>
@@ -1083,11 +1047,10 @@ let _ac = {};
 let _acTeeCount = 0;
 
 function openAddCourse() {
-  _ac = { step: 1, holes: 18, fileData: null, fileType: null, holeData: [], tees: [] };
+  _ac = { step: 1, fileData: null, fileType: null, holeData: [], tees: [], detectedRange: null };
   _acTeeCount = 0;
   document.getElementById('acName').value = '';
   document.getElementById('acLocation').value = '';
-  document.querySelectorAll('input[name="acHoles"]').forEach(r => { r.checked = r.value === '18'; });
   document.getElementById('acTeeRows').innerHTML = '';
   document.getElementById('acSlopeStatus').textContent = '';
   document.getElementById('acScorecardStatus').innerHTML = '';
@@ -1097,7 +1060,7 @@ function openAddCourse() {
   document.getElementById('acScorecardIcon').textContent = '📸';
   document.getElementById('acScorecardLabel').textContent = 'Last opp scorekort';
   document.getElementById('acAnalyzeBtn').style.display = 'none';
-  document.getElementById('acStep3NextBtn').style.display = 'none';
+  document.getElementById('acSaveBtn').style.display = 'none';
   document.getElementById('acAlert').innerHTML = '';
   const slopeInput = document.getElementById('acSlopeFile');
   if (slopeInput) slopeInput.value = '';
@@ -1108,26 +1071,8 @@ function openAddCourse() {
   openModal('modalAddCourse');
 }
 
-function acSyncHoleRadio() {
-  setTimeout(() => {
-    const val = document.querySelector('input[name="acHoles"]:checked')?.value || '18';
-    const lbl18 = document.getElementById('acHoles18Lbl');
-    const lbl9 = document.getElementById('acHoles9Lbl');
-    if (lbl18) {
-      lbl18.style.borderColor = val === '18' ? 'rgba(201,168,76,0.6)' : 'rgba(255,255,255,0.1)';
-      lbl18.style.background = val === '18' ? 'rgba(201,168,76,0.1)' : 'transparent';
-      lbl18.style.color = val === '18' ? 'var(--gold-light)' : 'var(--cream-dim)';
-    }
-    if (lbl9) {
-      lbl9.style.borderColor = val === '9' ? 'rgba(201,168,76,0.6)' : 'rgba(255,255,255,0.1)';
-      lbl9.style.background = val === '9' ? 'rgba(201,168,76,0.1)' : 'transparent';
-      lbl9.style.color = val === '9' ? 'var(--gold-light)' : 'var(--cream-dim)';
-    }
-  }, 0);
-}
-
 function acUpdateStepIndicator(step) {
-  for (let i = 1; i <= 4; i++) {
+  for (let i = 1; i <= 3; i++) {
     const dot = document.getElementById('acStepDot' + i);
     if (!dot) continue;
     const done = i < step;
@@ -1135,7 +1080,7 @@ function acUpdateStepIndicator(step) {
     dot.style.background = active ? 'var(--gold)' : done ? 'var(--green-light)' : 'rgba(255,255,255,0.1)';
     dot.style.color = (active || done) ? 'var(--green-deep)' : 'var(--cream-dim)';
     dot.textContent = done ? '✓' : String(i);
-    if (i < 4) {
+    if (i < 3) {
       const line = document.getElementById('acLine' + i);
       if (line) line.style.background = done ? 'var(--green-light)' : 'rgba(255,255,255,0.1)';
     }
@@ -1144,30 +1089,30 @@ function acUpdateStepIndicator(step) {
 
 function acStep(n) {
   document.getElementById('acAlert').innerHTML = '';
-  for (let i = 1; i <= 4; i++) {
+  for (let i = 1; i <= 3; i++) {
     document.getElementById('acStep' + i).style.display = i === n ? 'block' : 'none';
   }
   acUpdateStepIndicator(n);
-  if (n === 4) acBuildSummary();
 }
 
-function acNext(fromStep, skip) {
+function acNext(fromStep) {
   document.getElementById('acAlert').innerHTML = '';
   if (fromStep === 1) {
     const name = document.getElementById('acName').value.trim();
     if (!name) { showAlert('acAlert', 'Banenavn er påkrevd', 'error'); return; }
     _ac.name = name;
     _ac.location = document.getElementById('acLocation').value.trim();
-    _ac.holes = parseInt(document.querySelector('input[name="acHoles"]:checked')?.value || '18');
     acStep(2);
   } else if (fromStep === 2) {
     _ac.tees = acCollectTees();
     acStep(3);
-  } else if (fromStep === 3) {
-    if (!skip) _ac.holeData = acCollectHoles();
-    else _ac.holeData = [];
-    acStep(4);
   }
+}
+
+function acSkipAndSave() {
+  _ac.holeData = [];
+  _ac.detectedRange = null;
+  acSave();
 }
 
 function acCollectTees() {
@@ -1187,9 +1132,12 @@ function acCollectTees() {
 }
 
 function acCollectHoles() {
-  const holeCount = _ac.holes || 18;
+  const isBack = _ac.detectedRange === 'back9';
+  const isAll = _ac.detectedRange === 'all18';
+  const startHole = isBack ? 10 : 1;
+  const endHole = isAll ? 18 : (isBack ? 18 : 9);
   const holes = [];
-  for (let i = 1; i <= holeCount; i++) {
+  for (let i = startHole; i <= endHole; i++) {
     const par = parseInt(document.getElementById('ach-par-' + i)?.value || '0');
     const si = parseInt(document.getElementById('ach-si-' + i)?.value || '0');
     if (par && si) holes.push({ hole: i, par, si });
@@ -1269,7 +1217,7 @@ function acLoadScorecard(file) {
   document.getElementById('acScorecardIcon').textContent = '✓';
   document.getElementById('acScorecardLabel').textContent = file.name;
   document.getElementById('acAnalyzeBtn').style.display = 'inline-flex';
-  document.getElementById('acStep3NextBtn').style.display = 'none';
+  document.getElementById('acSaveBtn').style.display = 'none';
   const reader = new FileReader();
   reader.onload = (e) => {
     _ac.fileData = e.target.result.split(',')[1];
@@ -1288,19 +1236,21 @@ async function acAnalyzeScorecard() {
   btn.disabled = true;
   const statusEl = document.getElementById('acScorecardStatus');
   statusEl.innerHTML = '<div style="color:var(--cream-dim);font-size:13px;">⏳ Sender til Claude – vent...</div>';
-  const holeCount = _ac.holes || 18;
   try {
     const parsed = await callClaudeProxy(
       _ac.fileData, _ac.fileType,
-      `Dette er et scorekort fra en norsk golfbane. Les alle ${holeCount} hull og trekk ut par og SI/Index/Hcp per hull. Returner KUN JSON: {"holes":[{"hole":1,"par":4,"si":7}]}.`,
+      'Dette er et scorekort fra en norsk golfbane. Detekter hvilke hull som er med: "front9" (hull 1-9), "back9" (hull 10-18), eller "all18" (hull 1-18). Trekk ut par og SI/Index per hull. Returner KUN JSON: {"hole_range":"front9","holes":[{"hole":1,"par":4,"si":7}]}. Kun JSON.',
       2000
     );
     const holes = parsed.holes || [];
+    const detectedRange = parsed.hole_range || (holes.some(h => h.hole >= 10) ? (holes.some(h => h.hole <= 9) ? 'all18' : 'back9') : 'front9');
     if (!holes.length) throw new Error('Fant ingen hull i scorekortet');
+    _ac.detectedRange = detectedRange;
     _ac.holeData = holes.map(h => ({ hole: h.hole, par: h.par, si: h.si }));
-    acRenderHoleTable(holes);
-    statusEl.innerHTML = `<div style="color:var(--green-light);font-size:13px;margin-bottom:8px;">✅ ${holes.length} hull lest inn – sjekk og korriger om nødvendig</div>`;
-    document.getElementById('acStep3NextBtn').style.display = 'inline-flex';
+    acRenderHoleTable(holes, detectedRange);
+    const rangeLabel = detectedRange === 'all18' ? 'Hull 1–18' : detectedRange === 'back9' ? 'Hull 10–18 (bak 9)' : 'Hull 1–9 (front 9)';
+    statusEl.innerHTML = `<div style="color:var(--green-light);font-size:13px;margin-bottom:8px;">✅ Detektert: ${rangeLabel} · ${holes.length} hull lest inn – sjekk og korriger om nødvendig</div>`;
+    document.getElementById('acSaveBtn').style.display = 'inline-flex';
   } catch(e) {
     statusEl.innerHTML = `<div style="color:var(--danger);font-size:13px;">${e.message}</div>`;
   }
@@ -1308,59 +1258,35 @@ async function acAnalyzeScorecard() {
   btn.disabled = false;
 }
 
-function acRenderHoleTable(holes) {
-  const holeCount = _ac.holes || 18;
+function acRenderHoleTable(holes, detectedRange) {
+  const isBack = detectedRange === 'back9';
+  const isAll = detectedRange === 'all18';
+  const startHole = isBack ? 10 : 1;
+  const endHole = isAll ? 18 : (isBack ? 18 : 9);
+  const siMax = 9;
   const el = document.getElementById('acHoleTable');
   el.style.display = 'block';
   el.innerHTML = '<table class="hole-table"><thead><tr><th>Hull</th><th>Par</th><th>SI</th></tr></thead><tbody>' +
-    Array.from({length: holeCount}, (_, i) => {
-      const h = holes.find(x => x.hole === i + 1) || {};
-      return `<tr><td class="hole-num">${i+1}</td>` +
-        `<td><input type="number" id="ach-par-${i+1}" value="${h.par||''}" min="3" max="5" style="width:60px;"></td>` +
-        `<td><input type="number" id="ach-si-${i+1}" value="${h.si||''}" min="1" max="${holeCount}" style="width:60px;"></td></tr>`;
+    Array.from({length: endHole - startHole + 1}, (_, i) => {
+      const holeNum = startHole + i;
+      const h = holes.find(x => x.hole === holeNum) || {};
+      return `<tr><td class="hole-num">${holeNum}</td>` +
+        `<td><input type="number" id="ach-par-${holeNum}" value="${h.par||''}" min="3" max="5" style="width:60px;"></td>` +
+        `<td><input type="number" id="ach-si-${holeNum}" value="${h.si||''}" min="1" max="${siMax}" style="width:60px;"></td></tr>`;
     }).join('') +
     '</tbody></table>';
 }
 
-function acBuildSummary() {
-  _ac.tees = acCollectTees();
-  const holeCount = _ac.holes || 18;
-  const holeDone = (_ac.holeData || []).filter(h => h.par && h.si).length;
-  document.getElementById('acSummary').innerHTML = `
-    <div class="card" style="margin-bottom:12px;">
-      <p style="font-size:12px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Bane</p>
-      <p style="font-size:16px;font-family:'Playfair Display',serif;color:var(--cream);">${_ac.name}</p>
-      ${_ac.location ? `<p style="font-size:13px;color:var(--cream-dim);margin-top:4px;">📍 ${_ac.location}</p>` : ''}
-      <p style="font-size:13px;color:var(--cream-dim);margin-top:4px;">⛳ ${holeCount} hull</p>
-    </div>
-    <div class="card" style="margin-bottom:12px;">
-      <p style="font-size:12px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Tee-sett (${_ac.tees.length})</p>
-      ${_ac.tees.map(t => `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-        <div style="width:16px;height:16px;border-radius:50%;background:${t.color||'#888'};border:1px solid rgba(255,255,255,0.2);flex-shrink:0;"></div>
-        <span style="font-size:14px;color:var(--cream);">${t.name}</span>
-        ${t.cr ? `<span style="font-size:12px;color:var(--cream-dim);">CR ${t.cr}</span>` : ''}
-        ${t.slope ? `<span style="font-size:12px;color:var(--cream-dim);">Slope ${t.slope}</span>` : ''}
-      </div>`).join('') || '<p style="color:var(--cream-dim);font-size:13px;">Ingen tee-sett</p>'}
-    </div>
-    <div class="card">
-      <p style="font-size:12px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Hull-data</p>
-      <p style="font-size:14px;color:${holeDone === holeCount ? 'var(--green-light)' : holeDone > 0 ? 'var(--gold)' : 'var(--cream-dim)'};">
-        ${holeDone === holeCount ? `✅ Alle ${holeCount} hull klar` : holeDone > 0 ? `⚠️ ${holeDone}/${holeCount} hull klar` : '– Ingen hull-data (kan legges til etterpå)'}
-      </p>
-    </div>
-  `;
-}
-
 async function acSave() {
+  if (_ac.detectedRange) _ac.holeData = acCollectHoles();
   const btn = document.getElementById('acSaveBtn');
-  btn.disabled = true;
-  btn.textContent = '⏳ Lagrer...';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Lagrer...'; }
   showAlert('acAlert', '⏳ Lagrer bane...', 'success');
   try {
     const { data: course, error: ce } = await db.from('courses').insert({
       name: _ac.name,
       location: _ac.location || null,
-      holes: _ac.holes,
+      holes: 18,
       created_by: currentProfile?.id
     }).select().single();
     if (ce) throw new Error('Feil ved lagring av bane: ' + ce.message);
@@ -1373,7 +1299,6 @@ async function acSave() {
     }
     const holeData = (_ac.holeData || []).filter(h => h.par && h.si);
     if (holeData.length > 0) {
-      await db.from('holes').delete().eq('course_id', course.id);
       const { error: he } = await db.from('holes').insert(
         holeData.map(h => ({ course_id: course.id, hole_number: h.hole, par: h.par, stroke_index: h.si }))
       );
@@ -1384,8 +1309,7 @@ async function acSave() {
     setTimeout(() => { closeModal('modalAddCourse'); openCourseDetail(course.id); }, 800);
   } catch(e) {
     showAlert('acAlert', e.message, 'error');
-    btn.disabled = false;
-    btn.textContent = '✅ Lagre bane';
+    if (btn) { btn.disabled = false; btn.textContent = '✅ Lagre bane'; }
   }
 }
 async function loadCourses() {
@@ -1398,8 +1322,8 @@ async function loadCourses() {
   el.innerHTML = courses.map(c => `
     <div class="course-item" onclick="openCourseDetail('${c.id}')">
       <div>
-        <div class="course-name">${c.name}${c.holes === 9 ? ' <span style="font-size:12px; color:var(--cream-dim); font-weight:400;">(9 hull)</span>' : ''}</div>
-        <div class="course-meta">${c.location || ''} · ${c.holes} hull · ${c.tee_sets?.length || 0} tee-sett</div>
+        <div class="course-name">${c.name}</div>
+        <div class="course-meta">${c.location || ''} · ${c.tee_sets?.length || 0} tee-sett</div>
       </div>
       <div class="tee-dots">
         ${(c.tee_sets || []).map(t => `<div class="tee-dot" style="background:${t.color || '#888'};" title="${t.name}"></div>`).join('')}
@@ -1418,16 +1342,18 @@ async function openCourseDetail(courseId) {
   if (error || !course) { alert('Kunne ikke laste bane.'); return; }
   const { data: tees } = await db.from('tee_sets').select('*').eq('course_id', courseId);
   const { data: holeRows } = await db.from('holes').select('*').eq('course_id', courseId).order('hole_number');
-  const holeCount = course.holes;
   const teeList = tees || [];
   const holeList = holeRows || [];
+  const hasFront = holeList.some(h => h.hole_number <= 9);
+  const hasBack = holeList.some(h => h.hole_number >= 10);
+  const hullStatus = hasFront && hasBack ? 'Hull 1–18' : hasFront ? 'Hull 1–9' : hasBack ? 'Hull 10–18' : 'Ingen hull registrert';
   document.getElementById('detailCourseName').textContent = course.name;
   document.getElementById('courseTabInfo').innerHTML = `
     <div class="card">
       <h3 style="font-family:'Playfair Display',serif;font-size:20px;color:var(--cream);margin-bottom:12px;">${course.name}</h3>
       <div class="grid-2">
         <div><p style="font-size:12px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;">Sted</p><p style="margin-top:4px;">${course.location || '–'}</p></div>
-        <div><p style="font-size:12px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;">Hull</p><p style="margin-top:4px;">${holeCount}</p></div>
+        <div><p style="font-size:12px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;">Hull</p><p style="margin-top:4px;color:${(hasFront||hasBack)?'var(--green-light)':'var(--cream-dim)'};">${hullStatus}</p></div>
       </div>
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 10px;">
@@ -1474,7 +1400,7 @@ async function openCourseDetail(courseId) {
       </div>
     `).join('') || '<p style="color:var(--cream-dim);font-size:14px;">Ingen tee-sett registrert.</p>'}
   `;
-  renderHolesTab({ id: courseId, holes_count: holeCount, holes: holeList });
+  renderHolesTab({ id: courseId, holes: holeList });
   showCourseTab('info');
   const deleteBtn = document.getElementById('btnDeleteCourse');
   if (deleteBtn) deleteBtn.style.display = currentProfile?.is_admin ? 'inline-flex' : 'none';
@@ -1488,77 +1414,79 @@ function showCourseTab(tab) {
   });
 }
 function renderHolesTab(course) {
-  const holeCount = parseInt(course.holes_count) || 9;
-  const existing = {};
-  (course.holes || []).forEach(h => { existing[h.hole_number] = h; });
   const courseId = course.id || currentCourseId;
-  const siMax = holeCount;
-  let rows = '';
-  for (let i = 1; i <= holeCount; i++) {
-    const h = existing[i] || {};
-    rows += '<tr><td class="hole-num">' + i + '</td>' +
-      '<td><input type="number" id="hpar-' + i + '" value="' + (h.par || '') + '" placeholder="4" min="3" max="5" style="width:60px;"></td>' +
-      '<td><input type="number" id="hsi-' + i + '" value="' + (h.stroke_index || '') + '" placeholder="' + i + '" min="1" max="' + siMax + '" style="width:60px;"></td></tr>';
-  }
-  const hasData = Object.keys(existing).length > 0;
-  const statusText = hasData
-    ? '<span style="color:var(--green-light);">✓ Data lagret</span>'
-    : '<span style="color:var(--gold);">Ingen data ennå</span>';
+  const existingFront = {}, existingBack = {};
+  (course.holes || []).forEach(h => {
+    if (h.hole_number <= 9) existingFront[h.hole_number] = h;
+    else existingBack[h.hole_number] = h;
+  });
   const el = document.getElementById('courseTabHoles');
-  el.innerHTML = '';
-  const uploadWrap = document.createElement('div');
-  uploadWrap.style.marginBottom = '12px';
-  const uploadLabel = document.createElement('label');
-  uploadLabel.style.cssText = 'padding:6px 12px;border-radius:6px;border:1px solid rgba(201,168,76,0.4);color:var(--gold);font-size:12px;cursor:pointer;display:inline-block;';
-  uploadLabel.textContent = '📸 Les scorekort';
-  const uploadInp = document.createElement('input');
-  uploadInp.type = 'file';
-  uploadInp.id = 'hullScorecardFile';
-  uploadInp.accept = 'image/png,image/jpeg,image/jpg,application/pdf';
-  uploadInp.style.cssText = 'display:none;';
-  uploadInp.onchange = (e) => analyzeHullScorecard(e.target.files[0], courseId, holeCount);
-  uploadLabel.appendChild(uploadInp);
-  const statusDiv = document.createElement('div');
-  statusDiv.id = 'hullScorecardStatus';
-  statusDiv.style.marginBottom = '8px';
-  uploadWrap.appendChild(uploadLabel);
-  uploadWrap.appendChild(statusDiv);
-  el.appendChild(uploadWrap);
-  const rest = document.createElement('div');
-  rest.innerHTML = '<p style="font-size:13px;color:var(--cream-dim);margin-bottom:12px;">Fyll inn par og SI per hull. ' + statusText + '</p>' +
-    '<table class="hole-table"><thead><tr><th>Hull</th><th>Par</th><th>SI</th></tr></thead><tbody>' + rows + '</tbody></table>' +
-    '<button class="btn" id="saveHolesBtn" style="margin-top:16px;">Lagre hull-data</button>' +
-    '<div id="holesAlert" style="margin-top:12px;"></div>';
-  el.appendChild(rest);
-  const saveBtn = document.getElementById('saveHolesBtn');
-  if (saveBtn) saveBtn.onclick = () => saveHoles(courseId, holeCount, siMax);
+  el.innerHTML = buildHoleSection('front9', 1, 9, existingFront, courseId) +
+                 '<hr style="border:none;border-top:1px solid rgba(255,255,255,0.07);margin:8px 0 20px;">' +
+                 buildHoleSection('back9', 10, 18, existingBack, courseId);
 }
-async function saveHoles(courseId, holeCount, siMax) {
-  siMax = siMax || holeCount;
-  const holes = [];
-  const usedSI = [];
-  const errors = [];
-  for (let i = 1; i <= holeCount; i++) {
+
+function buildHoleSection(range, startHole, endHole, existing, courseId) {
+  const hasData = Object.keys(existing).length > 0;
+  const label = range === 'front9' ? 'Hull 1–9' : 'Hull 10–18';
+  const statusBadge = hasData
+    ? '<span style="font-size:12px;color:var(--green-light);">✓ Registrert</span>'
+    : '<span style="font-size:12px;color:var(--cream-dim);">Ikke registrert</span>';
+  let rows = '';
+  for (let i = startHole; i <= endHole; i++) {
+    const h = existing[i] || {};
+    rows += `<tr><td class="hole-num">${i}</td>` +
+      `<td><input type="number" id="hpar-${i}" value="${h.par||''}" placeholder="4" min="3" max="5" style="width:60px;"></td>` +
+      `<td><input type="number" id="hsi-${i}" value="${h.stroke_index||''}" placeholder="${i-startHole+1}" min="1" max="9" style="width:60px;"></td></tr>`;
+  }
+  return `<div style="margin-bottom:4px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <h4 style="font-family:'Playfair Display',serif;font-size:15px;color:var(--cream);">${label}</h4>
+      ${statusBadge}
+    </div>
+    <div style="margin-bottom:10px;">
+      <label style="padding:5px 12px;border-radius:6px;border:1px solid rgba(201,168,76,0.4);color:var(--gold);font-size:12px;cursor:pointer;display:inline-block;">
+        📸 Les scorekort
+        <input type="file" accept="image/png,image/jpeg,image/jpg,application/pdf" style="display:none;"
+          onchange="analyzeHullScorecard(this.files[0],'${courseId}','${range}')">
+      </label>
+      <div id="hullStatus-${range}" style="margin-top:6px;font-size:12px;"></div>
+    </div>
+    <table class="hole-table">
+      <thead><tr><th>Hull</th><th>Par</th><th>SI</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <button class="btn" onclick="saveHoles('${courseId}','${range}')" style="margin-top:12px;font-size:13px;padding:8px 20px;">Lagre ${label}</button>
+    <div id="holesAlert-${range}" style="margin-top:8px;"></div>
+  </div>`;
+}
+
+async function saveHoles(courseId, range) {
+  const isBack = range === 'back9';
+  const startHole = isBack ? 10 : 1;
+  const endHole = isBack ? 18 : 9;
+  const holes = [], usedSI = [], errors = [];
+  for (let i = startHole; i <= endHole; i++) {
     const parVal = document.getElementById(`hpar-${i}`)?.value?.trim();
     const siVal = document.getElementById(`hsi-${i}`)?.value?.trim();
+    if (!parVal && !siVal) continue;
     if (!parVal) { errors.push(`Hull ${i}: Par mangler`); continue; }
     if (!siVal)  { errors.push(`Hull ${i}: SI mangler`); continue; }
-    const par = parseInt(parVal);
-    const si  = parseInt(siVal);
-    if (![3, 4, 5].includes(par)) { errors.push(`Hull ${i}: Par må være 3, 4 eller 5 (du skrev ${parVal})`); continue; }
-    if (isNaN(si) || si < 1 || si > siMax) { errors.push(`Hull ${i}: SI må være mellom 1 og ${siMax} (du skrev ${siVal})`); continue; }
+    const par = parseInt(parVal), si = parseInt(siVal);
+    if (![3, 4, 5].includes(par)) { errors.push(`Hull ${i}: Par må være 3–5`); continue; }
+    if (isNaN(si) || si < 1 || si > 9) { errors.push(`Hull ${i}: SI må være 1–9`); continue; }
     if (usedSI.includes(si)) { errors.push(`Hull ${i}: SI ${si} er allerede brukt`); continue; }
     usedSI.push(si);
     holes.push({ course_id: courseId, hole_number: i, par, stroke_index: si });
   }
-  if (errors.length) {
-    showAlert('holesAlert', '⚠️ Feil i hull-data:<br>' + errors.map(e => `• ${e}`).join('<br>'), 'error');
-    return;
-  }
-  await db.from('holes').delete().eq('course_id', courseId);
+  const alertId = `holesAlert-${range}`;
+  if (errors.length) { showAlert(alertId, '⚠️ Feil:<br>' + errors.join('<br>'), 'error'); return; }
+  if (!holes.length) { showAlert(alertId, 'Ingen hull å lagre', 'error'); return; }
+  const { error: de } = await db.from('holes').delete().eq('course_id', courseId).gte('hole_number', startHole).lte('hole_number', endHole);
+  if (de) { showAlert(alertId, 'Feil: ' + de.message, 'error'); return; }
   const { error } = await db.from('holes').insert(holes);
-  if (error) { showAlert('holesAlert', 'Feil: ' + error.message, 'error'); return; }
-  showAlert('holesAlert', `✅ Hull-data lagret for alle ${holeCount} hull!`, 'success');
+  if (error) { showAlert(alertId, 'Feil: ' + error.message, 'error'); return; }
+  showAlert(alertId, `✅ ${holes.length} hull lagret!`, 'success');
 }
 
 // ── PLAYERS ──
@@ -1816,23 +1744,19 @@ async function loadRounds() {
     </div>`;
   }).join('');
 }
-let _roundCourseHoles = 18;
+let _roundAvailableRanges = { hasFront9: false, hasBack9: false };
 async function openNewRound() {
   flightCount = 0;
-  _roundCourseHoles = 18;
+  _roundAvailableRanges = { hasFront9: false, hasBack9: false };
   document.getElementById('newRoundAlert').innerHTML = '';
   document.getElementById('flightList').innerHTML = '';
   document.getElementById('roundDate').value = new Date().toISOString().split('T')[0];
   const rangeDiv = document.getElementById('roundHoleRangeDiv');
-  if (rangeDiv) rangeDiv.style.display = 'none';
-  document.querySelectorAll('input[name="roundHoleRange"]').forEach(r => { r.checked = r.value === 'all'; });
-  const { data: courses } = await db.from('courses').select('id, name, holes').order('name');
+  if (rangeDiv) { rangeDiv.style.display = 'none'; rangeDiv.innerHTML = ''; }
+  const { data: courses } = await db.from('courses').select('id, name').order('name');
   const sel = document.getElementById('roundCourse');
   sel.innerHTML = '<option value="">Velg bane...</option>' +
-    (courses || []).map(c => {
-      const hullLabel = c.holes === 9 ? ' (9 hull)' : '';
-      return `<option value="${c.id}">${c.name}${hullLabel}</option>`;
-    }).join('');
+    (courses || []).map(c => `<option value="${c.id}">${c.name}</option>`).join('');
   const { data: players } = await db.from('profiles').select('id, display_name, username, handicap').order('display_name');
   allPlayers = players || [];
   addFlight();
@@ -1844,16 +1768,33 @@ async function loadTeeSets(courseId) {
   const sel = document.getElementById('roundTee');
   sel.innerHTML = '<option value="">Velg tee...</option>' +
     (tees || []).map(t => `<option value="${t.id}">${t.name} — Slope ${t.slope}, CR ${t.course_rating}</option>`).join('');
-  const { data: course } = await db.from('courses').select('holes').eq('id', courseId).single();
-  _roundCourseHoles = course?.holes || 18;
-  const { data: holes } = await db.from('holes').select('hole_number').eq('course_id', courseId).limit(1);
-  const noHoleData = !holes || holes.length === 0;
+  const { data: holes } = await db.from('holes').select('hole_number').eq('course_id', courseId);
+  const holeNums = (holes || []).map(h => h.hole_number);
+  const hasFront9 = holeNums.some(n => n <= 9);
+  const hasBack9 = holeNums.some(n => n >= 10);
+  _roundAvailableRanges = { hasFront9, hasBack9 };
   const warningEl = document.getElementById('roundHoleWarning');
-  if (warningEl) warningEl.style.display = noHoleData ? 'block' : 'none';
+  if (warningEl) warningEl.style.display = holeNums.length === 0 ? 'block' : 'none';
   const rangeDiv = document.getElementById('roundHoleRangeDiv');
-  if (rangeDiv) {
-    rangeDiv.style.display = _roundCourseHoles === 18 ? 'block' : 'none';
-    document.querySelectorAll('input[name="roundHoleRange"]').forEach(r => { r.checked = r.value === 'all'; });
+  if (!rangeDiv) return;
+  const lblStyle = 'display:flex;align-items:center;gap:6px;padding:10px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);cursor:pointer;font-size:14px;color:var(--cream-dim);';
+  if (hasFront9 && hasBack9) {
+    rangeDiv.style.display = 'block';
+    rangeDiv.innerHTML = `<label style="font-size:14px;font-weight:500;color:var(--cream);display:block;margin-bottom:8px;">Hvilke hull spilles?</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <label style="${lblStyle}"><input type="radio" name="roundHoleRange" value="all" checked style="accent-color:var(--gold);"> Hull 1–18</label>
+        <label style="${lblStyle}"><input type="radio" name="roundHoleRange" value="front9" style="accent-color:var(--gold);"> Hull 1–9</label>
+        <label style="${lblStyle}"><input type="radio" name="roundHoleRange" value="back9" style="accent-color:var(--gold);"> Hull 10–18</label>
+      </div>`;
+  } else if (hasFront9) {
+    rangeDiv.style.display = 'block';
+    rangeDiv.innerHTML = `<p style="font-size:13px;color:var(--cream-dim);padding:8px 12px;background:rgba(82,183,136,0.1);border-radius:8px;border:1px solid rgba(82,183,136,0.2);">⛳ Registrerte hull: 1–9 (front 9)</p>`;
+  } else if (hasBack9) {
+    rangeDiv.style.display = 'block';
+    rangeDiv.innerHTML = `<p style="font-size:13px;color:var(--cream-dim);padding:8px 12px;background:rgba(82,183,136,0.1);border-radius:8px;border:1px solid rgba(82,183,136,0.2);">⛳ Registrerte hull: 10–18 (bak 9)</p>`;
+  } else {
+    rangeDiv.style.display = 'none';
+    rangeDiv.innerHTML = '';
   }
 }
 function addFlight() {
@@ -1882,9 +1823,17 @@ async function saveRound() {
   const teeId = document.getElementById('roundTee').value;
   const date = document.getElementById('roundDate').value;
   if (!courseId || !teeId || !date) { showAlert('newRoundAlert', 'Fyll inn bane, tee og dato', 'error'); return; }
-  const holeRange = _roundCourseHoles === 18
-    ? (document.querySelector('input[name="roundHoleRange"]:checked')?.value || 'all')
-    : 'all';
+  const { hasFront9, hasBack9 } = _roundAvailableRanges;
+  let holeRange;
+  if (hasFront9 && hasBack9) {
+    holeRange = document.querySelector('input[name="roundHoleRange"]:checked')?.value || 'all';
+  } else if (hasFront9) {
+    holeRange = 'front9';
+  } else if (hasBack9) {
+    holeRange = 'back9';
+  } else {
+    holeRange = 'all';
+  }
   const { data: round, error } = await db.from('rounds').insert({
     course_id: courseId, tee_set_id: teeId, date, created_by: currentProfile.id, status: 'active',
     hole_range: holeRange
@@ -3043,35 +2992,35 @@ function showConfirm(message, confirmText = 'Slett') {
 }
 
 // ── HULL SCORECARD UPLOAD (fra hull-fanen) ──
-async function analyzeHullScorecard(file, courseId, holeCount) {
+async function analyzeHullScorecard(file, courseId, range) {
   if (!file) return;
-  const statusEl = document.getElementById('hullScorecardStatus');
-  if (statusEl) statusEl.innerHTML = '<div class="alert alert-success">⏳ Leser fil...</div>';
+  const isBack = range === 'back9';
+  const startHole = isBack ? 10 : 1;
+  const endHole = isBack ? 18 : 9;
+  const statusEl = document.getElementById('hullStatus-' + range);
+  if (statusEl) statusEl.innerHTML = '⏳ Analyserer...';
   const reader = new FileReader();
-  reader.onerror = () => {
-    if (statusEl) statusEl.innerHTML = '<div class="alert alert-error">⚠️ Kunne ikke lese filen</div>';
-  };
+  reader.onerror = () => { if (statusEl) statusEl.innerHTML = '<span style="color:var(--danger);">⚠️ Kunne ikke lese filen</span>'; };
   reader.onload = async (e) => {
     const fileData = e.target.result.split(',')[1];
-    if (statusEl) statusEl.innerHTML = '<div class="alert alert-success">⏳ Sender til Claude – vent...</div>';
-    const hullInfo = 'Les alle ' + holeCount + ' hull.';
     try {
       const parsed = await callClaudeProxy(
         fileData, file.type,
-        'Dette er et scorekort fra en norsk golfbane. ' + hullInfo + ' Trekk ut par og stroke index (SI/Index/Hcp) per hull. Returner KUN gyldig JSON: {"holes":[{"hole":1,"par":4,"si":7}]}. Kun JSON.',
+        `Dette er et scorekort fra en norsk golfbane med hull ${startHole} til ${endHole}. Trekk ut par og stroke index (SI/Index) per hull. Returner KUN JSON: {"holes":[{"hole":${startHole},"par":4,"si":1}]}. Kun JSON.`,
         2000
       );
       const holes = parsed.holes || [];
-      if (!holes.length) throw new Error('Fant ingen hull i scorekortet');
+      if (!holes.length) throw new Error('Fant ingen hull');
       holes.forEach(h => {
+        if (h.hole < startHole || h.hole > endHole) return;
         const parEl = document.getElementById('hpar-' + h.hole);
         const siEl = document.getElementById('hsi-' + h.hole);
         if (parEl) parEl.value = h.par;
         if (siEl) siEl.value = h.si;
       });
-      if (statusEl) statusEl.innerHTML = '<div class="alert alert-success">✅ Fant ' + holes.length + ' hull. Sjekk verdiene og trykk Lagre hull-data.</div>';
-    } catch(e) {
-      if (statusEl) statusEl.innerHTML = '<div class="alert alert-error">⚠️ Analyse feilet: ' + e.message + '</div>';
+      if (statusEl) statusEl.innerHTML = `<span style="color:var(--green-light);">✅ ${holes.length} hull lest inn – sjekk og lagre</span>`;
+    } catch(err) {
+      if (statusEl) statusEl.innerHTML = `<span style="color:var(--danger);">⚠️ ${err.message}</span>`;
     }
   };
   reader.readAsDataURL(file);
