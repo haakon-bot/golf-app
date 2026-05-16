@@ -404,7 +404,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.37</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.38</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -1704,27 +1704,6 @@ async function loadProfilePage() {
       </div>
     </div>
     <div class="card">
-      <h3 style="font-family:'Playfair Display',serif; margin-bottom:20px;">Rediger profil</h3>
-      <div id="profileAlert"></div>
-      <div class="form-group"><label>Visningsnavn</label><input type="text" id="editDisplayName" value="${p.display_name || ''}"></div>
-      <div class="form-group"><label>Handicap (følg Golfbox)</label><input type="number" id="editHcp" value="${p.handicap ?? ''}" step="0.1" min="-10" max="54"></div>
-      <button class="btn btn-auto" onclick="saveProfile()">Lagre endringer</button>
-    </div>
-    <div class="card">
-      <h3 style="font-family:'Playfair Display',serif; margin-bottom:8px;">Endre passord</h3>
-      <p style="font-size:13px; color:var(--cream-dim); margin-bottom:16px;">Logg inn med nytt passord neste gang.</p>
-      <div id="passwordAlert"></div>
-      <div class="form-group"><label>Nytt passord</label><input type="password" id="newPassword1" placeholder="Minst 6 tegn"></div>
-      <div class="form-group"><label>Bekreft nytt passord</label><input type="password" id="newPassword2" placeholder="Gjenta passord"></div>
-      <button class="btn btn-auto" onclick="changePassword()">Endre passord</button>
-    </div>
-    <div class="card">
-      <h3 style="font-family:'Playfair Display',serif; margin-bottom:6px;">Historikk fra Golfbox</h3>
-      <p style="font-size:13px; color:var(--cream-dim); margin-bottom:16px;">Importer dine tidligere runder fra Golfbox eller Gimmie ved å ta bilde av poenglisten.</p>
-      <button class="btn btn-outline btn-auto" onclick="openGolfboxImport()">📷 Importer fra Golfbox</button>
-      <div id="golfboxImportList" style="margin-top:16px;"><div style="height:24px;"></div></div>
-    </div>
-    <div class="card">
       <h3 style="font-family:'Playfair Display',serif; margin-bottom:16px;">Statistikk</h3>
       <div id="statsKpis" style="margin-bottom:16px;"><div class="loading"><div class="spinner"></div></div></div>
       <button onclick="_toggleStatsExpand()" id="statsExpandBtn" style="width:100%;background:none;border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:11px 16px;color:var(--cream-dim);font-family:'DM Sans',sans-serif;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:color 0.2s,border-color 0.2s;">
@@ -1737,6 +1716,27 @@ async function loadProfilePage() {
           <div id="hcpHistoryList"></div>
         </div>
       </div>
+    </div>
+    <div class="card">
+      <h3 style="font-family:'Playfair Display',serif; margin-bottom:6px;">Historikk fra Golfbox</h3>
+      <p style="font-size:13px; color:var(--cream-dim); margin-bottom:16px;">Importer dine tidligere runder fra Golfbox eller Gimmie ved å ta bilde av poenglisten.</p>
+      <button class="btn btn-outline btn-auto" onclick="openGolfboxImport()">📷 Importer fra Golfbox</button>
+      <div id="golfboxImportList" style="margin-top:16px;"><div style="height:24px;"></div></div>
+    </div>
+    <div class="card">
+      <h3 style="font-family:'Playfair Display',serif; margin-bottom:20px;">Rediger profil</h3>
+      <div id="profileAlert"></div>
+      <div class="form-group"><label>Visningsnavn</label><input type="text" id="editDisplayName" value="${p.display_name || ''}"></div>
+      <div class="form-group"><label>Handicap (følg Golfbox)</label><input type="number" id="editHcp" value="${p.handicap ?? ''}" step="0.1" min="-10" max="54"></div>
+      <button class="btn btn-auto" onclick="saveProfile()">Lagre endringer</button>
+    </div>
+    <div class="card">
+      <h3 style="font-family:'Playfair Display',serif; margin-bottom:8px;">Bytt passord</h3>
+      <p style="font-size:13px; color:var(--cream-dim); margin-bottom:16px;">Logg inn med nytt passord neste gang.</p>
+      <div id="passwordAlert"></div>
+      <div class="form-group"><label>Nytt passord</label><input type="password" id="newPassword1" placeholder="Minst 6 tegn"></div>
+      <div class="form-group"><label>Bekreft nytt passord</label><input type="password" id="newPassword2" placeholder="Gjenta passord"></div>
+      <button class="btn btn-auto" onclick="changePassword()">Endre passord</button>
     </div>
     ${p.is_admin ? `
     <div class="card" style="margin-top:16px;">
@@ -2875,7 +2875,6 @@ async function loadDashboard() {
       { data: recent },
       { data: pending },
       { data: notifs },
-      { data: myDiffs },
     ] = await Promise.all([
       db.from('rounds')
         .select('*, courses(name), flights(id, flight_players(player_id))')
@@ -2888,11 +2887,6 @@ async function loadDashboard() {
         : Promise.resolve({ data: [] }),
       db.from('notifications')
         .select('id').eq('player_id', currentProfile?.id).eq('read', false),
-      currentProfile
-        ? db.from('score_differentials')
-            .select('date,differential').eq('player_id', currentProfile.id)
-            .order('date', { ascending: false }).limit(20)
-        : Promise.resolve({ data: [] }),
     ]);
 
     // Aktiv runde
@@ -2954,9 +2948,12 @@ async function loadDashboard() {
       badge.style.display = 'none';
     }
 
-    // HCP-motivasjon
+    // HCP-motivasjon – hentes separat (samme mønster som statistikk-seksjonen)
     const motivEl = document.getElementById('dashMotivation');
-    if (motivEl) {
+    if (motivEl && currentProfile) {
+      const { data: myDiffs } = await db.from('score_differentials')
+        .select('date,differential').eq('player_id', currentProfile.id)
+        .order('date', { ascending: false });
       const motiv = _calcHcpMotivation(myDiffs || []);
       motivEl.innerHTML = motiv ? _renderMotivBanner(motiv, false, true) : _renderMotivFallback();
     }
