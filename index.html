@@ -404,7 +404,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.34</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.35</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -1779,19 +1779,21 @@ function _calcHcpIndexWHS(sortedDiffsAsc) {
 
 function _calcHcpMotivation(diffs, slope = 113, courseRating = 72, coursePar = 72) {
   const withDiff = (diffs || []).filter(d => d.differential != null);
-  if (withDiff.length < 3) return null;
+  console.log('[HCP] input:', diffs?.length, 'rader, withDiff:', withDiff.length);
+  if (withDiff.length < 3) { console.log('[HCP] → null: færre enn 3 differentials'); return null; }
   const byDate = [...withDiff].sort((a, b) => new Date(b.date) - new Date(a.date));
   const last20 = byDate.slice(0, 20);
   const sortedAsc = last20.map(d => parseFloat(d.differential)).sort((a, b) => a - b);
+  console.log('[HCP] sortedAsc:', sortedAsc);
   const currentHI = _calcHcpIndexWHS(sortedAsc);
-  if (currentHI === null) return null;
-  // Pool remaining after oldest drops (if 20 rounds, oldest exits; else count grows)
+  console.log('[HCP] currentHI:', currentHI);
+  if (currentHI === null) { console.log('[HCP] → null: _calcHcpIndexWHS returnerte null'); return null; }
   const droppedRound = last20.length >= 20 ? last20[19] : null;
   const remaining = (last20.length >= 20 ? last20.slice(0, 19) : last20).map(d => parseFloat(d.differential));
-  // Feasibility: even a perfect round (-10) must help
   const bestCase = [...remaining, -10].sort((a, b) => a - b);
-  if ((_calcHcpIndexWHS(bestCase) ?? 999) >= currentHI) return null;
-  // Binary search: highest differential that still lowers HCP
+  const bestCaseHI = _calcHcpIndexWHS(bestCase) ?? 999;
+  console.log('[HCP] bestCaseHI (med diff=-10):', bestCaseHI, 'currentHI:', currentHI);
+  if (bestCaseHI >= currentHI) { console.log('[HCP] → null: selv perfekt runde hjelper ikke'); return null; }
   let lo = -10, hi = 50;
   for (let i = 0; i < 60; i++) {
     const mid = (lo + hi) / 2;
@@ -1800,11 +1802,14 @@ function _calcHcpMotivation(diffs, slope = 113, courseRating = 72, coursePar = 7
   }
   const thresholdDiff = +lo.toFixed(1);
   const newHI = _calcHcpIndexWHS([...remaining, thresholdDiff].sort((a, b) => a - b));
-  if (!newHI || newHI >= currentHI) return null;
+  console.log('[HCP] thresholdDiff:', thresholdDiff, 'newHI:', newHI);
+  if (!newHI || newHI >= currentHI) { console.log('[HCP] → null: ingen forbedring etter binærsøk'); return null; }
   const playingHCP = Math.round(currentHI * slope / 113 + (courseRating - coursePar));
   const targetGross = thresholdDiff * slope / 113 + courseRating;
   const targetStableford = Math.round(coursePar + 36 + playingHCP - targetGross);
-  if (targetStableford < 20 || targetStableford > 65) return null; // sanity
+  console.log('[HCP] playingHCP:', playingHCP, 'targetGross:', targetGross.toFixed(1), 'targetStableford:', targetStableford);
+  if (targetStableford < 20 || targetStableford > 65) { console.log('[HCP] → null: targetStableford utenfor 20-65'); return null; }
+  console.log('[HCP] ✅ returnerer motiv');
   return { currentHI, newHI, thresholdDiff, targetStableford, playingHCP, droppedRound, count: last20.length };
 }
 
@@ -2950,8 +2955,10 @@ async function loadDashboard() {
 
     // HCP-motivasjon
     const motivEl = document.getElementById('dashMotivation');
+    console.log('[HCP] dashboard myDiffs fra DB:', myDiffs?.length, myDiffs);
     if (motivEl) {
       const motiv = _calcHcpMotivation(myDiffs || []);
+      console.log('[HCP] dashboard motiv:', motiv);
       motivEl.innerHTML = motiv ? _renderMotivBanner(motiv, false, true) : '';
     }
   } finally {
