@@ -404,7 +404,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.29</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.30</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -1834,20 +1834,25 @@ function _removeGolfboxEntry(i) { _golfboxParsed.splice(i, 1); _renderGolfboxPre
 async function saveGolfboxHistory() {
   if (!_golfboxParsed.length) return;
   const btn = document.getElementById('gbSaveBtn');
-  btn.disabled = true; btn.textContent = '⏳ Lagrer…';
-  const rows = _golfboxParsed.map(r => ({
-    player_id: currentProfile.id,
-    date: r.date,
-    differential: r.differential,
-    source: r.source || 'golfbox',
-    course_name: r.course_name || null,
-    hcp_before: r.hcp_before ?? null,
-    hcp_after: r.hcp_after ?? null,
-  }));
-  const { error } = await db.from('score_differentials').upsert(rows, { onConflict: 'player_id,date,source' });
+  btn.disabled = true;
+  let saved = 0, skipped = 0;
+  for (let i = 0; i < _golfboxParsed.length; i++) {
+    btn.textContent = `⏳ Lagrer ${i + 1} av ${_golfboxParsed.length}…`;
+    const r = _golfboxParsed[i];
+    const { error } = await db.from('score_differentials').upsert({
+      player_id: currentProfile.id,
+      date: r.date,
+      differential: r.differential,
+      source: r.source || 'golfbox',
+      course_name: r.course_name || null,
+      hcp_before: r.hcp_before ?? null,
+      hcp_after: r.hcp_after ?? null,
+    }, { onConflict: 'player_id,date,source,differential' });
+    if (error) { skipped++; } else { saved++; }
+  }
   btn.disabled = false; btn.textContent = 'Lagre historikk';
-  if (error) {
-    document.getElementById('gbImportAlert').innerHTML = `<div class="alert alert-error">Feil: ${error.message}</div>`;
+  if (saved === 0 && skipped > 0) {
+    document.getElementById('gbImportAlert').innerHTML = `<div class="alert alert-error">Ingen runder ble lagret (${skipped} feilet).</div>`;
     return;
   }
   closeModal('modalGolfboxImport');
