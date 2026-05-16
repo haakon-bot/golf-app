@@ -404,7 +404,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.38</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.39</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -1799,8 +1799,14 @@ function _calcHcpMotivation(diffs, slope = 113, courseRating = 72, coursePar = 7
     const trial = [...remaining, mid].sort((a, b) => a - b);
     (_calcHcpIndexWHS(trial) ?? 999) < currentHI ? (lo = mid) : (hi = mid);
   }
-  const thresholdDiff = +lo.toFixed(1);
-  const newHI = _calcHcpIndexWHS([...remaining, thresholdDiff].sort((a, b) => a - b));
+  // Floor (not round) so thresholdDiff ≤ lo, guaranteeing newHI < currentHI
+  let thresholdDiff = +(Math.floor(lo * 10) / 10).toFixed(1);
+  let newHI = _calcHcpIndexWHS([...remaining, thresholdDiff].sort((a, b) => a - b));
+  // Safety: step down by 0.1 until we actually cross the threshold
+  while ((!newHI || newHI >= currentHI) && thresholdDiff > -10) {
+    thresholdDiff = +(thresholdDiff - 0.1).toFixed(1);
+    newHI = _calcHcpIndexWHS([...remaining, thresholdDiff].sort((a, b) => a - b));
+  }
   if (!newHI || newHI >= currentHI) return null;
   const playingHCP = Math.round(currentHI * slope / 113 + (courseRating - coursePar));
   const targetGross = thresholdDiff * slope / 113 + courseRating;
@@ -2952,8 +2958,8 @@ async function loadDashboard() {
     const motivEl = document.getElementById('dashMotivation');
     if (motivEl && currentProfile) {
       const { data: myDiffs } = await db.from('score_differentials')
-        .select('date,differential').eq('player_id', currentProfile.id)
-        .order('date', { ascending: false });
+        .select('*').eq('player_id', currentProfile.id)
+        .order('date', { ascending: true });
       const motiv = _calcHcpMotivation(myDiffs || []);
       motivEl.innerHTML = motiv ? _renderMotivBanner(motiv, false, true) : _renderMotivFallback();
     }
