@@ -404,7 +404,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.59</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.60</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -1993,55 +1993,69 @@ function _fileToBase64(file) {
 
 async function _fetchStablefordStats(profileId, diffs, currentHI) {
   try {
+    const hiNum = currentHI != null ? parseFloat(currentHI) : null;
+    const stats = { nine: [], eighteen: [] };
+
+    // Gimmie/Golfbox: always 18-hole official rounds — convert differential to Stableford on normalbane
+    const gimmieDiffs = (diffs || []).filter(d => d.source !== 'fore' && d.differential != null);
+    for (const d of gimmieDiffs) {
+      const nh = d.hcp_before != null ? Math.round(parseFloat(d.hcp_before)) : (hiNum != null ? Math.round(hiNum) : null);
+      if (nh == null) continue;
+      const sf = Math.round(36 + nh - parseFloat(d.differential));
+      if (sf >= 10 && sf <= 60) stats.eighteen.push(sf);
+    }
+
+    // Fore/app-scored rounds: compute from actual hole scores
     const { data: scoreRows } = await db
       .from('scores')
-      .select('round_id, hole_number, strokes, rounds!inner(id, date, hole_range, course_id, status, tee_set_id, tee_sets(slope, course_rating))')
-      .eq('player_id', profileId)
-      .eq('rounds.status', 'completed');
-    if (!scoreRows?.length) return null;
-    const roundMap = {};
-    for (const s of scoreRows) {
-      const r = s.rounds;
-      if (!r) continue;
-      if (!roundMap[r.id]) roundMap[r.id] = { ...r, scoreMap: {} };
-      roundMap[r.id].scoreMap[s.hole_number] = s.strokes;
-    }
-    const courseIds = [...new Set(Object.values(roundMap).map(r => r.course_id).filter(Boolean))];
-    if (!courseIds.length) return null;
-    const { data: allHoles } = await db.from('holes').select('course_id, hole_number, par, stroke_index').in('course_id', courseIds);
-    const holesByCourse = {};
-    (allHoles || []).forEach(h => {
-      (holesByCourse[h.course_id] = holesByCourse[h.course_id] || {})[h.hole_number] = h;
-    });
-    const stats = { nine: [], eighteen: [] };
-    for (const round of Object.values(roundMap)) {
-      const courseHoles = Object.values(holesByCourse[round.course_id] || {});
-      if (!courseHoles.length) continue;
-      const holeRange = round.hole_range || 'all';
-      const relevantHoles = holeRange === 'front9' ? courseHoles.filter(h => h.hole_number <= 9)
-        : holeRange === 'back9' ? courseHoles.filter(h => h.hole_number >= 10)
-        : courseHoles;
-      if (!relevantHoles.length) continue;
-      const totalH = relevantHoles.length;
-      const coursePar = courseHoles.reduce((s, h) => s + (h.par || 0), 0) || 72;
-      const slope = round.tee_sets?.slope || 113;
-      const cr = round.tee_sets?.course_rating || 72;
-      const matchDiff = diffs.find(d => d.date === round.date && d.source === 'fore');
-      const hi = matchDiff?.hcp_before ?? currentHI ?? 36;
-      const hcp = _playingHcp(hi, slope, cr, coursePar);
-      let total = 0, played = 0;
-      for (const hole of relevantHoles) {
-        const strokes = round.scoreMap[hole.hole_number];
-        if (!strokes || strokes <= 0) continue;
-        played++;
-        let extra = Math.floor(hcp / totalH);
-        if ((hole.stroke_index || 18) <= (hcp % totalH)) extra++;
-        total += Math.max(0, hole.par - (strokes - extra) + 2);
+      .select('round_id, hole_number, strokes, rounds!inner(id, date, hole_range, course_id, tee_set_id, tee_sets(slope, course_rating))')
+      .eq('player_id', profileId);
+    if (scoreRows?.length) {
+      const roundMap = {};
+      for (const s of scoreRows) {
+        const r = s.rounds;
+        if (!r) continue;
+        if (!roundMap[r.id]) roundMap[r.id] = { ...r, scoreMap: {} };
+        roundMap[r.id].scoreMap[s.hole_number] = s.strokes;
       }
-      if (played < Math.ceil(totalH * 0.7)) continue;
-      stats[holeRange !== 'all' || totalH <= 9 ? 'nine' : 'eighteen'].push(total);
+      const courseIds = [...new Set(Object.values(roundMap).map(r => r.course_id).filter(Boolean))];
+      if (courseIds.length) {
+        const { data: allHoles } = await db.from('holes').select('course_id, hole_number, par, stroke_index').in('course_id', courseIds);
+        const holesByCourse = {};
+        (allHoles || []).forEach(h => {
+          (holesByCourse[h.course_id] = holesByCourse[h.course_id] || {})[h.hole_number] = h;
+        });
+        for (const round of Object.values(roundMap)) {
+          const courseHoles = Object.values(holesByCourse[round.course_id] || {});
+          if (!courseHoles.length) continue;
+          const holeRange = round.hole_range || 'all';
+          const relevantHoles = holeRange === 'front9' ? courseHoles.filter(h => h.hole_number <= 9)
+            : holeRange === 'back9' ? courseHoles.filter(h => h.hole_number >= 10)
+            : courseHoles;
+          if (!relevantHoles.length) continue;
+          const totalH = relevantHoles.length;
+          const coursePar = courseHoles.reduce((s, h) => s + (h.par || 0), 0) || 72;
+          const slope = round.tee_sets?.slope || 113;
+          const cr = round.tee_sets?.course_rating || 72;
+          const matchDiff = diffs.find(d => d.date === round.date && d.source === 'fore');
+          const hi = matchDiff?.hcp_before ?? hiNum ?? 36;
+          const hcp = _playingHcp(hi, slope, cr, coursePar);
+          let total = 0, played = 0;
+          for (const hole of relevantHoles) {
+            const strokes = round.scoreMap[hole.hole_number];
+            if (!strokes || strokes <= 0) continue;
+            played++;
+            let extra = Math.floor(hcp / totalH);
+            if ((hole.stroke_index || 18) <= (hcp % totalH)) extra++;
+            total += Math.max(0, hole.par - (strokes - extra) + 2);
+          }
+          if (played < Math.ceil(totalH * 0.7)) continue;
+          stats[holeRange !== 'all' || totalH <= 9 ? 'nine' : 'eighteen'].push(total);
+        }
+      }
     }
-    return stats;
+
+    return (stats.nine.length || stats.eighteen.length) ? stats : null;
   } catch (_) { return null; }
 }
 
