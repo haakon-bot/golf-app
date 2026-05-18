@@ -404,7 +404,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.64</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.65</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -2013,7 +2013,7 @@ function _fileToBase64(file) {
 async function _fetchStablefordStats(profileId, diffs, currentHI) {
   try {
     const hiNum = currentHI != null ? parseFloat(currentHI) : null;
-    const stats = { nine: [], eighteen: [] };
+    const stats = { eighteen: [] };
 
     // Gimmie/Golfbox: always 18-hole official rounds — convert differential to Stableford on normalbane
     const gimmieDiffs = (diffs || []).filter(d => d.source !== 'fore' && d.differential != null);
@@ -2068,12 +2068,13 @@ async function _fetchStablefordStats(profileId, diffs, currentHI) {
             total += Math.max(0, hole.par - (strokes - extra) + 2);
           }
           if (played < Math.ceil(totalH * 0.7)) continue;
-          stats[holeRange !== 'all' || totalH <= 9 ? 'nine' : 'eighteen'].push(total);
+          if (holeRange === 'all' && totalH > 9) stats.eighteen.push(total);
+          // 9-hole rounds excluded from stats
         }
       }
     }
 
-    return (stats.nine.length || stats.eighteen.length) ? stats : null;
+    return stats.eighteen.length ? stats : null;
   } catch (_) { return null; }
 }
 
@@ -2127,13 +2128,10 @@ function _renderStatCards(diffs, sfStats) {
   const trendArrow  = improved ? '↓' : worsened ? '↑' : '–';
   const trendLabel  = delta != null && delta !== 0 ? (delta > 0 ? '+' : '') + delta : '';
 
-  // Stableford stats
+  // Stableford stats (18h only)
   const sf18 = sfStats?.eighteen || [];
-  const sf9  = sfStats?.nine || [];
   const best18 = sf18.length ? Math.max(...sf18) : null;
-  const best9  = sf9.length  ? Math.max(...sf9)  : null;
   const avg18  = sf18.length ? Math.round(sf18.reduce((s,v)=>s+v,0)/sf18.length) : null;
-  const avg9   = sf9.length  ? Math.round(sf9.reduce((s,v)=>s+v,0)/sf9.length)   : null;
 
   const cardStyle = 'background:rgba(0,0,0,0.25);border-radius:10px;padding:14px 8px;text-align:center;border:1px solid rgba(255,255,255,0.07);';
   const labelStyle = 'font-size:9px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;';
@@ -2141,7 +2139,7 @@ function _renderStatCards(diffs, sfStats) {
   const subStyle = 'font-size:11px;color:var(--cream-dim);margin-top:6px;min-height:18px;';
 
   el.innerHTML = `
-    <div style="display:flex;gap:10px;margin-bottom:10px;">
+    <div style="display:flex;gap:10px;">
       <div style="flex:1;${cardStyle}">
         <div style="${labelStyle}">HCP nå</div>
         <div style="${bigStyle}color:var(--cream);">${hcpNow != null ? hcpNow.toFixed(1) : '–'}</div>
@@ -2153,21 +2151,9 @@ function _renderStatCards(diffs, sfStats) {
         <div style="${subStyle}">${best18 != null ? 'Stableford' : ''}</div>
       </div>
       <div style="flex:1;${cardStyle}">
-        <div style="${labelStyle}">Beste 9h runde</div>
-        <div style="${bigStyle}color:${best9 != null ? 'var(--gold)' : 'var(--cream)'};">${best9 ?? '–'}</div>
-        <div style="${subStyle}">${best9 != null ? 'Stableford' : ''}</div>
-      </div>
-    </div>
-    <div style="display:flex;gap:10px;">
-      <div style="flex:1;${cardStyle}">
         <div style="${labelStyle}">Snitt 18h</div>
         <div style="${bigStyle}color:var(--cream);">${avg18 ?? '–'}</div>
         <div style="${subStyle}">${avg18 != null ? sf18.length + ' runder' : ''}</div>
-      </div>
-      <div style="flex:1;${cardStyle}">
-        <div style="${labelStyle}">Snitt 9h</div>
-        <div style="${bigStyle}color:var(--cream);">${avg9 ?? '–'}</div>
-        <div style="${subStyle}">${avg9 != null ? sf9.length + ' runder' : ''}</div>
       </div>
     </div>`;
 }
@@ -2796,39 +2782,6 @@ async function finishRound() {
   await showRoundSummary(roundId);
 }
 
-async function _saveForeScoreDifferentials() {
-  const slope = currentRound.tee_sets?.slope;
-  const courseRating = currentRound.tee_sets?.course_rating;
-  if (!slope || !courseRating) return;
-  const totalHoles = currentRound.courses?.holes || 18;
-  const allFP = roundFlights.flatMap(f => f.flight_players || []);
-  for (const fp of allFP) {
-    const hcp = _playingHcp(fp.handicap, slope, courseRating, _fullCoursePar);
-    const playerScores = roundScores[fp.player_id] || {};
-    let adjusted = 0, holesPlayed = 0;
-    for (const hole of roundHoles) {
-      const strokes = playerScores[hole.hole_number] || 0;
-      if (strokes > 0) {
-        holesPlayed++;
-        let extra = Math.floor(hcp / totalHoles);
-        if (hole.stroke_index <= (hcp % totalHoles)) extra++;
-        adjusted += Math.min(strokes, hole.par + 2 + extra);
-      }
-    }
-    if (holesPlayed < 7) continue;
-    const scaledGross = holesPlayed < totalHoles ? (adjusted * totalHoles / holesPlayed) : adjusted;
-    const differential = parseFloat(((113 / slope) * (scaledGross - courseRating)).toFixed(1));
-    await db.from('score_differentials').upsert({
-      player_id: fp.player_id,
-      date: currentRound.date,
-      differential,
-      source: 'fore',
-      course_name: currentRound.courses?.name || null,
-      hcp_before: fp.handicap || null,
-      hcp_after: null,
-    }, { onConflict: 'player_id,date,source' });
-  }
-}
 
 // ── ROUND SUMMARY ──
 async function showRoundSummary(roundId) {
