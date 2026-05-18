@@ -404,7 +404,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.57</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.58</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -469,7 +469,6 @@
   <div class="page" id="page-courses">
     <div class="page-header">
       <div><h1>Baner</h1><p>Alle registrerte baner</p></div>
-      <button class="btn btn-auto" onclick="openAddCourse()">+ Legg til bane</button>
     </div>
     <div id="coursesList"><div class="loading"><div class="spinner"></div> Laster baner...</div></div>
   </div>
@@ -490,21 +489,23 @@
     <div class="modal" style="max-width:600px;" onclick="event.stopPropagation()">
       <h2>Ny runde</h2>
       <div id="newRoundAlert"></div>
-      <div class="form-group">
-        <label>Bane *</label>
-        <select id="roundCourse" onchange="loadTeeSets(this.value)" style="width:100%; padding:12px 16px; border-radius:8px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.3); color:var(--cream); font-size:15px; font-family:'DM Sans',sans-serif;">
-          <option value="">Velg bane...</option>
-        </select>
+      <div style="display:flex;gap:10px;margin-bottom:12px;align-items:flex-end;">
+        <div style="flex:2;min-width:0;">
+          <label style="font-size:13px;font-weight:500;color:var(--cream);display:block;margin-bottom:6px;">Bane *</label>
+          <select id="roundCourse" onchange="loadTeeSets(this.value)" style="width:100%;padding:12px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:var(--cream);font-size:14px;font-family:'DM Sans',sans-serif;">
+            <option value="">Velg bane...</option>
+          </select>
+        </div>
+        <div style="flex:1;min-width:0;">
+          <label style="font-size:13px;font-weight:500;color:var(--cream);display:block;margin-bottom:6px;">Tee *</label>
+          <select id="roundTee" style="width:100%;padding:12px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:var(--cream);font-size:14px;font-family:'DM Sans',sans-serif;">
+            <option value="">Velg tee...</option>
+          </select>
+        </div>
+        <div id="roundHoleRangeDiv" style="flex:1;min-width:0;display:none;"></div>
       </div>
       <div id="roundHoleWarning" style="display:none; padding:12px 16px; border-radius:8px; background:rgba(201,168,76,0.1); border:1px solid rgba(201,168,76,0.4); color:var(--gold-light); font-size:13px; margin-bottom:12px;">
         ⚠️ Denne banen mangler hull-data (par og SI). Stableford og par vil ikke fungere under runde. <br>Gå til <strong>Baner → Hull-data</strong> og legg inn data først.
-      </div>
-      <div id="roundHoleRangeDiv" class="form-group" style="display:none;"></div>
-      <div class="form-group">
-        <label>Tee-sett *</label>
-        <select id="roundTee" style="width:100%; padding:12px 16px; border-radius:8px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.3); color:var(--cream); font-size:15px; font-family:'DM Sans',sans-serif;">
-          <option value="">Velg tee...</option>
-        </select>
       </div>
       <div id="teeMotivDiv" style="margin-bottom:4px;"></div>
       <div class="form-group">
@@ -1800,7 +1801,10 @@ function _calcHcpMotivation(diffs, slope = 113, courseRating = 72, coursePar = 7
   const stablefordImprove = toNorm(sortedAsc[7]) + 1;
   const droppedRound = last20.length >= 20 ? last20[19] : null;
   const stablefordDecline = droppedRound ? toNorm(parseFloat(droppedRound.differential)) : null;
-  return { currentHI, playingHCP, stablefordImprove, stablefordDecline, count: last20.length };
+  const last20Avg = sortedAsc.reduce((s, d) => s + d, 0) / sortedAsc.length;
+  const droppedDiff = droppedRound ? parseFloat(droppedRound.differential) : null;
+  const droppedContext = droppedDiff != null ? (droppedDiff > last20Avg ? 'good_drop' : 'bad_drop') : null;
+  return { currentHI, playingHCP, stablefordImprove, stablefordDecline, droppedContext, count: last20.length };
 }
 
 function _renderMotivBanner(motiv, detailed = false, isEstimate = false) {
@@ -1814,6 +1818,7 @@ function _renderMotivBanner(motiv, detailed = false, isEstimate = false) {
     <div style="padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.06);font-size:14px;color:#4caf7d;">Spill <strong>${X}</strong> poeng eller mer → HCP kan gå ned</div>
     ${Y != null ? `<div style="padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.06);font-size:14px;color:rgba(255,120,100,0.9);">Spill under <strong>${Y}</strong> poeng → HCP kan gå opp</div>` : ''}
     <div style="padding:5px 0;font-size:13px;color:var(--cream-dim);">${Y != null ? `Mellom ${Y} og ${X - 1} poeng` : `Under ${X} poeng`} → ingen endring</div>
+    ${motiv.droppedContext === 'good_drop' ? `<div style="padding:5px 0;font-size:12px;color:rgba(82,183,136,0.8);font-style:italic;">En dårlig runde faller ut — godt utgangspunkt!</div>` : motiv.droppedContext === 'bad_drop' ? `<div style="padding:5px 0;font-size:12px;color:rgba(255,180,100,0.85);font-style:italic;">En god runde faller ut — vær obs!</div>` : ''}
     ${estimateNote}
   </div>`;
 }
@@ -1850,6 +1855,7 @@ async function updateRoundMotivation() {
           <div style="font-size:12px;color:#4caf7d;">${X}p eller mer → HCP ned</div>
           ${Y != null ? `<div style="font-size:12px;color:rgba(255,120,100,0.9);">Under ${Y}p → HCP opp</div>` : ''}
           <div style="font-size:11px;color:rgba(255,255,255,0.3);">${Y != null ? `${Y}–${X - 1}p` : `Under ${X}p`} → ingen endring</div>
+          ${motiv.droppedContext === 'good_drop' ? `<div style="font-size:11px;color:rgba(82,183,136,0.7);font-style:italic;">En dårlig runde faller ut — godt utgangspunkt!</div>` : motiv.droppedContext === 'bad_drop' ? `<div style="font-size:11px;color:rgba(255,180,100,0.75);font-style:italic;">En god runde faller ut — vær obs!</div>` : ''}
         </div>`;
       });
     if (!playerRows.length) { el.innerHTML = ''; return; }
@@ -1985,6 +1991,60 @@ function _fileToBase64(file) {
   });
 }
 
+async function _fetchStablefordStats(profileId, diffs, currentHI) {
+  try {
+    const { data: scoreRows } = await db
+      .from('scores')
+      .select('round_id, hole_number, strokes, rounds!inner(id, date, hole_range, course_id, status, tee_set_id, tee_sets(slope, course_rating))')
+      .eq('player_id', profileId)
+      .eq('rounds.status', 'completed');
+    if (!scoreRows?.length) return null;
+    const roundMap = {};
+    for (const s of scoreRows) {
+      const r = s.rounds;
+      if (!r) continue;
+      if (!roundMap[r.id]) roundMap[r.id] = { ...r, scoreMap: {} };
+      roundMap[r.id].scoreMap[s.hole_number] = s.strokes;
+    }
+    const courseIds = [...new Set(Object.values(roundMap).map(r => r.course_id).filter(Boolean))];
+    if (!courseIds.length) return null;
+    const { data: allHoles } = await db.from('holes').select('course_id, hole_number, par, stroke_index').in('course_id', courseIds);
+    const holesByCourse = {};
+    (allHoles || []).forEach(h => {
+      (holesByCourse[h.course_id] = holesByCourse[h.course_id] || {})[h.hole_number] = h;
+    });
+    const stats = { nine: [], eighteen: [] };
+    for (const round of Object.values(roundMap)) {
+      const courseHoles = Object.values(holesByCourse[round.course_id] || {});
+      if (!courseHoles.length) continue;
+      const holeRange = round.hole_range || 'all';
+      const relevantHoles = holeRange === 'front9' ? courseHoles.filter(h => h.hole_number <= 9)
+        : holeRange === 'back9' ? courseHoles.filter(h => h.hole_number >= 10)
+        : courseHoles;
+      if (!relevantHoles.length) continue;
+      const totalH = relevantHoles.length;
+      const coursePar = courseHoles.reduce((s, h) => s + (h.par || 0), 0) || 72;
+      const slope = round.tee_sets?.slope || 113;
+      const cr = round.tee_sets?.course_rating || 72;
+      const matchDiff = diffs.find(d => d.date === round.date && d.source === 'fore');
+      const hi = matchDiff?.hcp_before ?? currentHI ?? 36;
+      const hcp = _playingHcp(hi, slope, cr, coursePar);
+      let total = 0, played = 0;
+      for (const hole of relevantHoles) {
+        const strokes = round.scoreMap[hole.hole_number];
+        if (!strokes || strokes <= 0) continue;
+        played++;
+        let extra = Math.floor(hcp / totalH);
+        if ((hole.stroke_index || 18) <= (hcp % totalH)) extra++;
+        total += Math.max(0, hole.par - (strokes - extra) + 2);
+      }
+      if (played < Math.ceil(totalH * 0.7)) continue;
+      stats[holeRange !== 'all' || totalH <= 9 ? 'nine' : 'eighteen'].push(total);
+    }
+    return stats;
+  } catch (_) { return null; }
+}
+
 let _diffsLoading = false;
 async function loadAndRenderDifferentials() {
   if (_diffsLoading) return;
@@ -1995,7 +2055,8 @@ async function loadAndRenderDifferentials() {
     if (error) throw error;
     const diffs = data || [];
     _renderGolfboxImportList(diffs);
-    _renderStatCards(diffs);
+    const sfStats = await _fetchStablefordStats(currentProfile.id, diffs, currentProfile?.handicap ?? null);
+    _renderStatCards(diffs, sfStats);
     const smEl = document.getElementById('statsMotivation');
     if (smEl) {
       const motiv = _calcHcpMotivation(diffs, 113, 72, 72, currentProfile?.handicap ?? null);
@@ -2014,7 +2075,7 @@ async function loadAndRenderDifferentials() {
   }
 }
 
-function _renderStatCards(diffs) {
+function _renderStatCards(diffs, sfStats) {
   const el = document.getElementById('statsKpis');
   if (!el) return;
   if (!diffs.length) {
@@ -2034,32 +2095,47 @@ function _renderStatCards(diffs) {
   const trendArrow  = improved ? '↓' : worsened ? '↑' : '–';
   const trendLabel  = delta != null && delta !== 0 ? (delta > 0 ? '+' : '') + delta : '';
 
-  // Snitt differential – siste 5 runder
-  const withDiff = sorted.filter(d => d.differential != null);
-  const last5    = withDiff.slice(-5);
-  const avg5     = last5.length ? (last5.reduce((s, d) => s + parseFloat(d.differential), 0) / last5.length).toFixed(1) : null;
+  // Stableford stats
+  const sf18 = sfStats?.eighteen || [];
+  const sf9  = sfStats?.nine || [];
+  const best18 = sf18.length ? Math.max(...sf18) : null;
+  const best9  = sf9.length  ? Math.max(...sf9)  : null;
+  const avg18  = sf18.length ? Math.round(sf18.reduce((s,v)=>s+v,0)/sf18.length) : null;
+  const avg9   = sf9.length  ? Math.round(sf9.reduce((s,v)=>s+v,0)/sf9.length)   : null;
 
-  // Beste differential i år
-  const yr       = new Date().getFullYear().toString();
-  const yrDiffs  = diffs.filter(d => d.date?.startsWith(yr) && d.differential != null);
-  const bestYr   = yrDiffs.length ? Math.min(...yrDiffs.map(d => parseFloat(d.differential))).toFixed(1) : null;
+  const cardStyle = 'background:rgba(0,0,0,0.25);border-radius:10px;padding:14px 8px;text-align:center;border:1px solid rgba(255,255,255,0.07);';
+  const labelStyle = 'font-size:9px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;';
+  const bigStyle = "font-family:'Playfair Display',serif;font-size:26px;line-height:1;";
+  const subStyle = 'font-size:11px;color:var(--cream-dim);margin-top:6px;min-height:18px;';
 
   el.innerHTML = `
-    <div style="display:flex;gap:10px;">
-      <div style="flex:1;background:rgba(0,0,0,0.25);border-radius:10px;padding:14px 8px;text-align:center;border:1px solid rgba(255,255,255,0.07);">
-        <div style="font-size:9px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">HCP nå</div>
-        <div style="font-family:'Playfair Display',serif;font-size:26px;color:var(--cream);line-height:1;">${hcpNow != null ? hcpNow.toFixed(1) : '–'}</div>
+    <div style="display:flex;gap:10px;margin-bottom:10px;">
+      <div style="flex:1;${cardStyle}">
+        <div style="${labelStyle}">HCP nå</div>
+        <div style="${bigStyle}color:var(--cream);">${hcpNow != null ? hcpNow.toFixed(1) : '–'}</div>
         <div style="font-size:13px;color:${trendColor};margin-top:6px;font-weight:600;min-height:18px;">${trendArrow !== '–' ? trendArrow + ' ' + trendLabel : (hcpNow != null ? '<span style="color:var(--cream-dim);font-size:11px;">stabil</span>' : '')}</div>
       </div>
-      <div style="flex:1;background:rgba(0,0,0,0.25);border-radius:10px;padding:14px 8px;text-align:center;border:1px solid rgba(255,255,255,0.07);">
-        <div style="font-size:9px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Snitt diff</div>
-        <div style="font-family:'Playfair Display',serif;font-size:26px;color:var(--cream);line-height:1;">${avg5 ?? '–'}</div>
-        <div style="font-size:11px;color:var(--cream-dim);margin-top:6px;min-height:18px;">siste ${last5.length} runder</div>
+      <div style="flex:1;${cardStyle}">
+        <div style="${labelStyle}">Beste 18h runde</div>
+        <div style="${bigStyle}color:${best18 != null ? 'var(--gold)' : 'var(--cream)'};">${best18 ?? '–'}</div>
+        <div style="${subStyle}">${best18 != null ? 'Stableford' : ''}</div>
       </div>
-      <div style="flex:1;background:rgba(0,0,0,0.25);border-radius:10px;padding:14px 8px;text-align:center;border:1px solid rgba(255,255,255,0.07);">
-        <div style="font-size:9px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Beste ${yr}</div>
-        <div style="font-family:'Playfair Display',serif;font-size:26px;color:${bestYr != null ? 'var(--gold)' : 'var(--cream)'};line-height:1;">${bestYr ?? '–'}</div>
-        <div style="font-size:11px;color:var(--cream-dim);margin-top:6px;min-height:18px;">${bestYr != null ? 'differential' : ''}</div>
+      <div style="flex:1;${cardStyle}">
+        <div style="${labelStyle}">Beste 9h runde</div>
+        <div style="${bigStyle}color:${best9 != null ? 'var(--gold)' : 'var(--cream)'};">${best9 ?? '–'}</div>
+        <div style="${subStyle}">${best9 != null ? 'Stableford' : ''}</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;">
+      <div style="flex:1;${cardStyle}">
+        <div style="${labelStyle}">Snitt 18h</div>
+        <div style="${bigStyle}color:var(--cream);">${avg18 ?? '–'}</div>
+        <div style="${subStyle}">${avg18 != null ? sf18.length + ' runder' : ''}</div>
+      </div>
+      <div style="flex:1;${cardStyle}">
+        <div style="${labelStyle}">Snitt 9h</div>
+        <div style="${bigStyle}color:var(--cream);">${avg9 ?? '–'}</div>
+        <div style="${subStyle}">${avg9 != null ? sf9.length + ' runder' : ''}</div>
       </div>
     </div>`;
 }
@@ -2241,21 +2317,14 @@ async function loadTeeSets(courseId) {
   if (warningEl) warningEl.style.display = holeNums.length === 0 ? 'block' : 'none';
   const rangeDiv = document.getElementById('roundHoleRangeDiv');
   if (!rangeDiv) return;
-  const lblStyle = 'display:flex;align-items:center;gap:6px;padding:10px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);cursor:pointer;font-size:14px;color:var(--cream-dim);';
   if (hasFront9 && hasBack9) {
     rangeDiv.style.display = 'block';
-    rangeDiv.innerHTML = `<label style="font-size:14px;font-weight:500;color:var(--cream);display:block;margin-bottom:8px;">Hvilke hull spilles?</label>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <label style="${lblStyle}"><input type="radio" name="roundHoleRange" value="all" checked style="accent-color:var(--gold);"> Hull 1–18</label>
-        <label style="${lblStyle}"><input type="radio" name="roundHoleRange" value="front9" style="accent-color:var(--gold);"> Hull 1–9</label>
-        <label style="${lblStyle}"><input type="radio" name="roundHoleRange" value="back9" style="accent-color:var(--gold);"> Hull 10–18</label>
-      </div>`;
-  } else if (hasFront9) {
-    rangeDiv.style.display = 'block';
-    rangeDiv.innerHTML = `<p style="font-size:13px;color:var(--cream-dim);padding:8px 12px;background:rgba(82,183,136,0.1);border-radius:8px;border:1px solid rgba(82,183,136,0.2);">⛳ Registrerte hull: 1–9 (front 9)</p>`;
-  } else if (hasBack9) {
-    rangeDiv.style.display = 'block';
-    rangeDiv.innerHTML = `<p style="font-size:13px;color:var(--cream-dim);padding:8px 12px;background:rgba(82,183,136,0.1);border-radius:8px;border:1px solid rgba(82,183,136,0.2);">⛳ Registrerte hull: 10–18 (bak 9)</p>`;
+    rangeDiv.innerHTML = `<label style="font-size:13px;font-weight:500;color:var(--cream);display:block;margin-bottom:6px;">Hull</label>
+      <select id="roundHoleRange" style="width:100%;padding:12px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:var(--cream);font-size:14px;font-family:'DM Sans',sans-serif;">
+        <option value="all">Hull 1–18</option>
+        <option value="front9">Hull 1–9</option>
+        <option value="back9">Hull 10–18</option>
+      </select>`;
   } else {
     rangeDiv.style.display = 'none';
     rangeDiv.innerHTML = '';
@@ -2290,7 +2359,7 @@ async function saveRound() {
   const { hasFront9, hasBack9 } = _roundAvailableRanges;
   let holeRange;
   if (hasFront9 && hasBack9) {
-    holeRange = document.querySelector('input[name="roundHoleRange"]:checked')?.value || 'all';
+    holeRange = document.getElementById('roundHoleRange')?.value || 'all';
   } else if (hasFront9) {
     holeRange = 'front9';
   } else if (hasBack9) {
