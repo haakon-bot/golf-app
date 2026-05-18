@@ -404,7 +404,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.43</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.44</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -793,10 +793,10 @@
       <div style="background:rgba(201,168,76,0.08); border:1px solid rgba(201,168,76,0.2); border-radius:10px; padding:16px; margin-bottom:20px;">
         <p style="font-size:13px; color:var(--cream); font-weight:500; margin-bottom:8px;">Slik gjør du det:</p>
         <ol style="font-size:13px; color:var(--cream-dim); padding-left:18px; line-height:1.8; margin:0;">
-          <li>Åpne <strong style="color:var(--cream);">Golfbox</strong> eller <strong style="color:var(--cream);">Gimmie</strong> og logg inn</li>
-          <li>Gå til <strong style="color:var(--cream);">Score-siden din</strong></li>
-          <li>Ta bilde av tabellen med <strong style="color:var(--cream);">dato</strong> og <strong style="color:var(--cream);">«HCP spilt til»</strong></li>
-          <li>Last opp ett eller flere bilder under</li>
+          <li>Åpne <strong style="color:var(--cream);">Golfbox</strong> og gå til score-tabellen din</li>
+          <li>Ta bilde av <strong style="color:var(--cream);">score-tabellen</strong></li>
+          <li>Scroll ned og ta <strong style="color:var(--cream);">flere bilder</strong> til du har minst <strong style="color:var(--cream);">20 runder</strong> synlig</li>
+          <li>Last opp bildene under</li>
         </ol>
       </div>
       <label style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; border:2px dashed rgba(201,168,76,0.3); border-radius:12px; padding:24px 20px; text-align:center; cursor:pointer; background:rgba(0,0,0,0.1); margin-bottom:14px;">
@@ -1719,7 +1719,7 @@ async function loadProfilePage() {
     </div>
     <div class="card">
       <h3 style="font-family:'Playfair Display',serif; margin-bottom:6px;">Historikk fra Golfbox</h3>
-      <p style="font-size:13px; color:var(--cream-dim); margin-bottom:16px;">Importer dine tidligere runder fra Golfbox eller Gimmie ved å ta bilde av poenglisten.</p>
+      <p style="font-size:13px; color:var(--cream-dim); margin-bottom:16px;">Importer dine tidligere runder fra Golfbox ved å ta bilde av score-tabellen. Ta gjerne flere bilder til du har minst 20 runder dekket.</p>
       <button class="btn btn-outline btn-auto" onclick="openGolfboxImport()">📷 Importer fra Golfbox</button>
       <div id="golfboxImportList" style="margin-top:16px;"><div style="height:24px;"></div></div>
     </div>
@@ -1791,7 +1791,10 @@ function _calcHcpMotivation(diffs, slope = 113, courseRating = 72, coursePar = 7
   const byDate = [...withDiff].sort((a, b) => new Date(b.date) - new Date(a.date));
   const last20 = byDate.slice(0, 20);
   const sortedAsc = last20.map(d => parseFloat(d.differential)).sort((a, b) => a - b);
-  const currentHI = _calcHcpIndexWHS(sortedAsc);
+  const withHcpAfter = byDate.filter(d => d.hcp_after != null);
+  const currentHI = withHcpAfter.length
+    ? parseFloat(withHcpAfter[0].hcp_after)
+    : _calcHcpIndexWHS(sortedAsc);
   if (currentHI === null) return null;
   // When next round comes in, the 20th most recent (oldest) drops out
   const droppedRound = last20.length >= 20 ? last20[19] : null;
@@ -3320,23 +3323,61 @@ function openSlopeUpload() {
   });
   openModal('modalSlopeUpload');
 }
-function handleSlopeFile(file) {
+function _compressImage(file, maxBytes = 3_500_000) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+      const maxDim = 2048;
+      if (width > maxDim || height > maxDim) {
+        const scale = maxDim / Math.max(width, height);
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      let quality = 0.85;
+      let dataUrl;
+      do {
+        dataUrl = canvas.toDataURL('image/jpeg', quality);
+        quality = +(quality - 0.1).toFixed(1);
+      } while (dataUrl.length * 0.75 > maxBytes && quality >= 0.2);
+      res({ base64: dataUrl.split(',')[1], dataUrl });
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('Kunne ikke lese bildet')); };
+    img.src = url;
+  });
+}
+async function handleSlopeFile(file) {
   if (!file) return;
   _slopeFileType = file.type;
   const nameEl = document.getElementById('slopeFileName');
   if (nameEl) { nameEl.textContent = '✓ ' + file.name; nameEl.style.display = 'block'; }
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    _slopeFileData = e.target.result.split(',')[1];
-    if (file.type.startsWith('image/')) {
-      document.getElementById('slopePreviewImg').src = e.target.result;
+  if (file.type.startsWith('image/')) {
+    try {
+      const { base64, dataUrl } = await _compressImage(file);
+      _slopeFileData = base64;
+      _slopeFileType = 'image/jpeg';
+      document.getElementById('slopePreviewImg').src = dataUrl;
       document.getElementById('slopePreview').style.display = 'block';
-    } else {
-      document.getElementById('slopePreview').style.display = 'none';
+    } catch(e) {
+      showAlert('slopeUploadAlert', 'Kunne ikke lese bildet: ' + e.message, 'error');
+      return;
     }
-    checkSlopeReady();
-  };
-  reader.readAsDataURL(file);
+  } else {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      _slopeFileData = e.target.result.split(',')[1];
+      document.getElementById('slopePreview').style.display = 'none';
+      checkSlopeReady();
+    };
+    reader.readAsDataURL(file);
+    return;
+  }
+  checkSlopeReady();
 }
 function checkSlopeReady() {
   const courseSelected = document.getElementById('slopeCourseSelect').value;
