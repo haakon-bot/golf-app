@@ -404,7 +404,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.55</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.56</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -904,7 +904,7 @@ async function renderPublicLive() {
   const statusEl = document.getElementById('publicLiveStatus');
   const contentEl = document.getElementById('publicLiveContent');
   const { data: active } = await db.from('rounds')
-    .select('*, courses(name, holes), tee_sets(name), flights(id, name, flight_players(id, player_id, handicap, profiles(display_name)))')
+    .select('*, courses(name, holes), tee_sets(name, slope), flights(id, name, flight_players(id, player_id, handicap, profiles(display_name)))')
     .eq('status', 'active').order('created_at', { ascending: false });
   if (!active?.length) {
     statusEl.textContent = 'Ingen aktive runder akkurat nå';
@@ -928,7 +928,7 @@ async function renderPublicLive() {
     const ps = scoreMap[fp.player_id] || {};
     let pts = 0, played = 0;
     Object.entries(ps).forEach(([hn, strokes]) => {
-      if (strokes > 0) { played++; const h = holeMap[parseInt(hn)]; if (h?.par && h?.stroke_index) pts += calcStablefordLive(strokes, h.par, fp.handicap || 36, h.stroke_index, holeCount); }
+      if (strokes > 0) { played++; const h = holeMap[parseInt(hn)]; if (h?.par && h?.stroke_index) pts += calcStablefordLive(strokes, h.par, _playingHcp(fp.handicap, round.tee_sets?.slope), h.stroke_index, holeCount); }
     });
     return { name: fp.profiles?.display_name || '?', pts, played, scores: ps };
   }).sort((a, b) => b.pts - a.pts);
@@ -1791,39 +1791,28 @@ function _calcHcpMotivation(diffs, slope = 113, courseRating = 72, coursePar = 7
   const sortedAsc = last20.map(d => parseFloat(d.differential)).sort((a, b) => a - b);
   const currentHI = knownHI != null ? parseFloat(knownHI) : _calcHcpIndexWHS(sortedAsc);
   if (currentHI === null) return null;
-  const playingHCP = Math.round(currentHI * slope / 113 + (courseRating - coursePar));
-  const toStableford = diff => Math.round(coursePar + 36 + playingHCP - (diff * slope / 113 + courseRating));
-  const diff8th = sortedAsc[7];
-  const stableford8th = toStableford(diff8th);
+  // Playing HCP for actual tee (shown per tee in new round flow)
+  const playingHCP = Math.round(currentHI * slope / 113);
+  // Stableford thresholds always on normalbane (course-independent): round(36 + normHCP - diff)
+  const normHCP = Math.round(currentHI);
+  const toNorm = diff => Math.round(36 + normHCP - diff);
+  const stablefordImprove = toNorm(sortedAsc[7]) + 1;
   const droppedRound = last20.length >= 20 ? last20[19] : null;
-  const droppedStableford = droppedRound ? toStableford(parseFloat(droppedRound.differential)) : null;
-  return { currentHI, playingHCP, diff8th, stableford8th, droppedRound, droppedStableford, count: last20.length };
+  const stablefordDecline = droppedRound ? toNorm(parseFloat(droppedRound.differential)) : null;
+  return { currentHI, playingHCP, stablefordImprove, stablefordDecline, count: last20.length };
 }
 
 function _renderMotivBanner(motiv, detailed = false, isEstimate = false) {
   if (!motiv) return '';
+  const { stablefordImprove: X, stablefordDecline: Y } = motiv;
   const estimateNote = isEstimate
-    ? `<div style="font-size:10px;color:rgba(255,255,255,0.3);margin-top:8px;">Beregnet for normalbane (slope 113, CR=par=72)</div>`
-    : '';
-  const droppedSection = motiv.droppedRound
-    ? `<div style="display:flex;justify-content:space-between;align-items:baseline;padding-top:8px;border-top:1px solid rgba(255,255,255,0.07);margin-top:4px;">
-        <div>
-          <div style="font-size:12px;color:var(--cream-dim);">Runde som faller ut</div>
-          <div style="font-size:11px;color:rgba(255,255,255,0.35);">${motiv.droppedRound.date} · diff ${parseFloat(motiv.droppedRound.differential).toFixed(1)}</div>
-        </div>
-        <div style="font-size:12px;color:rgba(255,120,100,0.9);white-space:nowrap;margin-left:12px;">Under ${motiv.droppedStableford} poeng → HCP opp</div>
-      </div>`
+    ? `<div style="font-size:10px;color:rgba(255,255,255,0.3);margin-top:8px;">Beregnet for normalbane (slope 113)</div>`
     : '';
   return `<div style="background:rgba(82,183,136,0.08);border:1px solid rgba(82,183,136,0.3);border-radius:10px;padding:14px 16px;">
     <div style="font-size:10px;color:rgba(82,183,136,0.9);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;">🎯 HCP-mål for neste runde</div>
-    <div style="display:flex;justify-content:space-between;align-items:baseline;">
-      <div>
-        <div style="font-size:12px;color:var(--cream-dim);">8. beste runde</div>
-        <div style="font-size:11px;color:rgba(255,255,255,0.35);">diff ${motiv.diff8th.toFixed(1)}</div>
-      </div>
-      <div style="font-size:14px;color:#4caf7d;white-space:nowrap;margin-left:12px;">Over ${motiv.stableford8th} poeng → HCP ned</div>
-    </div>
-    ${droppedSection}
+    <div style="padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.06);font-size:14px;color:#4caf7d;">Spill <strong>${X}</strong> poeng eller mer → HCP kan gå ned</div>
+    ${Y != null ? `<div style="padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.06);font-size:14px;color:rgba(255,120,100,0.9);">Spill under <strong>${Y}</strong> poeng → HCP kan gå opp</div>` : ''}
+    <div style="padding:5px 0;font-size:13px;color:var(--cream-dim);">${Y != null ? `Mellom ${Y} og ${X - 1} poeng` : `Under ${X} poeng`} → ingen endring</div>
     ${estimateNote}
   </div>`;
 }
@@ -1847,18 +1836,19 @@ async function updateRoundMotivation() {
     const playerRows = allPlayers
       .map(p => ({ p, motiv: _calcHcpMotivation(byPlayer[p.id] || [], slope, cr, par, p.handicap ?? null) }))
       .filter(({ motiv }) => motiv !== null)
-      .map(({ p, motiv }) => `
+      .map(({ p, motiv }) => {
+        const X = motiv.stablefordImprove, Y = motiv.stablefordDecline;
+        return `
         <div style="padding:9px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
           <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
             <div style="font-size:13px;color:var(--cream);">${p.display_name}</div>
             <div style="font-size:11px;color:rgba(255,255,255,0.4);">Spillehcp: ${motiv.playingHCP}</div>
           </div>
-          <div style="display:flex;justify-content:space-between;font-size:12px;">
-            <span style="color:#4caf7d;">Over ${motiv.stableford8th} poeng → HCP ned</span>
-            ${motiv.droppedRound ? `<span style="color:rgba(255,120,100,0.9);">Under ${motiv.droppedStableford} poeng → HCP opp</span>` : ''}
-          </div>
-          ${motiv.droppedRound ? `<div style="font-size:11px;color:rgba(255,255,255,0.3);margin-top:2px;">Faller ut: ${motiv.droppedRound.date} · diff ${parseFloat(motiv.droppedRound.differential).toFixed(1)}</div>` : ''}
-        </div>`);
+          <div style="font-size:12px;color:#4caf7d;">${X}p eller mer → HCP ned</div>
+          ${Y != null ? `<div style="font-size:12px;color:rgba(255,120,100,0.9);">Under ${Y}p → HCP opp</div>` : ''}
+          <div style="font-size:11px;color:rgba(255,255,255,0.3);">${Y != null ? `${Y}–${X - 1}p` : `Under ${X}p`} → ingen endring</div>
+        </div>`;
+      });
     if (!playerRows.length) { el.innerHTML = ''; return; }
     el.innerHTML = `<div style="background:rgba(0,0,0,0.2);border-radius:10px;padding:14px;border:1px solid rgba(255,255,255,0.07);margin-bottom:4px;">
       <div style="font-size:10px;color:var(--gold);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;">🎯 HCP-mål · ${courseName} · Slope ${slope}</div>
@@ -2463,8 +2453,9 @@ function renderPlayerInputs(holeData) {
     (flight.flight_players || []).forEach(fp => {
       const player = fp.profiles;
       const strokes = roundScores[fp.player_id]?.[currentHole] || 0;
+      const _phcp = _playingHcp(fp.handicap, currentRound?.tee_sets?.slope);
       const stableford = (holeData.par && holeData.stroke_index)
-        ? calcStableford(strokes, holeData.par, fp.handicap || 36, holeData.stroke_index)
+        ? calcStableford(strokes, holeData.par, _phcp, holeData.stroke_index)
         : 0;
       const scoreColor = holeData.par ? getScoreColor(strokes, holeData.par) : 'var(--cream)';
       const scoreName = holeData.par ? getScoreName(strokes, holeData.par) : '';
@@ -2472,8 +2463,8 @@ function renderPlayerInputs(holeData) {
       const totalHoles = currentRound?.courses?.holes || 18;
       let extraStrokes = 0;
       if (holeData.stroke_index) {
-        extraStrokes = Math.floor((fp.handicap || 0) / totalHoles);
-        if (holeData.stroke_index <= ((fp.handicap || 0) % totalHoles)) extraStrokes++;
+        extraStrokes = Math.floor(_phcp / totalHoles);
+        if (holeData.stroke_index <= (_phcp % totalHoles)) extraStrokes++;
       }
       const strokesLabel = extraStrokes > 0
         ? `<span style="color:var(--green-light); font-size:11px;">${extraStrokes === 1 ? '+1 slag' : `+${extraStrokes} slag`}</span>`
@@ -2500,6 +2491,7 @@ function renderPlayerInputs(holeData) {
   });
   document.getElementById('scPlayerScores').innerHTML = html;
 }
+function _playingHcp(hi, slope) { return Math.round((hi || 36) * (slope || 113) / 113); }
 function calcStableford(strokes, par, hcp, si) {
   if (!strokes || !par || !si) return 0;
   const totalHoles = currentRound?.courses?.holes || 18;
@@ -2579,12 +2571,11 @@ function renderMiniLeaderboard() {
   const allFP = roundFlights.flatMap(f => f.flight_players || []);
   const standings = allFP.map(fp => {
     let total = 0, holes = 0;
-    const hcp = fp.handicap || 36;
+    const hcp = _playingHcp(fp.handicap, currentRound?.tee_sets?.slope);
     Object.entries(roundScores[fp.player_id] || {}).forEach(([h, s]) => {
       if (s > 0) {
         const hd = roundHoles.find(hh => hh.hole_number === parseInt(h));
         if (hd?.par && hd?.stroke_index) {
-          // Beregn ekstraslag eksplisitt
           let extra = Math.floor(hcp / totalHoles);
           if (hd.stroke_index <= (hcp % totalHoles)) extra++;
           const pts = Math.max(0, hd.par - (s - extra) + 2);
@@ -2611,7 +2602,7 @@ function showLeaderboard() {
       if (s > 0) {
         const hd = roundHoles.find(hh => hh.hole_number === parseInt(h)) || { par: null, stroke_index: null };
         if (hd.par && hd.stroke_index) {
-          stableford += calcStableford(s, hd.par, fp.handicap || 36, hd.stroke_index);
+          stableford += calcStableford(s, hd.par, _playingHcp(fp.handicap, currentRound?.tee_sets?.slope), hd.stroke_index);
           const d = s - hd.par;
           if (d <= -2) eagles++;
           else if (d === -1) birdies++;
@@ -2658,7 +2649,7 @@ async function _saveForeScoreDifferentials() {
   const totalHoles = currentRound.courses?.holes || 18;
   const allFP = roundFlights.flatMap(f => f.flight_players || []);
   for (const fp of allFP) {
-    const hcp = fp.handicap || 36;
+    const hcp = _playingHcp(fp.handicap, slope);
     const playerScores = roundScores[fp.player_id] || {};
     let adjusted = 0, holesPlayed = 0;
     for (const hole of roundHoles) {
@@ -2731,7 +2722,7 @@ function showSummaryPlayer(playerId, btn) {
   let totalStabs = 0, totalStrokes = 0, birdies = 0, pars = 0, bogeys = 0, doubles = 0;
   const rows = holes.map(h => {
     const s = playerScores[h.hole_number] || 0;
-    const stab = s > 0 ? calcStablefordStatic(s, h.par, fp.handicap || 36, h.stroke_index, totalHoles) : 0;
+    const stab = s > 0 ? calcStablefordStatic(s, h.par, _playingHcp(fp.handicap, round.tee_sets?.slope), h.stroke_index, totalHoles) : 0;
     totalStabs += stab;
     totalStrokes += s;
     const d = s > 0 ? s - h.par : null;
@@ -3040,7 +3031,7 @@ async function loadLivePage() {
     el.innerHTML = '<div class="loading"><div class="spinner"></div> Laster...</div>';
 
     const { data: active } = await db.from('rounds')
-      .select('*, courses(name, holes), tee_sets(name), flights(id, name, flight_players(id, player_id, handicap, profiles(display_name)))')
+      .select('*, courses(name, holes), tee_sets(name, slope), flights(id, name, flight_players(id, player_id, handicap, profiles(display_name)))')
       .eq('status', 'active')
       .order('created_at', { ascending: false });
 
@@ -3095,7 +3086,7 @@ async function renderLiveView(round) {
         holesPlayed++;
         const h = holeMap[parseInt(hn)];
         if (h?.par && h?.stroke_index) {
-          stableford += calcStablefordLive(strokes, h.par, fp.handicap || 36, h.stroke_index, holeCount);
+          stableford += calcStablefordLive(strokes, h.par, _playingHcp(fp.handicap, round.tee_sets?.slope), h.stroke_index, holeCount);
         }
       }
     });
@@ -3181,7 +3172,7 @@ async function renderLiveView(round) {
           }).join('')}
         </div>
         <div style="display:grid; grid-template-columns:repeat(9,1fr); gap:2px;">
-          ${buildScorecard(s.scores, s.fp.handicap)}
+          ${buildScorecard(s.scores, _playingHcp(s.fp.handicap, round.tee_sets?.slope))}
         </div>
       </div>
     </div>`).join('');
