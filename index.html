@@ -404,7 +404,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.54</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.55</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -1849,7 +1849,10 @@ async function updateRoundMotivation() {
       .filter(({ motiv }) => motiv !== null)
       .map(({ p, motiv }) => `
         <div style="padding:9px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
-          <div style="font-size:13px;color:var(--cream);margin-bottom:4px;">${p.display_name}</div>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
+            <div style="font-size:13px;color:var(--cream);">${p.display_name}</div>
+            <div style="font-size:11px;color:rgba(255,255,255,0.4);">Spillehcp: ${motiv.playingHCP}</div>
+          </div>
           <div style="display:flex;justify-content:space-between;font-size:12px;">
             <span style="color:#4caf7d;">Over ${motiv.stableford8th} poeng → HCP ned</span>
             ${motiv.droppedRound ? `<span style="color:rgba(255,120,100,0.9);">Under ${motiv.droppedStableford} poeng → HCP opp</span>` : ''}
