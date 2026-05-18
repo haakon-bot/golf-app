@@ -404,7 +404,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.58</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.59</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -443,7 +443,6 @@
     <div id="dashActiveRound" style="display:none; margin-bottom:16px;"></div>
     <div style="display:flex; gap:12px; margin-bottom:16px;">
       <button class="btn" style="flex:1;" onclick="showPage('rounds'); document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active')); document.querySelectorAll('.nav-btn')[1].classList.add('active'); openNewRound();">⛳ Start runde</button>
-      <button class="btn btn-outline" style="flex:1;" onclick="openAddCourse();">+ Ny bane</button>
     </div>
     <div id="dashMotivation" style="margin-bottom:20px;"></div>
     <div style="font-size:11px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:12px;">Sist spilt</div>
@@ -469,6 +468,7 @@
   <div class="page" id="page-courses">
     <div class="page-header">
       <div><h1>Baner</h1><p>Alle registrerte baner</p></div>
+      <button class="btn btn-auto" onclick="openAddCourse()">+ Legg til bane</button>
     </div>
     <div id="coursesList"><div class="loading"><div class="spinner"></div> Laster baner...</div></div>
   </div>
