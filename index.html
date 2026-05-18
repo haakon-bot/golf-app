@@ -404,7 +404,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.44</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.45</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -1783,7 +1783,7 @@ function _calcHcpIndexWHS(sortedDiffsAsc) {
 // Pure WHS simulation: take 20 most recent differentials, find best 8, avg × 0.96 = currentHI.
 // Simulates next round: oldest of the 20 drops out, new differential comes in.
 // Validated against Golfbox: diff 18.0 → 21.1→20.4, diff 19.6 → 21.3→20.9.
-function _calcHcpMotivation(diffs, slope = 113, courseRating = 72, coursePar = 72) {
+function _calcHcpMotivation(diffs, slope = 113, courseRating = 72, coursePar = 72, knownHI = null) {
   const withDiff = (diffs || []).filter(d => d.differential != null && d.source !== 'fore');
   if (!withDiff.length) return null;
   if (withDiff.length < 3) return null;
@@ -1792,9 +1792,9 @@ function _calcHcpMotivation(diffs, slope = 113, courseRating = 72, coursePar = 7
   const last20 = byDate.slice(0, 20);
   const sortedAsc = last20.map(d => parseFloat(d.differential)).sort((a, b) => a - b);
   const withHcpAfter = byDate.filter(d => d.hcp_after != null);
-  const currentHI = withHcpAfter.length
-    ? parseFloat(withHcpAfter[0].hcp_after)
-    : _calcHcpIndexWHS(sortedAsc);
+  const currentHI = knownHI != null
+    ? knownHI
+    : (withHcpAfter.length ? parseFloat(withHcpAfter[0].hcp_after) : _calcHcpIndexWHS(sortedAsc));
   if (currentHI === null) return null;
   // When next round comes in, the 20th most recent (oldest) drops out
   const droppedRound = last20.length >= 20 ? last20[19] : null;
@@ -1866,7 +1866,7 @@ async function updateRoundMotivation() {
   (allDiffs || []).forEach(d => { (byPlayer[d.player_id] = byPlayer[d.player_id] || []).push(d); });
   const courseName = document.getElementById('roundCourse').options[document.getElementById('roundCourse').selectedIndex]?.text || '';
   const playerRows = allPlayers
-    .map(p => ({ p, motiv: _calcHcpMotivation(byPlayer[p.id] || [], slope, cr, par) }))
+    .map(p => ({ p, motiv: _calcHcpMotivation(byPlayer[p.id] || [], slope, cr, par, p.handicap ?? null) }))
     .filter(({ motiv }) => motiv !== null)
     .map(({ p, motiv }) => `
       <div style="display:flex;align-items:center;padding:9px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
@@ -2019,7 +2019,7 @@ async function loadAndRenderDifferentials() {
     _renderStatCards(diffs);
     const smEl = document.getElementById('statsMotivation');
     if (smEl) {
-      const motiv = _calcHcpMotivation(diffs);
+      const motiv = _calcHcpMotivation(diffs, 113, 72, 72, currentProfile?.handicap ?? null);
       smEl.innerHTML = motiv ? _renderMotivBanner(motiv, true, true) : '';
     }
     _renderHcpGraph(diffs);
@@ -2980,7 +2980,7 @@ async function loadDashboard() {
       const { data: myDiffs } = await db.from('score_differentials')
         .select('*').eq('player_id', currentProfile.id)
         .order('date', { ascending: true });
-      const motiv = _calcHcpMotivation(myDiffs || []);
+      const motiv = _calcHcpMotivation(myDiffs || [], 113, 72, 72, currentProfile?.handicap ?? null);
       motivEl.innerHTML = motiv ? _renderMotivBanner(motiv, false, true) : '';
     }
   } finally {
