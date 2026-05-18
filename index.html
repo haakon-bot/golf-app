@@ -404,7 +404,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.50</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.51</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -1820,6 +1820,12 @@ function _calcHcpMotivation(diffs, slope = 113, courseRating = 72, coursePar = 7
   }
   if (!newHI || newHI >= currentHI) { _motivNullReason = `newHI ${newHI} >= currentHI ${currentHI} ved threshold ${thresholdDiff}`; return null; }
   const playingHCP = Math.round(currentHI * slope / 113 + (courseRating - coursePar));
+  // If threshold is absurdly high, the dropped oldest round was very bad — any new round helps
+  if (thresholdDiff > currentHI + 10) {
+    const typicalNewHI = _calcHcpIndexWHS([...remaining, parseFloat(currentHI)].sort((a,b)=>a-b)) ?? currentHI;
+    _motivNullReason = '';
+    return { currentHI, newHI: +typicalNewHI.toFixed(1), thresholdDiff, targetStableford: null, playingHCP, droppedRound, count: last20.length, anyRoundHelps: true };
+  }
   const targetGross = thresholdDiff * slope / 113 + courseRating;
   const targetStableford = Math.round(coursePar + 36 + playingHCP - targetGross);
   if (targetStableford < 20 || targetStableford > 65) { _motivNullReason = `stableford ${targetStableford} utenfor 20-65 (threshold ${thresholdDiff})`; return null; }
@@ -1844,6 +1850,14 @@ function _renderMotivBanner(motiv, detailed = false, isEstimate = false) {
   const estimateNote = isEstimate
     ? `<div style="font-size:10px;color:rgba(255,255,255,0.3);margin-top:4px;">Estimat basert på normalbane (slope 113)</div>`
     : '';
+  if (motiv.anyRoundHelps) {
+    return `<div style="background:rgba(82,183,136,0.08);border:1px solid rgba(82,183,136,0.3);border-radius:10px;padding:14px 16px;">
+      <div style="font-size:10px;color:rgba(82,183,136,0.9);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;">🎯 HCP-mål for neste runde</div>
+      <div style="font-size:15px;color:var(--cream);">Spill en runde — <strong style="color:#4caf7d;">HCP senkes uansett!</strong></div>
+      <div style="font-size:13px;color:var(--cream-dim);margin-top:5px;">En gammel dårlig runde faller ut. Typisk utfall: <strong style="color:var(--cream);">${motiv.currentHI}</strong> → <strong style="color:#4caf7d;">${motiv.newHI}</strong> <span style="color:#4caf7d;">(${deltaStr})</span></div>
+      ${droppedNote}${estimateNote}
+    </div>`;
+  }
   return `<div style="background:rgba(82,183,136,0.08);border:1px solid rgba(82,183,136,0.3);border-radius:10px;padding:14px 16px;">
     <div style="font-size:10px;color:rgba(82,183,136,0.9);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;">🎯 HCP-mål for neste runde</div>
     <div style="font-size:15px;color:var(--cream);">Spill <strong style="color:#4caf7d;font-size:20px;">${motiv.targetStableford}</strong> poeng eller mer</div>
