@@ -404,7 +404,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.45</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.46</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -1784,23 +1784,28 @@ function _calcHcpIndexWHS(sortedDiffsAsc) {
 // Simulates next round: oldest of the 20 drops out, new differential comes in.
 // Validated against Golfbox: diff 18.0 → 21.1→20.4, diff 19.6 → 21.3→20.9.
 function _calcHcpMotivation(diffs, slope = 113, courseRating = 72, coursePar = 72, knownHI = null) {
+  const allCount = (diffs || []).length;
   const withDiff = (diffs || []).filter(d => d.differential != null && d.source !== 'fore');
-  if (!withDiff.length) return null;
-  if (withDiff.length < 3) return null;
+  console.log('[motiv] total diffs:', allCount, '| after source filter:', withDiff.length, '| sources:', [...new Set((diffs||[]).map(d=>d.source))]);
+  if (!withDiff.length) { console.log('[motiv] exit: no diffs after filter'); return null; }
+  if (withDiff.length < 3) { console.log('[motiv] exit: fewer than 3 diffs'); return null; }
   // 20 most recent by date
   const byDate = [...withDiff].sort((a, b) => new Date(b.date) - new Date(a.date));
   const last20 = byDate.slice(0, 20);
   const sortedAsc = last20.map(d => parseFloat(d.differential)).sort((a, b) => a - b);
   const withHcpAfter = byDate.filter(d => d.hcp_after != null);
-  const currentHI = knownHI != null
-    ? knownHI
+  const _knownHI = knownHI != null ? parseFloat(knownHI) : null;
+  const currentHI = _knownHI != null
+    ? _knownHI
     : (withHcpAfter.length ? parseFloat(withHcpAfter[0].hcp_after) : _calcHcpIndexWHS(sortedAsc));
-  if (currentHI === null) return null;
+  console.log('[motiv] knownHI:', knownHI, '| currentHI:', currentHI, '| last20:', last20.length, '| bestDiffs:', sortedAsc.slice(0,8));
+  if (currentHI === null) { console.log('[motiv] exit: currentHI is null'); return null; }
   // When next round comes in, the 20th most recent (oldest) drops out
   const droppedRound = last20.length >= 20 ? last20[19] : null;
   const remaining = (last20.length >= 20 ? last20.slice(0, 19) : last20).map(d => parseFloat(d.differential));
   // Check improvement is possible at all (even a perfect -10 diff)
   const bestCaseHI = _calcHcpIndexWHS([...remaining, -10].sort((a, b) => a - b)) ?? 999;
+  console.log('[motiv] bestCaseHI:', bestCaseHI, '| currentHI:', currentHI, '| aborts:', bestCaseHI >= currentHI);
   if (bestCaseHI >= currentHI) return null;
   // Binary search: find highest differential X that still gives newHI < currentHI
   let lo = -10, hi = 50;
@@ -1817,11 +1822,13 @@ function _calcHcpMotivation(diffs, slope = 113, courseRating = 72, coursePar = 7
     thresholdDiff = +(thresholdDiff - 0.1).toFixed(1);
     newHI = _calcHcpIndexWHS([...remaining, thresholdDiff].sort((a, b) => a - b));
   }
-  if (!newHI || newHI >= currentHI) return null;
+  console.log('[motiv] thresholdDiff:', thresholdDiff, '| newHI:', newHI);
+  if (!newHI || newHI >= currentHI) { console.log('[motiv] exit: newHI', newHI, '>= currentHI', currentHI); return null; }
   const playingHCP = Math.round(currentHI * slope / 113 + (courseRating - coursePar));
   const targetGross = thresholdDiff * slope / 113 + courseRating;
   const targetStableford = Math.round(coursePar + 36 + playingHCP - targetGross);
-  if (targetStableford < 20 || targetStableford > 65) return null;
+  console.log('[motiv] targetStableford:', targetStableford, '| playingHCP:', playingHCP);
+  if (targetStableford < 20 || targetStableford > 65) { console.log('[motiv] exit: targetStableford', targetStableford, 'out of range'); return null; }
   return { currentHI, newHI, thresholdDiff, targetStableford, playingHCP, droppedRound, count: last20.length };
 }
 
@@ -3323,18 +3330,21 @@ function openSlopeUpload() {
   });
   openModal('modalSlopeUpload');
 }
-function _compressImage(file, maxBytes = 3_500_000) {
+function _compressImage(file, maxBytes = 2_000_000) {
   return new Promise((res, rej) => {
+    console.log('[compress] original:', file.name, (file.size/1024/1024).toFixed(2) + ' MB', file.type);
     const img = new Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
       URL.revokeObjectURL(url);
       let { width, height } = img;
-      const maxDim = 2048;
+      console.log('[compress] image dimensions:', width, 'x', height);
+      const maxDim = 1920;
       if (width > maxDim || height > maxDim) {
         const scale = maxDim / Math.max(width, height);
         width = Math.round(width * scale);
         height = Math.round(height * scale);
+        console.log('[compress] scaled to:', width, 'x', height);
       }
       const canvas = document.createElement('canvas');
       canvas.width = width; canvas.height = height;
@@ -3343,9 +3353,14 @@ function _compressImage(file, maxBytes = 3_500_000) {
       let dataUrl;
       do {
         dataUrl = canvas.toDataURL('image/jpeg', quality);
+        const estBytes = Math.round(dataUrl.split(',')[1].length * 0.75);
+        console.log('[compress] quality:', quality.toFixed(1), '| estimated bytes:', estBytes, '(', (estBytes/1024/1024).toFixed(2), 'MB)');
         quality = +(quality - 0.1).toFixed(1);
-      } while (dataUrl.length * 0.75 > maxBytes && quality >= 0.2);
-      res({ base64: dataUrl.split(',')[1], dataUrl });
+      } while (dataUrl.split(',')[1].length * 0.75 > maxBytes && quality >= 0.1);
+      const base64 = dataUrl.split(',')[1];
+      const finalBytes = Math.round(base64.length * 0.75);
+      console.log('[compress] final:', (finalBytes/1024/1024).toFixed(2), 'MB (', finalBytes, 'bytes)');
+      res({ base64, dataUrl });
     };
     img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('Kunne ikke lese bildet')); };
     img.src = url;
@@ -3353,6 +3368,7 @@ function _compressImage(file, maxBytes = 3_500_000) {
 }
 async function handleSlopeFile(file) {
   if (!file) return;
+  console.log('[slope] handleSlopeFile called, type:', file.type, 'size:', file.size);
   _slopeFileType = file.type;
   const nameEl = document.getElementById('slopeFileName');
   if (nameEl) { nameEl.textContent = '✓ ' + file.name; nameEl.style.display = 'block'; }
