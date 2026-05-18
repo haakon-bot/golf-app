@@ -404,7 +404,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.51</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.52</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -1877,7 +1877,7 @@ async function updateRoundMotivation() {
   const slope = tee.slope, cr = tee.course_rating, par = 72;
   const playerIds = allPlayers.map(p => p.id);
   if (!playerIds.length) { el.innerHTML = ''; return; }
-  const { data: allDiffs } = await db.from('score_differentials').select('player_id,date,differential').in('player_id', playerIds);
+  const { data: allDiffs } = await db.from('score_differentials').select('player_id,date,differential,source').in('player_id', playerIds);
   const byPlayer = {};
   (allDiffs || []).forEach(d => { (byPlayer[d.player_id] = byPlayer[d.player_id] || []).push(d); });
   const courseName = document.getElementById('roundCourse').options[document.getElementById('roundCourse').selectedIndex]?.text || '';
@@ -1888,7 +1888,9 @@ async function updateRoundMotivation() {
       <div style="display:flex;align-items:center;padding:9px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
         <div style="flex:1;font-size:13px;color:var(--cream);">${p.display_name}</div>
         <div style="text-align:right;">
-          <div style="font-size:15px;font-weight:600;color:#4caf7d;">${motiv.targetStableford}+ poeng</div>
+          ${motiv.anyRoundHelps
+            ? `<div style="font-size:13px;font-weight:600;color:#4caf7d;">Spill en runde!</div>`
+            : `<div style="font-size:15px;font-weight:600;color:#4caf7d;">${motiv.targetStableford}+ poeng</div>`}
           <div style="font-size:11px;color:var(--cream-dim);">${motiv.currentHI} → <span style="color:#4caf7d;">${motiv.newHI}</span></div>
         </div>
       </div>`);
