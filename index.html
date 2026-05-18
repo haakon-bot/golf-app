@@ -404,7 +404,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.62</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.63</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -1847,8 +1847,12 @@ async function updateRoundMotivation() {
     const { data: tee } = await db.from('tee_sets').select('slope,course_rating,course_id').eq('id', teeId).single();
     if (!tee?.slope || !tee?.course_rating) { el.innerHTML = ''; return; }
     const slope = tee.slope, cr = tee.course_rating;
-    const { data: courseHoles } = await db.from('holes').select('par').eq('course_id', tee.course_id);
-    const par = (courseHoles || []).reduce((s,h) => s + (h.par||0), 0) || 72;
+    const { data: courseHoles } = await db.from('holes').select('hole_number,par').eq('course_id', tee.course_id);
+    const holeRange = document.getElementById('roundHoleRange')?.value || 'all';
+    const activeHoles = holeRange === 'front9' ? (courseHoles||[]).filter(h => h.hole_number <= 9)
+      : holeRange === 'back9' ? (courseHoles||[]).filter(h => h.hole_number >= 10)
+      : (courseHoles||[]);
+    const par = activeHoles.reduce((s,h) => s + (h.par||0), 0) || 72;
     const playerIds = allPlayers.map(p => p.id);
     if (!playerIds.length) { el.innerHTML = ''; return; }
     const { data: allDiffs } = await db.from('score_differentials').select('player_id,date,differential,source').in('player_id', playerIds);
@@ -2353,6 +2357,11 @@ async function loadTeeSets(courseId) {
         <option value="front9">Hull 1–9</option>
         <option value="back9">Hull 10–18</option>
       </select>`;
+    const rangeSelect = document.getElementById('roundHoleRange');
+    if (rangeSelect) {
+      rangeSelect.removeEventListener('change', updateRoundMotivation);
+      rangeSelect.addEventListener('change', updateRoundMotivation);
+    }
   } else {
     rangeDiv.style.display = 'none';
     rangeDiv.innerHTML = '';
