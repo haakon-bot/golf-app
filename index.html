@@ -404,7 +404,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.48</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.49</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -2977,11 +2977,18 @@ async function loadDashboard() {
     // HCP-motivasjon – hentes separat (samme mønster som statistikk-seksjonen)
     const motivEl = document.getElementById('dashMotivation');
     if (motivEl && currentProfile) {
-      const { data: myDiffs } = await db.from('score_differentials')
-        .select('*').eq('player_id', currentProfile.id)
-        .order('date', { ascending: true });
-      const motiv = _calcHcpMotivation(myDiffs || [], 113, 72, 72, currentProfile?.handicap ?? null);
-      motivEl.innerHTML = motiv ? _renderMotivBanner(motiv, false, true) : '';
+      motivEl.innerHTML = '<div style="font-size:12px;color:var(--cream-dim);padding:6px 0;">⏳ Laster HCP-mål…</div>';
+      try {
+        const { data: myDiffs } = await db.from('score_differentials')
+          .select('*').eq('player_id', currentProfile.id)
+          .order('date', { ascending: true });
+        const motiv = _calcHcpMotivation(myDiffs || [], 113, 72, 72, currentProfile?.handicap ?? null);
+        motivEl.innerHTML = motiv
+          ? _renderMotivBanner(motiv, false, true)
+          : `<div style="font-size:11px;color:var(--cream-dim);">DEBUG: ${(myDiffs||[]).length} runder, source-verdier: ${[...new Set((myDiffs||[]).map(d=>d.source))].join('/')}, HCP: ${currentProfile?.handicap ?? 'ikke satt'}</div>`;
+      } catch(e) {
+        motivEl.innerHTML = `<div style="font-size:11px;color:var(--danger);">Feil: ${e.message}</div>`;
+      }
     }
   } finally {
     _dashboardLoading = false;
