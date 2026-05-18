@@ -404,7 +404,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.60</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.61</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -533,6 +533,7 @@
       <div style="text-align:center;">
         <div id="scCourseName" style="font-family:'Playfair Display',serif; font-size:16px; color:var(--cream);"></div>
         <div id="scRoundDate" style="font-size:11px; color:var(--cream-dim); letter-spacing:1px;"></div>
+        <button id="scTeeBtn" onclick="openChangeTee()" style="background:none;border:none;font-size:10px;color:var(--gold-dim);cursor:pointer;font-family:'DM Sans',sans-serif;-webkit-tap-highlight-color:transparent;padding:2px 0;"></button>
       </div>
       <button onclick="showLeaderboard()" style="background:none; border:none; color:var(--gold-light); font-size:13px; cursor:pointer; font-family:'DM Sans',sans-serif; -webkit-tap-highlight-color:transparent;">Ledertavle</button>
     </div>
@@ -555,14 +556,7 @@
         <div style="font-size:10px; color:var(--cream-dim); letter-spacing:1.5px; text-transform:uppercase;">SI</div>
         <div id="scSI" style="font-family:'Playfair Display',serif; font-size:22px; color:var(--cream);">–</div>
       </div>
-      <div style="flex:1; padding:10px; text-align:center; border-right:1px solid rgba(255,255,255,0.05);">
-        <div style="font-size:10px; color:var(--cream-dim); letter-spacing:1.5px; text-transform:uppercase;">Snitt</div>
-        <div id="scAvg" style="font-family:'Playfair Display',serif; font-size:22px; color:var(--gold-light);">–</div>
-      </div>
-      <div style="flex:1; padding:10px; text-align:center;">
-        <div style="font-size:10px; color:var(--cream-dim); letter-spacing:1.5px; text-transform:uppercase;">Champion</div>
-        <div id="scChampion" style="font-size:11px; color:var(--gold); font-weight:600; margin-top:4px;">–</div>
-      </div>
+      <div id="scParStats" style="flex:3; display:flex;"></div>
     </div>
     <!-- Spillerscores -->
     <div id="scPlayerScores" style="padding:12px 16px; flex:1;"></div>
@@ -586,6 +580,23 @@
       <div id="leaderboardContent"></div>
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="closeModal('modalLeaderboard')">Lukk</button>
+      </div>
+    </div>
+  </div>
+  <!-- MODAL: Change Tee -->
+  <div class="modal-overlay" id="modalChangeTee" style="display:none;" onclick="closeModalOnOverlay(event,'modalChangeTee')">
+    <div class="modal" style="max-width:400px;" onclick="event.stopPropagation()">
+      <h2>Bytt tee-sett</h2>
+      <div style="padding:10px 14px;border-radius:8px;background:rgba(201,168,76,0.1);border:1px solid rgba(201,168,76,0.3);color:var(--gold-light);font-size:13px;margin-bottom:16px;">
+        ⚠️ Spillehandicap (tildelte slag) endres for alle spillere. Allerede registrerte scores beholdes, men Stableford-poengene beregnes om med nytt tee.
+      </div>
+      <div class="form-group">
+        <label>Velg nytt tee-sett</label>
+        <select id="changeTeeSelect" style="width:100%;padding:12px 16px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:var(--cream);font-size:15px;font-family:'DM Sans',sans-serif;"></select>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal('modalChangeTee')">Avbryt</button>
+        <button class="btn" onclick="applyTeeChange()">Bytt tee</button>
       </div>
     </div>
   </div>
@@ -1850,7 +1861,7 @@ async function updateRoundMotivation() {
         <div style="padding:9px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
           <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
             <div style="font-size:13px;color:var(--cream);">${p.display_name}</div>
-            <div style="font-size:11px;color:rgba(255,255,255,0.4);">Spillehcp: ${motiv.playingHCP}</div>
+            <div style="font-size:11px;color:rgba(255,255,255,0.4);">Tildelte slag: ${motiv.playingHCP}</div>
           </div>
           <div style="font-size:12px;color:#4caf7d;">${X}p eller mer → HCP ned</div>
           ${Y != null ? `<div style="font-size:12px;color:rgba(255,120,100,0.9);">Under ${Y}p → HCP opp</div>` : ''}
@@ -2006,17 +2017,16 @@ async function _fetchStablefordStats(profileId, diffs, currentHI) {
     }
 
     // Fore/app-scored rounds: compute from actual hole scores
-    const { data: scoreRows } = await db
-      .from('scores')
-      .select('round_id, hole_number, strokes, rounds!inner(id, date, hole_range, course_id, tee_set_id, tee_sets(slope, course_rating))')
-      .eq('player_id', profileId);
-    if (scoreRows?.length) {
+    const { data: playerScoreRows } = await db
+      .from('scores').select('round_id, hole_number, strokes').eq('player_id', profileId).gt('strokes', 0);
+    if (playerScoreRows?.length) {
+      const roundIds = [...new Set(playerScoreRows.map(s => s.round_id))];
+      const { data: roundRows } = await db
+        .from('rounds').select('id, date, hole_range, course_id, tee_set_id, tee_sets(slope, course_rating)').in('id', roundIds);
       const roundMap = {};
-      for (const s of scoreRows) {
-        const r = s.rounds;
-        if (!r) continue;
-        if (!roundMap[r.id]) roundMap[r.id] = { ...r, scoreMap: {} };
-        roundMap[r.id].scoreMap[s.hole_number] = s.strokes;
+      for (const r of (roundRows || [])) roundMap[r.id] = { ...r, scoreMap: {} };
+      for (const s of playerScoreRows) {
+        if (roundMap[s.round_id]) roundMap[s.round_id].scoreMap[s.hole_number] = s.strokes;
       }
       const courseIds = [...new Set(Object.values(roundMap).map(r => r.course_id).filter(Boolean))];
       if (courseIds.length) {
@@ -2465,6 +2475,8 @@ async function openRound(roundId) {
   });
   document.getElementById('scCourseName').textContent = round.courses?.name || '';
   document.getElementById('scRoundDate').textContent = round.date;
+  const teeBtnEl = document.getElementById('scTeeBtn');
+  if (teeBtnEl) teeBtnEl.textContent = round.tee_sets?.name ? `Tee: ${round.tee_sets.name} ✏️` : '';
 
   const isParticipant = roundFlights.some(f => f.flight_players?.some(fp => fp.player_id === currentProfile?.id));
   const finishBtn = document.getElementById('scFinishBtn');
@@ -2504,31 +2516,41 @@ function renderScoringHole() {
   } else {
     document.getElementById('scPar').style.color = 'var(--cream)';
   }
-  renderHoleStats(holeData);
+  renderHoleStats();
   renderPlayerInputs(holeData);
   renderMiniLeaderboard();
 }
-async function renderHoleStats(holeData) {
-  const { data: allScores } = await db.from('scores')
-    .select('strokes, player_id, profiles(display_name)')
-    .eq('hole_number', currentHole)
-    .not('strokes', 'is', null);
-  const relevant = (allScores || []).filter(s => s.strokes > 0);
-  if (relevant.length) {
-    const avg = (relevant.reduce((sum, s) => sum + s.strokes, 0) / relevant.length).toFixed(1);
-    document.getElementById('scAvg').textContent = avg;
-    const playerTotals = {};
-    relevant.forEach(s => {
-      if (!playerTotals[s.player_id]) playerTotals[s.player_id] = { sum: 0, count: 0, name: s.profiles?.display_name || '?' };
-      playerTotals[s.player_id].sum += s.strokes;
-      playerTotals[s.player_id].count++;
-    });
-    const champion = Object.values(playerTotals).sort((a, b) => (a.sum/a.count) - (b.sum/b.count))[0];
-    if (champion) document.getElementById('scChampion').textContent = `${champion.name.split(' ')[0]} (${(champion.sum/champion.count).toFixed(1)})`;
-  } else {
-    document.getElementById('scAvg').textContent = '–';
-    document.getElementById('scChampion').textContent = '–';
+function renderHoleStats() {
+  const allFP = roundFlights.flatMap(f => f.flight_players || []);
+  const parStats = {};
+  for (const hole of roundHoles) {
+    const p = hole.par;
+    if (![3, 4, 5].includes(p)) continue;
+    if (!parStats[p]) parStats[p] = {};
+    for (const fp of allFP) {
+      const s = roundScores[fp.player_id]?.[hole.hole_number];
+      if (!s || s <= 0) continue;
+      const firstName = (fp.profiles?.display_name || '?').split(' ')[0];
+      if (!parStats[p][fp.player_id]) parStats[p][fp.player_id] = { name: firstName, sum: 0, count: 0 };
+      parStats[p][fp.player_id].sum += s;
+      parStats[p][fp.player_id].count++;
+    }
   }
+  const colStyle = 'flex:1;padding:8px 4px;text-align:center;border-right:1px solid rgba(255,255,255,0.05);';
+  const html = [3, 4, 5].map((p, i) => {
+    const data = parStats[p];
+    const isLast = i === 2;
+    const players = data ? Object.values(data) : [];
+    const totalCount = players.reduce((s, pl) => s + pl.count, 0);
+    const avg = totalCount ? (players.reduce((s, pl) => s + pl.sum, 0) / totalCount).toFixed(1) : null;
+    const best = players.length ? [...players].sort((a, b) => (a.sum/a.count) - (b.sum/b.count))[0] : null;
+    return `<div style="${colStyle}${isLast ? 'border-right:none;' : ''}">
+      <div style="font-size:9px;color:var(--cream-dim);letter-spacing:1px;text-transform:uppercase;">Par ${p}</div>
+      <div style="font-family:'Playfair Display',serif;font-size:20px;color:${avg ? 'var(--gold-light)' : 'var(--cream-dim)'};">${avg ?? '–'}</div>
+      <div style="font-size:9px;color:var(--gold);min-height:12px;">${best ? best.name : ''}</div>
+    </div>`;
+  }).join('');
+  document.getElementById('scParStats').innerHTML = html;
 }
 function renderPlayerInputs(holeData) {
   const _rSlope = currentRound?.tee_sets?.slope, _rCr = currentRound?.tee_sets?.course_rating;
@@ -2563,8 +2585,11 @@ function renderPlayerInputs(holeData) {
           ${(player?.display_name || '?')[0]}
         </div>
         <div style="flex:1;">
-          <div style="font-size:14px; color:var(--cream); font-weight:500;">${player?.display_name || '?'}</div>
-          <div style="font-size:11px; color:var(--cream-dim);">HCP ${fp.handicap || '–'} ${strokesLabel} ${strokes > 0 ? `· <span style="color:${scoreColor}">${scoreName}</span> · ${stableford}p` : ''}</div>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <div style="font-size:14px;color:var(--cream);font-weight:500;">${player?.display_name || '?'}</div>
+            <div style="font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(201,168,76,0.15);color:var(--gold-dim);white-space:nowrap;">${_phcp} slag</div>
+          </div>
+          <div style="font-size:11px;color:var(--cream-dim);">HCP ${fp.handicap || '–'} ${strokesLabel} ${strokes > 0 ? `· <span style="color:${scoreColor}">${scoreName}</span> · ${stableford}p` : ''}</div>
         </div>
         ${canEdit ? `
         <div style="display:flex; align-items:center; gap:8px;">
@@ -2720,12 +2745,32 @@ function showLeaderboard() {
   `).join('');
   openModal('modalLeaderboard');
 }
+async function openChangeTee() {
+  if (!currentRound) return;
+  const { data: tees } = await db.from('tee_sets').select('id, name, slope, course_rating').eq('course_id', currentRound.course_id).order('name');
+  const sel = document.getElementById('changeTeeSelect');
+  sel.innerHTML = (tees || []).map(t => `<option value="${t.id}" ${t.id === currentRound.tee_set_id ? 'selected' : ''}>${t.name} — Slope ${t.slope}, CR ${t.course_rating}</option>`).join('');
+  openModal('modalChangeTee');
+}
+async function applyTeeChange() {
+  const newTeeId = document.getElementById('changeTeeSelect').value;
+  if (!newTeeId || newTeeId === currentRound.tee_set_id) { closeModal('modalChangeTee'); return; }
+  await db.from('rounds').update({ tee_set_id: newTeeId }).eq('id', currentRound.id);
+  const { data: tee } = await db.from('tee_sets').select('id, name, slope, course_rating').eq('id', newTeeId).single();
+  if (tee) {
+    currentRound.tee_set_id = tee.id;
+    currentRound.tee_sets = tee;
+    const teeBtnEl = document.getElementById('scTeeBtn');
+    if (teeBtnEl) teeBtnEl.textContent = `Tee: ${tee.name} ✏️`;
+  }
+  closeModal('modalChangeTee');
+  renderScoringHole();
+}
 async function finishRound() {
   const confirmed = await showConfirm('Avslutt runden og se sammendrag?', 'Avslutt');
   if (!confirmed) return;
   const roundId = currentRound.id;
   await db.from('rounds').update({ status: 'completed' }).eq('id', roundId);
-  _saveForeScoreDifferentials().catch(() => {});
   document.getElementById('scoringScreen').style.display = 'none';
   await loadRounds();
   await loadDashboard();
