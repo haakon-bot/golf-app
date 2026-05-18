@@ -404,7 +404,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.63</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.64</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -939,12 +939,12 @@ async function renderPublicLive() {
   const scoreMap = {}, holeMap = {};
   (scores || []).forEach(s => { if (!scoreMap[s.player_id]) scoreMap[s.player_id] = {}; scoreMap[s.player_id][s.hole_number] = s.strokes; });
   _pubActiveHoles.forEach(h => { holeMap[h.hole_number] = h; });
-  const _pubPar = _pubActiveHoles.reduce((s,h) => s + (h.par||0), 0) || 72;
+  const _pubPar = (holes||[]).reduce((s,h) => s + (h.par||0), 0) || 72;
   const standings = allFP.map(fp => {
     const ps = scoreMap[fp.player_id] || {};
     let pts = 0, played = 0;
     Object.entries(ps).forEach(([hn, strokes]) => {
-      if (strokes > 0) { played++; const h = holeMap[parseInt(hn)]; if (h?.par && h?.stroke_index) pts += calcStablefordLive(strokes, h.par, _playingHcp(fp.handicap, round.tee_sets?.slope, round.tee_sets?.course_rating, _pubPar), _localSiRank(h.stroke_index, _pubActiveHoles), holeCount); }
+      if (strokes > 0) { played++; const h = holeMap[parseInt(hn)]; if (h?.par && h?.stroke_index) pts += calcStablefordLive(strokes, h.par, _playingHcp(fp.handicap, round.tee_sets?.slope, round.tee_sets?.course_rating, _pubPar), h.stroke_index, 18); }
     });
     return { name: fp.profiles?.display_name || '?', pts, played, scores: ps };
   }).sort((a, b) => b.pts - a.pts);
@@ -1847,12 +1847,12 @@ async function updateRoundMotivation() {
     const { data: tee } = await db.from('tee_sets').select('slope,course_rating,course_id').eq('id', teeId).single();
     if (!tee?.slope || !tee?.course_rating) { el.innerHTML = ''; return; }
     const slope = tee.slope, cr = tee.course_rating;
-    const { data: courseHoles } = await db.from('holes').select('hole_number,par').eq('course_id', tee.course_id);
+    const { data: courseHoles } = await db.from('holes').select('hole_number,par,stroke_index').eq('course_id', tee.course_id);
     const holeRange = document.getElementById('roundHoleRange')?.value || 'all';
-    const activeHoles = holeRange === 'front9' ? (courseHoles||[]).filter(h => h.hole_number <= 9)
+    const par = (courseHoles||[]).reduce((s,h) => s + (h.par||0), 0) || 72;
+    const motivActiveHoles = holeRange === 'front9' ? (courseHoles||[]).filter(h => h.hole_number <= 9)
       : holeRange === 'back9' ? (courseHoles||[]).filter(h => h.hole_number >= 10)
       : (courseHoles||[]);
-    const par = activeHoles.reduce((s,h) => s + (h.par||0), 0) || 72;
     const playerIds = allPlayers.map(p => p.id);
     if (!playerIds.length) { el.innerHTML = ''; return; }
     const { data: allDiffs } = await db.from('score_differentials').select('player_id,date,differential,source').in('player_id', playerIds);
@@ -1864,11 +1864,12 @@ async function updateRoundMotivation() {
       .filter(({ motiv }) => motiv !== null)
       .map(({ p, motiv }) => {
         const X = motiv.stablefordImprove, Y = motiv.stablefordDecline;
+        const activeS = _activeStrokes(motiv.playingHCP, motivActiveHoles);
         return `
         <div style="padding:9px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
           <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
             <div style="font-size:13px;color:var(--cream);">${p.display_name}</div>
-            <div style="font-size:11px;color:rgba(255,255,255,0.4);">Tildelte slag: ${motiv.playingHCP}</div>
+            <div style="font-size:11px;color:rgba(255,255,255,0.4);">Tildelte slag: ${activeS}</div>
           </div>
           <div style="font-size:12px;color:#4caf7d;">${X}p eller mer → HCP ned</div>
           ${Y != null ? `<div style="font-size:12px;color:rgba(255,120,100,0.9);">Under ${Y}p → HCP opp</div>` : ''}
@@ -2062,9 +2063,8 @@ async function _fetchStablefordStats(profileId, diffs, currentHI) {
             const strokes = round.scoreMap[hole.hole_number];
             if (!strokes || strokes <= 0) continue;
             played++;
-            const localSi = _localSiRank(hole.stroke_index, relevantHoles);
-            let extra = Math.floor(hcp / totalH);
-            if (localSi <= (hcp % totalH)) extra++;
+            let extra = Math.floor(hcp / 18);
+            if ((hole.stroke_index || 18) <= (hcp % 18)) extra++;
             total += Math.max(0, hole.par - (strokes - extra) + 2);
           }
           if (played < Math.ceil(totalH * 0.7)) continue;
@@ -2440,6 +2440,7 @@ let currentHole = 1;
 let roundScores = {};
 let roundHoles = [];
 let roundFlights = [];
+let _fullCoursePar = 72; // full 18-hole par, set when opening a round
 async function deleteRound(roundId) {
   const confirmed = await showConfirm('Slette denne runden? Dette sletter alle scores og kan ikke angres.');
   if (!confirmed) return;
@@ -2472,6 +2473,7 @@ async function openRound(roundId) {
   currentRound = round;
   const holeRange = round.hole_range || 'all';
   const allHoles = holes || [];
+  _fullCoursePar = allHoles.reduce((s,h) => s + (h.par||0), 0) || 72;
   if (holeRange === 'front9') {
     roundHoles = allHoles.filter(h => h.hole_number <= 9);
   } else if (holeRange === 'back9') {
@@ -2567,7 +2569,6 @@ function renderHoleStats() {
 }
 function renderPlayerInputs(holeData) {
   const _rSlope = currentRound?.tee_sets?.slope, _rCr = currentRound?.tee_sets?.course_rating;
-  const _rPar = roundHoles.reduce((s,h) => s + (h.par||0), 0) || 72;
   let html = '';
   roundFlights.forEach(flight => {
     const canEdit = flight.flight_players?.some(fp => fp.player_id === currentProfile?.id);
@@ -2576,19 +2577,17 @@ function renderPlayerInputs(holeData) {
     (flight.flight_players || []).forEach(fp => {
       const player = fp.profiles;
       const strokes = roundScores[fp.player_id]?.[currentHole] || 0;
-      const _phcp = _playingHcp(fp.handicap, _rSlope, _rCr, _rPar);
+      const _phcp = _playingHcp(fp.handicap, _rSlope, _rCr, _fullCoursePar);
       const stableford = (holeData.par && holeData.stroke_index)
         ? calcStableford(strokes, holeData.par, _phcp, holeData.stroke_index)
         : 0;
       const scoreColor = holeData.par ? getScoreColor(strokes, holeData.par) : 'var(--cream)';
       const scoreName = holeData.par ? getScoreName(strokes, holeData.par) : '';
-      // Beregn tildelte slag på dette hullet (lokal SI-rangering blant aktive hull)
-      const totalH = roundHoles.length || 18;
-      const localSiRank = _localSiRank(holeData.stroke_index, roundHoles);
+      const activeHcpBadge = _activeStrokes(_phcp, roundHoles);
       let extraStrokes = 0;
       if (holeData.stroke_index) {
-        extraStrokes = Math.floor(_phcp / totalH);
-        if (localSiRank <= (_phcp % totalH)) extraStrokes++;
+        extraStrokes = Math.floor(_phcp / 18);
+        if (holeData.stroke_index <= (_phcp % 18)) extraStrokes++;
       }
       const strokesLabel = extraStrokes > 0
         ? `<span style="color:var(--green-light); font-size:11px;">${extraStrokes === 1 ? '+1 slag' : `+${extraStrokes} slag`}</span>`
@@ -2601,7 +2600,7 @@ function renderPlayerInputs(holeData) {
         <div style="flex:1;">
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
             <div style="font-size:14px;color:var(--cream);font-weight:500;">${player?.display_name || '?'}</div>
-            <div style="font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(201,168,76,0.15);color:var(--gold-dim);white-space:nowrap;">${_phcp} slag</div>
+            <div style="font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(201,168,76,0.15);color:var(--gold-dim);white-space:nowrap;">${activeHcpBadge} slag</div>
           </div>
           <div style="font-size:11px;color:var(--cream-dim);">HCP ${fp.handicap || '–'} ${strokesLabel} ${strokes > 0 ? `· <span style="color:${scoreColor}">${scoreName}</span> · ${stableford}p` : ''}</div>
         </div>
@@ -2619,20 +2618,19 @@ function renderPlayerInputs(holeData) {
   document.getElementById('scPlayerScores').innerHTML = html;
 }
 function _playingHcp(hi, slope, cr, par) { return Math.round((hi || 36) * (slope || 113) / 113 + ((cr || 72) - (par || 72))); }
-// Returns local rank of a hole's SI among the active holes (1 = hardest).
-function _localSiRank(si, holes) {
-  if (!si || !holes?.length) return si || 18;
-  const sorted = [...holes].filter(h => h.stroke_index != null).sort((a, b) => a.stroke_index - b.stroke_index);
-  const idx = sorted.findIndex(h => h.stroke_index === si);
-  return idx >= 0 ? idx + 1 : si;
+// Counts extra strokes from fullHCP that land on the given active holes (full 18-hole distribution).
+function _activeStrokes(fullHCP, activeHoles) {
+  return (activeHoles || []).reduce((sum, hole) => {
+    if (!hole.stroke_index) return sum;
+    let extra = Math.floor(fullHCP / 18);
+    if (hole.stroke_index <= (fullHCP % 18)) extra++;
+    return sum + extra;
+  }, 0);
 }
 function calcStableford(strokes, par, hcp, si) {
   if (!strokes || !par || !si) return 0;
-  const activeHoles = roundHoles || [];
-  const totalH = activeHoles.length || 18;
-  const localSi = _localSiRank(si, activeHoles);
-  let extra = Math.floor(hcp / totalH);
-  if (localSi <= (hcp % totalH)) extra++;
+  let extra = Math.floor(hcp / 18);
+  if (si <= (hcp % 18)) extra++;
   return Math.max(0, par - (strokes - extra) + 2);
 }
 function calcStablefordWithHoles(strokes, par, hcp, si, totalHoles) {
@@ -2703,19 +2701,17 @@ function changeHole(delta) {
   document.getElementById('scoringScreen').scrollTo(0, 0);
 }
 function renderMiniLeaderboard() {
-  const totalHoles = currentRound?.courses?.holes || 18;
   const _rSlope = currentRound?.tee_sets?.slope, _rCr = currentRound?.tee_sets?.course_rating;
-  const _rPar = roundHoles.reduce((s,h) => s + (h.par||0), 0) || 72;
   const allFP = roundFlights.flatMap(f => f.flight_players || []);
   const standings = allFP.map(fp => {
     let total = 0, holes = 0;
-    const hcp = _playingHcp(fp.handicap, _rSlope, _rCr, _rPar);
+    const hcp = _playingHcp(fp.handicap, _rSlope, _rCr, _fullCoursePar);
     Object.entries(roundScores[fp.player_id] || {}).forEach(([h, s]) => {
       if (s > 0) {
         const hd = roundHoles.find(hh => hh.hole_number === parseInt(h));
         if (hd?.par && hd?.stroke_index) {
-          let extra = Math.floor(hcp / totalHoles);
-          if (hd.stroke_index <= (hcp % totalHoles)) extra++;
+          let extra = Math.floor(hcp / 18);
+          if (hd.stroke_index <= (hcp % 18)) extra++;
           const pts = Math.max(0, hd.par - (s - extra) + 2);
           total += pts;
         }
@@ -2740,7 +2736,7 @@ function showLeaderboard() {
       if (s > 0) {
         const hd = roundHoles.find(hh => hh.hole_number === parseInt(h)) || { par: null, stroke_index: null };
         if (hd.par && hd.stroke_index) {
-          stableford += calcStableford(s, hd.par, _playingHcp(fp.handicap, currentRound?.tee_sets?.slope, currentRound?.tee_sets?.course_rating, roundHoles.reduce((s,h)=>s+(h.par||0),0)||72), hd.stroke_index);
+          stableford += calcStableford(s, hd.par, _playingHcp(fp.handicap, currentRound?.tee_sets?.slope, currentRound?.tee_sets?.course_rating, _fullCoursePar), hd.stroke_index);
           const d = s - hd.par;
           if (d <= -2) eagles++;
           else if (d === -1) birdies++;
@@ -2807,7 +2803,7 @@ async function _saveForeScoreDifferentials() {
   const totalHoles = currentRound.courses?.holes || 18;
   const allFP = roundFlights.flatMap(f => f.flight_players || []);
   for (const fp of allFP) {
-    const hcp = _playingHcp(fp.handicap, slope, courseRating, roundHoles.reduce((s,h)=>s+(h.par||0),0)||72);
+    const hcp = _playingHcp(fp.handicap, slope, courseRating, _fullCoursePar);
     const playerScores = roundScores[fp.player_id] || {};
     let adjusted = 0, holesPlayed = 0;
     for (const hole of roundHoles) {
@@ -2859,11 +2855,12 @@ async function showRoundSummary(roundId) {
   document.getElementById('summaryTitle').textContent = `${round.courses?.name} · ${round.date}${rangeLabel}`;
   const allFP = (round.flights || []).flatMap(f => f.flight_players || []);
   const totalHoles = filteredHoles.length || 18;
+  const fullCoursePar = allDbHoles.reduce((s,h) => s + (h.par||0), 0) || 72;
   const tabs = allFP.map((fp, i) =>
     `<button class="tab ${i === 0 ? 'active' : ''}" onclick="showSummaryPlayer('${fp.player_id}', this)">${fp.profiles?.display_name?.split(' ')[0]}</button>`
   ).join('');
   document.getElementById('summaryTabs').innerHTML = tabs;
-  window._summaryData = { round, holes: filteredHoles, sc, allFP, totalHoles };
+  window._summaryData = { round, holes: filteredHoles, sc, allFP, totalHoles, fullCoursePar };
   window._currentSummaryPlayer = null;
   if (allFP[0]) showSummaryPlayer(allFP[0].player_id);
 }
@@ -2872,7 +2869,7 @@ function showSummaryPlayer(playerId, btn) {
     document.querySelectorAll('#summaryTabs .tab').forEach(t => t.classList.remove('active'));
     btn.classList.add('active');
   }
-  const { round, holes, sc, allFP, totalHoles } = window._summaryData || {};
+  const { round, holes, sc, allFP, totalHoles, fullCoursePar } = window._summaryData || {};
   if (!allFP) return;
   const fp = allFP.find(p => p.player_id === playerId);
   if (!fp) return;
@@ -2880,7 +2877,7 @@ function showSummaryPlayer(playerId, btn) {
   let totalStabs = 0, totalStrokes = 0, birdies = 0, pars = 0, bogeys = 0, doubles = 0;
   const rows = holes.map(h => {
     const s = playerScores[h.hole_number] || 0;
-    const stab = s > 0 ? calcStablefordStatic(s, h.par, _playingHcp(fp.handicap, round.tee_sets?.slope, round.tee_sets?.course_rating, holes.reduce((s,h)=>s+(h.par||0),0)||72), _localSiRank(h.stroke_index, holes), totalHoles) : 0;
+    const stab = s > 0 ? calcStablefordStatic(s, h.par, _playingHcp(fp.handicap, round.tee_sets?.slope, round.tee_sets?.course_rating, fullCoursePar || holes.reduce((s,h)=>s+(h.par||0),0)||72), h.stroke_index, 18) : 0;
     totalStabs += stab;
     totalStrokes += s;
     const d = s > 0 ? s - h.par : null;
@@ -3235,7 +3232,7 @@ async function renderLiveView(round) {
   const holeCount = _liveActiveHoles.length || round.courses?.holes || 18;
   const holeMap = {};
   _liveActiveHoles.forEach(h => { holeMap[h.hole_number] = h; });
-  const _livePar = _liveActiveHoles.reduce((s,h) => s + (h.par||0), 0) || 72;
+  const _livePar = (holes||[]).reduce((s,h) => s + (h.par||0), 0) || 72;
 
   // Calculate standings
   const standings = allFP.map(fp => {
@@ -3247,7 +3244,7 @@ async function renderLiveView(round) {
         holesPlayed++;
         const h = holeMap[parseInt(hn)];
         if (h?.par && h?.stroke_index) {
-          stableford += calcStablefordLive(strokes, h.par, _playingHcp(fp.handicap, round.tee_sets?.slope, round.tee_sets?.course_rating, _livePar), _localSiRank(h.stroke_index, _liveActiveHoles), holeCount);
+          stableford += calcStablefordLive(strokes, h.par, _playingHcp(fp.handicap, round.tee_sets?.slope, round.tee_sets?.course_rating, _livePar), h.stroke_index, 18);
         }
       }
     });
@@ -3287,7 +3284,7 @@ async function renderLiveView(round) {
           <div style="font-size:9px; color:rgba(255,255,255,0.15); margin-top:1px;">–</div>
         </div>`;
       const diff = strokes - h.par;
-      const pts = h.stroke_index ? calcStablefordLive(strokes, h.par, hcp || 36, _localSiRank(h.stroke_index, _liveActiveHoles), holeCount) : 0;
+      const pts = h.stroke_index ? calcStablefordLive(strokes, h.par, hcp || 36, h.stroke_index, 18) : 0;
 
       // PGA shapes
       let cellStyle = '';
