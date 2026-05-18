@@ -404,7 +404,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.65</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.66</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -2013,7 +2013,7 @@ function _fileToBase64(file) {
 async function _fetchStablefordStats(profileId, diffs, currentHI) {
   try {
     const hiNum = currentHI != null ? parseFloat(currentHI) : null;
-    const stats = { eighteen: [] };
+    const entries = []; // { date, sf }
 
     // Gimmie/Golfbox: always 18-hole official rounds — convert differential to Stableford on normalbane
     const gimmieDiffs = (diffs || []).filter(d => d.source !== 'fore' && d.differential != null);
@@ -2021,7 +2021,7 @@ async function _fetchStablefordStats(profileId, diffs, currentHI) {
       const nh = d.hcp_before != null ? Math.round(parseFloat(d.hcp_before)) : (hiNum != null ? Math.round(hiNum) : null);
       if (nh == null) continue;
       const sf = Math.round(36 + nh - parseFloat(d.differential));
-      if (sf >= 10 && sf <= 60) stats.eighteen.push(sf);
+      if (sf >= 10 && sf <= 60) entries.push({ date: d.date, sf });
     }
 
     // Fore/app-scored rounds: compute from actual hole scores
@@ -2068,12 +2068,16 @@ async function _fetchStablefordStats(profileId, diffs, currentHI) {
             total += Math.max(0, hole.par - (strokes - extra) + 2);
           }
           if (played < Math.ceil(totalH * 0.7)) continue;
-          if (holeRange === 'all' && totalH > 9) stats.eighteen.push(total);
+          if (holeRange === 'all' && totalH > 9) entries.push({ date: round.date, sf: total });
           // 9-hole rounds excluded from stats
         }
       }
     }
 
+    // Keep only the 10 most recent rounds
+    entries.sort((a, b) => new Date(b.date) - new Date(a.date));
+    const recent = entries.slice(0, 10).map(e => e.sf);
+    const stats = { eighteen: recent };
     return stats.eighteen.length ? stats : null;
   } catch (_) { return null; }
 }
