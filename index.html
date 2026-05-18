@@ -404,7 +404,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.42</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.43</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -1784,7 +1784,7 @@ function _calcHcpIndexWHS(sortedDiffsAsc) {
 // Simulates next round: oldest of the 20 drops out, new differential comes in.
 // Validated against Golfbox: diff 18.0 → 21.1→20.4, diff 19.6 → 21.3→20.9.
 function _calcHcpMotivation(diffs, slope = 113, courseRating = 72, coursePar = 72) {
-  const withDiff = (diffs || []).filter(d => d.differential != null);
+  const withDiff = (diffs || []).filter(d => d.differential != null && d.source !== 'fore');
   if (!withDiff.length) return null;
   if (withDiff.length < 3) return null;
   // 20 most recent by date
