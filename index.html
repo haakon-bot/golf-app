@@ -404,7 +404,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.67</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.68</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -1705,9 +1705,49 @@ async function savePlayer() {
   setTimeout(() => { closeModal('modalAddPlayer'); loadPlayers(); }, 1000);
 }
 let _profileLoading = false;
+let _profileScoreCache = null;
+let _profileDiffsCache = null;
+
+function _makeCollapsibleHTML(id, title, contentHTML) {
+  return `<div style="border-radius:12px;overflow:hidden;background:rgba(0,0,0,0.2);border:1px solid rgba(255,255,255,0.07);margin-bottom:2px;">
+    <button onclick="_toggleSection('${id}')" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:16px 18px;background:none;border:none;color:var(--cream);cursor:pointer;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:500;text-align:left;-webkit-tap-highlight-color:transparent;">
+      <span>${title}</span>
+      <span id="${id}-arrow" style="font-size:10px;color:var(--cream-dim);transition:transform 0.3s ease;display:inline-block;flex-shrink:0;margin-left:12px;">▼</span>
+    </button>
+    <div id="${id}" style="max-height:0;overflow:hidden;transition:max-height 0.4s ease;" data-open="0" data-loaded="0">
+      <div style="padding:0 18px 20px;">${contentHTML}</div>
+    </div>
+  </div>`;
+}
+
+function _toggleSection(id) {
+  const section = document.getElementById(id);
+  const arrow = document.getElementById(id + '-arrow');
+  if (!section) return;
+  const isOpen = section.getAttribute('data-open') === '1';
+  if (isOpen) {
+    section.style.maxHeight = section.scrollHeight + 'px';
+    requestAnimationFrame(() => requestAnimationFrame(() => { section.style.maxHeight = '0'; }));
+    section.setAttribute('data-open', '0');
+    if (arrow) arrow.style.transform = '';
+  } else {
+    section.style.maxHeight = '4000px';
+    section.setAttribute('data-open', '1');
+    if (arrow) arrow.style.transform = 'rotate(180deg)';
+    if (section.getAttribute('data-loaded') === '0') {
+      section.setAttribute('data-loaded', '1');
+      if (id === 'secPar') _lazyLoadParStats();
+      else if (id === 'secHull') _lazyLoadHullStats();
+      else if (id === 'secRunder') _lazyLoadAlleRunder();
+    }
+  }
+}
+
 async function loadProfilePage() {
   if (_profileLoading) return;
   _profileLoading = true;
+  _profileScoreCache = null;
+  _profileDiffsCache = null;
   const p = currentProfile;
   if (!p) { _profileLoading = false; return; }
   document.getElementById('profileContent').innerHTML = `
@@ -1715,53 +1755,198 @@ async function loadProfilePage() {
     <div class="profile-header">
       <div class="profile-avatar">${p.display_name?.[0] || '?'}</div>
       <div>
-        <h2 style="font-family:'Playfair Display',serif; font-size:24px;">${p.display_name}</h2>
-        <p style="color:var(--cream-dim);">@${p.username} ${p.is_admin ? '· <span class="badge badge-gold">Admin</span>' : ''}</p>
+        <h2 style="font-family:'Playfair Display',serif;font-size:22px;">${p.display_name}</h2>
+        <p style="color:var(--cream-dim);">@${p.username}${p.is_admin ? ' · <span class="badge badge-gold">Admin</span>' : ''}</p>
       </div>
     </div>
-    <div class="card">
-      <h3 style="font-family:'Playfair Display',serif; margin-bottom:16px;">Statistikk</h3>
-      <div id="statsKpis" style="margin-bottom:16px;"><div class="loading"><div class="spinner"></div></div></div>
-      <button onclick="_toggleStatsExpand()" id="statsExpandBtn" style="width:100%;background:none;border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:11px 16px;color:var(--cream-dim);font-family:'DM Sans',sans-serif;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:color 0.2s,border-color 0.2s;">
-        Se full statistikk <span id="statsExpandArrow" style="font-size:11px;transition:transform 0.3s;">▼</span>
-      </button>
-      <div id="statsExpandSection" data-open="0" style="max-height:0;overflow:hidden;transition:max-height 0.4s ease;">
-        <div style="padding-top:20px;">
-          <div id="statsMotivation" style="margin-bottom:16px;"></div>
-          <div id="hcpGraph" style="margin-bottom:20px;"></div>
-          <div id="hcpHistoryList"></div>
-        </div>
-      </div>
+    <div id="statsKpis" style="margin-bottom:20px;"><div class="loading"><div class="spinner"></div></div></div>
+    <div style="display:flex;flex-direction:column;gap:2px;">
+      ${_makeCollapsibleHTML('secHcp', '📈 HCP-utvikling', `
+        <div id="statsMotivation" style="margin-bottom:16px;"></div>
+        <div id="hcpGraph" style="margin-bottom:20px;"></div>
+        <div id="hcpHistoryList"></div>
+      `)}
+      ${_makeCollapsibleHTML('secPar', '⛳ Par-type statistikk', `
+        <div id="parTypeStats"><div class="loading"><div class="spinner"></div></div></div>
+      `)}
+      ${_makeCollapsibleHTML('secHull', '🏆 Hull-statistikk', `
+        <div id="hullStats"><div class="loading"><div class="spinner"></div></div></div>
+      `)}
+      ${_makeCollapsibleHTML('secRunder', '📋 Alle runder', `
+        <div id="alleRunderList"><div class="loading"><div class="spinner"></div></div></div>
+      `)}
+      ${_makeCollapsibleHTML('secGolfbox', '📷 Importer fra Golfbox', `
+        <p style="font-size:13px;color:var(--cream-dim);margin-bottom:16px;">Importer dine tidligere runder fra Golfbox ved å ta bilde av score-tabellen. Ta gjerne flere bilder til du har minst 20 runder dekket.</p>
+        <button class="btn btn-outline btn-auto" onclick="openGolfboxImport()">📷 Importer fra Golfbox</button>
+        <div id="golfboxImportList" style="margin-top:16px;"></div>
+      `)}
+      ${_makeCollapsibleHTML('secEditProfile', '✏️ Rediger profil', `
+        <div id="profileAlert"></div>
+        <div class="form-group"><label>Visningsnavn</label><input type="text" id="editDisplayName" value="${p.display_name || ''}"></div>
+        <div class="form-group"><label>Handicap (følg Golfbox)</label><input type="number" id="editHcp" value="${p.handicap ?? ''}" step="0.1" min="-10" max="54"></div>
+        <button class="btn btn-auto" onclick="saveProfile()">Lagre endringer</button>
+      `)}
+      ${_makeCollapsibleHTML('secPassword', '🔐 Bytt passord', `
+        <p style="font-size:13px;color:var(--cream-dim);margin-bottom:16px;">Logg inn med nytt passord neste gang.</p>
+        <div id="passwordAlert"></div>
+        <div class="form-group"><label>Nytt passord</label><input type="password" id="newPassword1" placeholder="Minst 6 tegn"></div>
+        <div class="form-group"><label>Bekreft nytt passord</label><input type="password" id="newPassword2" placeholder="Gjenta passord"></div>
+        <button class="btn btn-auto" onclick="changePassword()">Endre passord</button>
+      `)}
+      ${p.is_admin ? _makeCollapsibleHTML('secAdmin', '⚙️ Admin', `
+        <button class="btn btn-outline btn-auto" onclick="showPage('players')" style="width:100%;margin-bottom:8px;">Administrer spillere</button>
+      `) : ''}
     </div>
-    <div class="card">
-      <h3 style="font-family:'Playfair Display',serif; margin-bottom:6px;">Historikk fra Golfbox</h3>
-      <p style="font-size:13px; color:var(--cream-dim); margin-bottom:16px;">Importer dine tidligere runder fra Golfbox ved å ta bilde av score-tabellen. Ta gjerne flere bilder til du har minst 20 runder dekket.</p>
-      <button class="btn btn-outline btn-auto" onclick="openGolfboxImport()">📷 Importer fra Golfbox</button>
-      <div id="golfboxImportList" style="margin-top:16px;"><div style="height:24px;"></div></div>
-    </div>
-    <div class="card">
-      <h3 style="font-family:'Playfair Display',serif; margin-bottom:20px;">Rediger profil</h3>
-      <div id="profileAlert"></div>
-      <div class="form-group"><label>Visningsnavn</label><input type="text" id="editDisplayName" value="${p.display_name || ''}"></div>
-      <div class="form-group"><label>Handicap (følg Golfbox)</label><input type="number" id="editHcp" value="${p.handicap ?? ''}" step="0.1" min="-10" max="54"></div>
-      <button class="btn btn-auto" onclick="saveProfile()">Lagre endringer</button>
-    </div>
-    <div class="card">
-      <h3 style="font-family:'Playfair Display',serif; margin-bottom:8px;">Bytt passord</h3>
-      <p style="font-size:13px; color:var(--cream-dim); margin-bottom:16px;">Logg inn med nytt passord neste gang.</p>
-      <div id="passwordAlert"></div>
-      <div class="form-group"><label>Nytt passord</label><input type="password" id="newPassword1" placeholder="Minst 6 tegn"></div>
-      <div class="form-group"><label>Bekreft nytt passord</label><input type="password" id="newPassword2" placeholder="Gjenta passord"></div>
-      <button class="btn btn-auto" onclick="changePassword()">Endre passord</button>
-    </div>
-    ${p.is_admin ? `
-    <div class="card" style="margin-top:16px;">
-      <h3 style="font-family:'Playfair Display',serif; margin-bottom:16px;">Admin</h3>
-      <button class="btn btn-outline btn-auto" onclick="showPage('players')" style="width:100%; margin-bottom:8px;">Administrer spillere</button>
-    </div>` : ''}
   `;
   _profileLoading = false;
   loadAndRenderDifferentials();
+}
+
+async function _ensureProfileScoreCache(profileId, diffs, currentHI) {
+  if (_profileScoreCache) return _profileScoreCache;
+  const hiNum = currentHI != null ? parseFloat(currentHI) : null;
+  const { data: scoreRows } = await db.from('scores').select('round_id,hole_number,strokes')
+    .eq('player_id', profileId).gt('strokes', 0);
+  if (!scoreRows?.length) { _profileScoreCache = { holeScores: [], roundSummaries: [] }; return _profileScoreCache; }
+  const roundIds = [...new Set(scoreRows.map(s => s.round_id))];
+  const { data: roundRows } = await db.from('rounds')
+    .select('id,date,hole_range,course_id,tee_set_id,courses(name),tee_sets(slope,course_rating)')
+    .in('id', roundIds).order('date', { ascending: false });
+  const roundMap = {};
+  for (const r of (roundRows || [])) roundMap[r.id] = { ...r, scoreMap: {} };
+  for (const s of scoreRows) { if (roundMap[s.round_id]) roundMap[s.round_id].scoreMap[s.hole_number] = s.strokes; }
+  const courseIds = [...new Set((roundRows || []).map(r => r.course_id).filter(Boolean))];
+  const holesByCourse = {};
+  if (courseIds.length) {
+    const { data: allHoles } = await db.from('holes').select('course_id,hole_number,par,stroke_index').in('course_id', courseIds);
+    (allHoles || []).forEach(h => { (holesByCourse[h.course_id] = holesByCourse[h.course_id] || {})[h.hole_number] = h; });
+  }
+  const holeScores = [], roundSummaries = [];
+  for (const round of Object.values(roundMap)) {
+    const courseHoles = Object.values(holesByCourse[round.course_id] || {});
+    if (!courseHoles.length) continue;
+    const holeRange = round.hole_range || 'all';
+    const relevant = holeRange === 'front9' ? courseHoles.filter(h => h.hole_number <= 9)
+      : holeRange === 'back9' ? courseHoles.filter(h => h.hole_number >= 10) : courseHoles;
+    if (!relevant.length) continue;
+    const coursePar = courseHoles.reduce((s, h) => s + (h.par || 0), 0) || 72;
+    const slope = round.tee_sets?.slope || 113, cr = round.tee_sets?.course_rating || 72;
+    const matchDiff = (diffs || []).find(d => d.date === round.date && d.source === 'fore');
+    const hi = matchDiff?.hcp_before ?? hiNum ?? 36;
+    const hcp = _playingHcp(hi, slope, cr, coursePar);
+    let roundTotal = 0, played = 0;
+    for (const hole of relevant) {
+      const strokes = round.scoreMap[hole.hole_number];
+      if (!strokes || strokes <= 0) continue;
+      played++;
+      const sf = calcStableford(strokes, hole.par, hcp, hole.stroke_index);
+      roundTotal += sf;
+      holeScores.push({ date: round.date, roundId: round.id, courseId: round.course_id,
+        courseName: round.courses?.name || '–', holeNumber: hole.hole_number, par: hole.par, sf, strokes });
+    }
+    if (played >= Math.ceil(relevant.length * 0.5)) {
+      roundSummaries.push({ id: round.id, date: round.date, courseName: round.courses?.name || '–',
+        holeRange, sf: roundTotal, played, totalH: relevant.length,
+        is18: holeRange === 'all' && relevant.length > 9 && played >= Math.ceil(relevant.length * 0.7) });
+    }
+  }
+  roundSummaries.sort((a, b) => new Date(b.date) - new Date(a.date));
+  _profileScoreCache = { holeScores, roundSummaries };
+  return _profileScoreCache;
+}
+
+async function _lazyLoadParStats() {
+  const el = document.getElementById('parTypeStats');
+  if (!el) return;
+  const diffs = _profileDiffsCache || [];
+  const cache = await _ensureProfileScoreCache(currentProfile.id, diffs, currentProfile?.handicap ?? null);
+  const { holeScores } = cache;
+  if (!holeScores.length) { el.innerHTML = '<p style="font-size:13px;color:var(--cream-dim);">Ingen app-runder ennå.</p>'; return; }
+  const byPar = { 3: [], 4: [], 5: [] };
+  for (const s of holeScores) { if (byPar[s.par]) byPar[s.par].push(s.sf); }
+  const card = (par) => {
+    const scores = byPar[par];
+    if (!scores.length) return `<div style="flex:1;background:rgba(0,0,0,0.25);border-radius:10px;padding:14px 8px;text-align:center;border:1px solid rgba(255,255,255,0.07);">
+      <div style="font-size:9px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Par ${par}</div>
+      <div style="font-family:'Playfair Display',serif;font-size:26px;color:var(--cream-dim);line-height:1;">–</div>
+    </div>`;
+    const avg = (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1);
+    const best = Math.max(...scores);
+    const avgNum = parseFloat(avg);
+    const col = avgNum >= 2 ? 'var(--green-light)' : avgNum >= 1.5 ? 'var(--gold)' : 'var(--cream)';
+    return `<div style="flex:1;background:rgba(0,0,0,0.25);border-radius:10px;padding:14px 8px;text-align:center;border:1px solid rgba(255,255,255,0.07);">
+      <div style="font-size:9px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Par ${par}</div>
+      <div style="font-family:'Playfair Display',serif;font-size:26px;color:${col};line-height:1;">${avg}</div>
+      <div style="font-size:10px;color:var(--cream-dim);margin-top:6px;">${scores.length} hull · beste ${best}p</div>
+    </div>`;
+  };
+  el.innerHTML = `<div style="font-size:10px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">Snitt stableford per hull-type</div>
+    <div style="display:flex;gap:10px;margin-bottom:16px;">${card(3)}${card(4)}${card(5)}</div>`;
+}
+
+async function _lazyLoadHullStats() {
+  const el = document.getElementById('hullStats');
+  if (!el) return;
+  const diffs = _profileDiffsCache || [];
+  const cache = await _ensureProfileScoreCache(currentProfile.id, diffs, currentProfile?.handicap ?? null);
+  const { holeScores } = cache;
+  if (!holeScores.length) { el.innerHTML = '<p style="font-size:13px;color:var(--cream-dim);">Ingen app-runder ennå.</p>'; return; }
+  const byKey = {};
+  for (const s of holeScores) {
+    const key = s.courseId + ':' + s.holeNumber;
+    if (!byKey[key]) byKey[key] = { holeNumber: s.holeNumber, courseName: s.courseName, par: s.par, scores: [] };
+    byKey[key].scores.push(s.sf);
+  }
+  const avgs = Object.values(byKey).filter(h => h.scores.length >= 2).map(h => ({
+    ...h, avg: h.scores.reduce((a, b) => a + b, 0) / h.scores.length, count: h.scores.length
+  }));
+  if (avgs.length < 3) { el.innerHTML = '<p style="font-size:13px;color:var(--cream-dim);">Trenger flere runder for hull-statistikk.</p>'; return; }
+  const best = [...avgs].sort((a, b) => b.avg - a.avg).slice(0, 5);
+  const worst = [...avgs].sort((a, b) => a.avg - b.avg).slice(0, 5);
+  const row = (h, i, good) => `<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div style="width:22px;height:22px;border-radius:50%;background:${good ? 'rgba(82,183,136,0.2)' : 'rgba(192,57,43,0.15)'};display:flex;align-items:center;justify-content:center;font-size:10px;color:${good ? 'var(--green-light)' : '#e88'};flex-shrink:0;">${i + 1}</div>
+      <div>
+        <div style="font-size:13px;color:var(--cream);">Hull ${h.holeNumber} <span style="color:var(--cream-dim);font-size:11px;">Par ${h.par}</span></div>
+        <div style="font-size:11px;color:var(--cream-dim);">${h.courseName} · ${h.count} runder</div>
+      </div>
+    </div>
+    <div style="font-family:'Playfair Display',serif;font-size:18px;color:${good ? 'var(--green-light)' : '#e88'};">${h.avg.toFixed(1)}p</div>
+  </div>`;
+  el.innerHTML = `<div style="margin-bottom:20px;">
+    <div style="font-size:10px;color:var(--gold);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;">Beste hull</div>
+    ${best.map((h, i) => row(h, i, true)).join('')}
+  </div>
+  <div>
+    <div style="font-size:10px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;">Tøffeste hull</div>
+    ${worst.map((h, i) => row(h, i, false)).join('')}
+  </div>`;
+}
+
+async function _lazyLoadAlleRunder() {
+  const el = document.getElementById('alleRunderList');
+  if (!el) return;
+  const diffs = _profileDiffsCache || [];
+  const cache = await _ensureProfileScoreCache(currentProfile.id, diffs, currentProfile?.handicap ?? null);
+  const appRounds = cache.roundSummaries.map(r => ({
+    date: r.date, label: r.courseName,
+    sub: r.holeRange === 'front9' ? 'Hull 1–9' : r.holeRange === 'back9' ? 'Hull 10–18' : 'Full runde',
+    right: r.sf + 'p', source: 'fore'
+  }));
+  const imported = diffs.filter(d => d.source !== 'fore').map(d => ({
+    date: d.date, label: d.course_name || 'Importert runde',
+    sub: 'Diff: ' + (d.differential ?? '–') + (d.hcp_after != null ? ' · HCP ' + d.hcp_after : ''),
+    right: d.source || 'golfbox', source: d.source
+  }));
+  const all = [...appRounds, ...imported].sort((a, b) => new Date(b.date) - new Date(a.date));
+  if (!all.length) { el.innerHTML = '<p style="font-size:13px;color:var(--cream-dim);">Ingen runder registrert ennå.</p>'; return; }
+  el.innerHTML = all.map(r => `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
+    <div style="min-width:0;">
+      <div style="font-size:13px;color:var(--cream);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.date} · ${r.label}</div>
+      <div style="font-size:11px;color:var(--cream-dim);margin-top:2px;">${r.sub}</div>
+    </div>
+    <div style="font-family:${r.source === 'fore' ? "'Playfair Display',serif" : "'DM Sans',sans-serif"};font-size:${r.source === 'fore' ? '16' : '11'}px;color:${r.source === 'fore' ? 'var(--gold)' : 'var(--cream-dim)'};flex-shrink:0;${r.source !== 'fore' ? 'background:rgba(201,168,76,0.12);padding:2px 7px;border-radius:4px;' : ''}">${r.right}</div>
+  </div>`).join('');
 }
 async function changePassword() {
   const p1 = document.getElementById('newPassword1').value;
@@ -2013,9 +2198,7 @@ function _fileToBase64(file) {
 async function _fetchStablefordStats(profileId, diffs, currentHI) {
   try {
     const hiNum = currentHI != null ? parseFloat(currentHI) : null;
-    const entries = []; // { date, sf }
-
-    // Gimmie/Golfbox: always 18-hole official rounds — convert differential to Stableford on normalbane
+    const entries = [];
     const gimmieDiffs = (diffs || []).filter(d => d.source !== 'fore' && d.differential != null);
     for (const d of gimmieDiffs) {
       const nh = d.hcp_before != null ? Math.round(parseFloat(d.hcp_before)) : (hiNum != null ? Math.round(hiNum) : null);
@@ -2023,62 +2206,13 @@ async function _fetchStablefordStats(profileId, diffs, currentHI) {
       const sf = Math.round(36 + nh - parseFloat(d.differential));
       if (sf >= 10 && sf <= 60) entries.push({ date: d.date, sf });
     }
-
-    // Fore/app-scored rounds: compute from actual hole scores
-    const { data: playerScoreRows } = await db
-      .from('scores').select('round_id, hole_number, strokes').eq('player_id', profileId).gt('strokes', 0);
-    if (playerScoreRows?.length) {
-      const roundIds = [...new Set(playerScoreRows.map(s => s.round_id))];
-      const { data: roundRows } = await db
-        .from('rounds').select('id, date, hole_range, course_id, tee_set_id, tee_sets(slope, course_rating)').in('id', roundIds);
-      const roundMap = {};
-      for (const r of (roundRows || [])) roundMap[r.id] = { ...r, scoreMap: {} };
-      for (const s of playerScoreRows) {
-        if (roundMap[s.round_id]) roundMap[s.round_id].scoreMap[s.hole_number] = s.strokes;
-      }
-      const courseIds = [...new Set(Object.values(roundMap).map(r => r.course_id).filter(Boolean))];
-      if (courseIds.length) {
-        const { data: allHoles } = await db.from('holes').select('course_id, hole_number, par, stroke_index').in('course_id', courseIds);
-        const holesByCourse = {};
-        (allHoles || []).forEach(h => {
-          (holesByCourse[h.course_id] = holesByCourse[h.course_id] || {})[h.hole_number] = h;
-        });
-        for (const round of Object.values(roundMap)) {
-          const courseHoles = Object.values(holesByCourse[round.course_id] || {});
-          if (!courseHoles.length) continue;
-          const holeRange = round.hole_range || 'all';
-          const relevantHoles = holeRange === 'front9' ? courseHoles.filter(h => h.hole_number <= 9)
-            : holeRange === 'back9' ? courseHoles.filter(h => h.hole_number >= 10)
-            : courseHoles;
-          if (!relevantHoles.length) continue;
-          const totalH = relevantHoles.length;
-          const coursePar = courseHoles.reduce((s, h) => s + (h.par || 0), 0) || 72;
-          const slope = round.tee_sets?.slope || 113;
-          const cr = round.tee_sets?.course_rating || 72;
-          const matchDiff = diffs.find(d => d.date === round.date && d.source === 'fore');
-          const hi = matchDiff?.hcp_before ?? hiNum ?? 36;
-          const hcp = _playingHcp(hi, slope, cr, coursePar);
-          let total = 0, played = 0;
-          for (const hole of relevantHoles) {
-            const strokes = round.scoreMap[hole.hole_number];
-            if (!strokes || strokes <= 0) continue;
-            played++;
-            let extra = Math.floor(hcp / 18);
-            if ((hole.stroke_index || 18) <= (hcp % 18)) extra++;
-            total += Math.max(0, hole.par - (strokes - extra) + 2);
-          }
-          if (played < Math.ceil(totalH * 0.7)) continue;
-          if (holeRange === 'all' && totalH > 9) entries.push({ date: round.date, sf: total });
-          // 9-hole rounds excluded from stats
-        }
-      }
+    const cache = await _ensureProfileScoreCache(profileId, diffs, currentHI);
+    for (const r of cache.roundSummaries) {
+      if (r.is18) entries.push({ date: r.date, sf: r.sf });
     }
-
-    // Keep only the 10 most recent rounds
     entries.sort((a, b) => new Date(b.date) - new Date(a.date));
     const recent = entries.slice(0, 10).map(e => e.sf);
-    const stats = { eighteen: recent };
-    return stats.eighteen.length ? stats : null;
+    return recent.length ? { eighteen: recent } : null;
   } catch (_) { return null; }
 }
 
@@ -2091,6 +2225,7 @@ async function loadAndRenderDifferentials() {
       .select('*').eq('player_id', currentProfile.id).order('date', { ascending: true });
     if (error) throw error;
     const diffs = data || [];
+    _profileDiffsCache = diffs;
     _renderGolfboxImportList(diffs);
     const sfStats = await _fetchStablefordStats(currentProfile.id, diffs, currentProfile?.handicap ?? null);
     _renderStatCards(diffs, sfStats);
@@ -2101,12 +2236,8 @@ async function loadAndRenderDifferentials() {
     }
     _renderHcpGraph(diffs);
     _renderHcpHistoryList(diffs);
-    const section = document.getElementById('statsExpandSection');
-    if (section && section.getAttribute('data-open') === '1') {
-      section.style.maxHeight = section.scrollHeight + 'px';
-    }
   } catch (_) {
-    // Network/auth hiccup on wake — keep existing rendered data, don't blank out
+    // Network/auth hiccup on wake — keep existing rendered data
   } finally {
     _diffsLoading = false;
   }
@@ -2162,27 +2293,6 @@ function _renderStatCards(diffs, sfStats) {
     </div>`;
 }
 
-function _toggleStatsExpand() {
-  const section = document.getElementById('statsExpandSection');
-  const arrow   = document.getElementById('statsExpandArrow');
-  const btn     = document.getElementById('statsExpandBtn');
-  if (!section) return;
-  const isOpen = section.getAttribute('data-open') === '1';
-  if (isOpen) {
-    section.style.maxHeight = section.scrollHeight + 'px';
-    requestAnimationFrame(() => requestAnimationFrame(() => { section.style.maxHeight = '0px'; }));
-    section.setAttribute('data-open', '0');
-    arrow.style.transform = 'rotate(0deg)';
-    btn.style.borderColor = 'rgba(255,255,255,0.1)';
-    btn.style.color = 'var(--cream-dim)';
-  } else {
-    section.style.maxHeight = section.scrollHeight + 'px';
-    section.setAttribute('data-open', '1');
-    arrow.style.transform = 'rotate(180deg)';
-    btn.style.borderColor = 'rgba(201,168,76,0.3)';
-    btn.style.color = 'var(--gold)';
-  }
-}
 
 function _renderGolfboxImportList(diffs) {
   const el = document.getElementById('golfboxImportList');
@@ -2197,7 +2307,7 @@ function _renderGolfboxImportList(diffs) {
         <div style="font-size:11px; color:var(--cream-dim);">Differential: ${d.differential ?? '–'}</div>
       </div>
       <span style="font-size:11px; padding:2px 7px; border-radius:4px; background:rgba(201,168,76,0.15); color:var(--gold-dim);">${d.source}</span>
-    </div>`).join('') + (imported.length > 5 ? `<p style="font-size:12px; color:var(--cream-dim); margin-top:8px;">+ ${imported.length - 5} eldre runder i historikken under</p>` : '');
+    </div>`).join('') + (imported.length > 5 ? `<p style="font-size:12px; color:var(--cream-dim); margin-top:8px;">+ ${imported.length - 5} eldre runder — se HCP-utvikling for full historikk</p>` : '');
 }
 
 function _renderHcpGraph(diffs) {
