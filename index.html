@@ -404,7 +404,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.68</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.69</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -513,6 +513,17 @@
         <input type="date" id="roundDate" style="width:100%; padding:12px 16px; border-radius:8px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.3); color:var(--cream); font-size:15px; font-family:'DM Sans',sans-serif;">
       </div>
       <hr class="divider">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0 8px;">
+        <label for="skinsEnabled" style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+          <input type="checkbox" id="skinsEnabled" onchange="toggleSkinsAmount()" style="width:18px;height:18px;cursor:pointer;">
+          <span style="font-size:14px;color:var(--cream);">🎰 Skins-spill</span>
+        </label>
+        <div id="skinsAmountWrap" style="display:none;align-items:center;gap:6px;">
+          <input type="number" id="skinsAmount" value="50" min="1" max="500" style="width:68px;padding:6px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.3);color:var(--cream);font-size:14px;font-family:'DM Sans',sans-serif;text-align:center;">
+          <span style="font-size:13px;color:var(--cream-dim);">kr/hull</span>
+        </div>
+      </div>
+      <hr class="divider">
       <div id="flightBuilder">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
           <label style="font-size:12px; text-transform:uppercase; letter-spacing:1px; color:var(--cream-dim);">Flighter & spillere</label>
@@ -565,6 +576,11 @@
       <div style="font-size:10px; color:var(--cream-dim); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">Stilling</div>
       <div id="scMiniLeader" style="display:flex; gap:8px; overflow-x:auto; padding-bottom:4px;"></div>
     </div>
+    <!-- Skins-tracker (skjult hvis ikke skins-runde) -->
+    <div id="scSkinsStrip" style="padding:0 16px 8px;display:none;">
+      <div style="font-size:10px;color:var(--gold);letter-spacing:2px;text-transform:uppercase;margin-bottom:6px;">💰 Skins</div>
+      <div id="scSkins" style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;"></div>
+    </div>
     <!-- Neste hull-knapp stor nederst + diskret avslutt -->
     <div style="padding:12px 16px 8px;">
       <button id="scNextHoleBottom" onclick="changeHole(1)" style="width:100%; padding:18px; background:var(--gold); border:none; color:var(--green-deep); border-radius:10px; font-size:17px; font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif; -webkit-tap-highlight-color:transparent; touch-action:manipulation;">Neste hull →</button>
@@ -606,6 +622,7 @@
       <h2 id="summaryTitle">Rundesummary 🏌️</h2>
       <div class="tabs" id="summaryTabs"></div>
       <div id="summaryContent"></div>
+      <div id="skinsSummary" style="display:none;margin-top:16px;"></div>
       <hr class="divider">
       <h3 style="font-family:'Playfair Display',serif; font-size:16px; color:var(--cream-dim); margin-bottom:12px;">Golfbox-overføring</h3>
       <div style="display:flex; gap:8px; margin-bottom:16px;">
@@ -1736,8 +1753,7 @@ function _toggleSection(id) {
     if (arrow) arrow.style.transform = 'rotate(180deg)';
     if (section.getAttribute('data-loaded') === '0') {
       section.setAttribute('data-loaded', '1');
-      if (id === 'secPar') _lazyLoadParStats();
-      else if (id === 'secHull') _lazyLoadHullStats();
+      if (id === 'secHull') _lazyLoadHullStats();
       else if (id === 'secRunder') _lazyLoadAlleRunder();
     }
   }
@@ -1765,9 +1781,6 @@ async function loadProfilePage() {
         <div id="statsMotivation" style="margin-bottom:16px;"></div>
         <div id="hcpGraph" style="margin-bottom:20px;"></div>
         <div id="hcpHistoryList"></div>
-      `)}
-      ${_makeCollapsibleHTML('secPar', '⛳ Par-type statistikk', `
-        <div id="parTypeStats"><div class="loading"><div class="spinner"></div></div></div>
       `)}
       ${_makeCollapsibleHTML('secHull', '🏆 Hull-statistikk', `
         <div id="hullStats"><div class="loading"><div class="spinner"></div></div></div>
@@ -1855,35 +1868,6 @@ async function _ensureProfileScoreCache(profileId, diffs, currentHI) {
   return _profileScoreCache;
 }
 
-async function _lazyLoadParStats() {
-  const el = document.getElementById('parTypeStats');
-  if (!el) return;
-  const diffs = _profileDiffsCache || [];
-  const cache = await _ensureProfileScoreCache(currentProfile.id, diffs, currentProfile?.handicap ?? null);
-  const { holeScores } = cache;
-  if (!holeScores.length) { el.innerHTML = '<p style="font-size:13px;color:var(--cream-dim);">Ingen app-runder ennå.</p>'; return; }
-  const byPar = { 3: [], 4: [], 5: [] };
-  for (const s of holeScores) { if (byPar[s.par]) byPar[s.par].push(s.sf); }
-  const card = (par) => {
-    const scores = byPar[par];
-    if (!scores.length) return `<div style="flex:1;background:rgba(0,0,0,0.25);border-radius:10px;padding:14px 8px;text-align:center;border:1px solid rgba(255,255,255,0.07);">
-      <div style="font-size:9px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Par ${par}</div>
-      <div style="font-family:'Playfair Display',serif;font-size:26px;color:var(--cream-dim);line-height:1;">–</div>
-    </div>`;
-    const avg = (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1);
-    const best = Math.max(...scores);
-    const avgNum = parseFloat(avg);
-    const col = avgNum >= 2 ? 'var(--green-light)' : avgNum >= 1.5 ? 'var(--gold)' : 'var(--cream)';
-    return `<div style="flex:1;background:rgba(0,0,0,0.25);border-radius:10px;padding:14px 8px;text-align:center;border:1px solid rgba(255,255,255,0.07);">
-      <div style="font-size:9px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Par ${par}</div>
-      <div style="font-family:'Playfair Display',serif;font-size:26px;color:${col};line-height:1;">${avg}</div>
-      <div style="font-size:10px;color:var(--cream-dim);margin-top:6px;">${scores.length} hull · beste ${best}p</div>
-    </div>`;
-  };
-  el.innerHTML = `<div style="font-size:10px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">Snitt stableford per hull-type</div>
-    <div style="display:flex;gap:10px;margin-bottom:16px;">${card(3)}${card(4)}${card(5)}</div>`;
-}
-
 async function _lazyLoadHullStats() {
   const el = document.getElementById('hullStats');
   if (!el) return;
@@ -1891,6 +1875,26 @@ async function _lazyLoadHullStats() {
   const cache = await _ensureProfileScoreCache(currentProfile.id, diffs, currentProfile?.handicap ?? null);
   const { holeScores } = cache;
   if (!holeScores.length) { el.innerHTML = '<p style="font-size:13px;color:var(--cream-dim);">Ingen app-runder ennå.</p>'; return; }
+
+  // Par-type aggregates
+  const byPar = { 3: [], 4: [], 5: [] };
+  for (const s of holeScores) { if (byPar[s.par]) byPar[s.par].push(s.sf); }
+  const parCard = (p) => {
+    const arr = byPar[p];
+    if (!arr.length) return `<div style="flex:1;background:rgba(0,0,0,0.25);border-radius:10px;padding:12px 8px;text-align:center;border:1px solid rgba(255,255,255,0.07);">
+      <div style="font-size:9px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Par ${p}</div>
+      <div style="font-family:'Playfair Display',serif;font-size:24px;color:var(--cream-dim);">–</div></div>`;
+    const avg = (arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(1);
+    const best = Math.max(...arr);
+    const col = parseFloat(avg) >= 2 ? 'var(--green-light)' : parseFloat(avg) >= 1.5 ? 'var(--gold-light)' : 'var(--cream)';
+    return `<div style="flex:1;background:rgba(0,0,0,0.25);border-radius:10px;padding:12px 8px;text-align:center;border:1px solid rgba(255,255,255,0.07);">
+      <div style="font-size:9px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Par ${p}</div>
+      <div style="font-family:'Playfair Display',serif;font-size:24px;color:${col};line-height:1;">${avg}</div>
+      <div style="font-size:10px;color:var(--cream-dim);margin-top:4px;">${arr.length} hull · beste ${best}p</div>
+    </div>`;
+  };
+
+  // Per-hole aggregates
   const byKey = {};
   for (const s of holeScores) {
     const key = s.courseId + ':' + s.holeNumber;
@@ -1900,9 +1904,6 @@ async function _lazyLoadHullStats() {
   const avgs = Object.values(byKey).filter(h => h.scores.length >= 2).map(h => ({
     ...h, avg: h.scores.reduce((a, b) => a + b, 0) / h.scores.length, count: h.scores.length
   }));
-  if (avgs.length < 3) { el.innerHTML = '<p style="font-size:13px;color:var(--cream-dim);">Trenger flere runder for hull-statistikk.</p>'; return; }
-  const best = [...avgs].sort((a, b) => b.avg - a.avg).slice(0, 5);
-  const worst = [...avgs].sort((a, b) => a.avg - b.avg).slice(0, 5);
   const row = (h, i, good) => `<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
     <div style="display:flex;align-items:center;gap:10px;">
       <div style="width:22px;height:22px;border-radius:50%;background:${good ? 'rgba(82,183,136,0.2)' : 'rgba(192,57,43,0.15)'};display:flex;align-items:center;justify-content:center;font-size:10px;color:${good ? 'var(--green-light)' : '#e88'};flex-shrink:0;">${i + 1}</div>
@@ -1913,12 +1914,24 @@ async function _lazyLoadHullStats() {
     </div>
     <div style="font-family:'Playfair Display',serif;font-size:18px;color:${good ? 'var(--green-light)' : '#e88'};">${h.avg.toFixed(1)}p</div>
   </div>`;
-  el.innerHTML = `<div style="margin-bottom:20px;">
-    <div style="font-size:10px;color:var(--gold);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;">Beste hull</div>
+
+  const parSection = `<div style="margin-bottom:20px;">
+    <div style="font-size:10px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;">Snitt per par-type</div>
+    <div style="display:flex;gap:10px;">${parCard(3)}${parCard(4)}${parCard(5)}</div>
+  </div>`;
+
+  if (avgs.length < 3) {
+    el.innerHTML = parSection + '<p style="font-size:13px;color:var(--cream-dim);">Trenger flere runder for hull-for-hull-statistikk (minst 2 runder per hull).</p>';
+    return;
+  }
+  const best = [...avgs].sort((a, b) => b.avg - a.avg).slice(0, 5);
+  const worst = [...avgs].sort((a, b) => a.avg - b.avg).slice(0, 5);
+  el.innerHTML = parSection + `<div style="margin-bottom:20px;">
+    <div style="font-size:10px;color:var(--gold);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;">Beste hull historisk</div>
     ${best.map((h, i) => row(h, i, true)).join('')}
   </div>
   <div>
-    <div style="font-size:10px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;">Tøffeste hull</div>
+    <div style="font-size:10px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;">Tøffeste hull historisk</div>
     ${worst.map((h, i) => row(h, i, false)).join('')}
   </div>`;
 }
@@ -2504,9 +2517,11 @@ async function saveRound() {
   } else {
     holeRange = 'all';
   }
+  const skinsAmount = document.getElementById('skinsEnabled')?.checked
+    ? (parseInt(document.getElementById('skinsAmount').value) || null) : null;
   const { data: round, error } = await db.from('rounds').insert({
     course_id: courseId, tee_set_id: teeId, date, created_by: currentProfile.id, status: 'active',
-    hole_range: holeRange
+    hole_range: holeRange, skins_amount: skinsAmount
   }).select().single();
   if (error) { showAlert('newRoundAlert', 'Feil: ' + error.message, 'error'); return; }
   for (let i = 1; i <= flightCount; i++) {
@@ -2634,6 +2649,7 @@ function renderScoringHole() {
   renderHoleStats();
   renderPlayerInputs(holeData);
   renderMiniLeaderboard();
+  renderSkinsTracker();
 }
 function renderHoleStats() {
   const allFP = roundFlights.flatMap(f => f.flight_players || []);
@@ -2828,6 +2844,79 @@ function renderMiniLeaderboard() {
     </div>
   `).join('');
 }
+function toggleSkinsAmount() {
+  const wrap = document.getElementById('skinsAmountWrap');
+  if (wrap) wrap.style.display = document.getElementById('skinsEnabled').checked ? 'flex' : 'none';
+}
+
+function _computeSkins(holes, scores, allFP, round) {
+  const slope = round.tee_sets?.slope, cr = round.tee_sets?.course_rating;
+  const fcp = _fullCoursePar || 72;
+  const hcpMap = {};
+  allFP.forEach(fp => { hcpMap[fp.player_id] = _playingHcp(fp.handicap, slope, cr, fcp); });
+  let pot = 0;
+  const skinsByPlayer = {};
+  allFP.forEach(fp => { skinsByPlayer[fp.player_id] = 0; });
+  const holeResults = [];
+  for (const hole of holes) {
+    pot++;
+    if (!hole.par || !hole.stroke_index) {
+      holeResults.push({ holeNumber: hole.hole_number, par: hole.par, winnerId: null, pot, noData: true, sfByPlayer: {} });
+      continue;
+    }
+    const sfByPlayer = {};
+    let maxSf = -1, anyScore = false;
+    for (const fp of allFP) {
+      const s = scores[fp.player_id]?.[hole.hole_number];
+      if (!s || s <= 0) continue;
+      anyScore = true;
+      const sf = calcStableford(s, hole.par, hcpMap[fp.player_id], hole.stroke_index);
+      sfByPlayer[fp.player_id] = sf;
+      if (sf > maxSf) maxSf = sf;
+    }
+    if (!anyScore) {
+      holeResults.push({ holeNumber: hole.hole_number, par: hole.par, winnerId: null, pot, noScore: true, sfByPlayer: {} });
+      continue;
+    }
+    const winners = allFP.filter(fp => sfByPlayer[fp.player_id] === maxSf && maxSf >= 0);
+    if (winners.length === 1) {
+      const w = winners[0];
+      skinsByPlayer[w.player_id] += pot;
+      holeResults.push({ holeNumber: hole.hole_number, par: hole.par, winnerId: w.player_id,
+        winnerName: w.profiles?.display_name?.split(' ')[0] || '?', pot, tied: false, sfByPlayer });
+      pot = 0;
+    } else {
+      holeResults.push({ holeNumber: hole.hole_number, par: hole.par, winnerId: null, pot, tied: true, sfByPlayer });
+    }
+  }
+  return { skinsByPlayer, holeResults, remainingPot: pot };
+}
+
+function renderSkinsTracker() {
+  const strip = document.getElementById('scSkinsStrip');
+  const el = document.getElementById('scSkins');
+  if (!strip || !el || !currentRound?.skins_amount) { if (strip) strip.style.display = 'none'; return; }
+  strip.style.display = 'block';
+  const allFP = roundFlights.flatMap(f => f.flight_players || []);
+  const { skinsByPlayer, holeResults, remainingPot } = _computeSkins(roundHoles, roundScores, allFP, currentRound);
+  const kr = currentRound.skins_amount;
+  const cards = allFP.map(fp => {
+    const n = skinsByPlayer[fp.player_id] || 0;
+    const isLeader = n > 0 && n === Math.max(...allFP.map(f => skinsByPlayer[f.player_id] || 0));
+    return `<div style="flex-shrink:0;text-align:center;padding:7px 12px;border-radius:8px;border:1px solid ${isLeader ? 'rgba(201,168,76,0.4)' : 'rgba(255,255,255,0.07)'};background:${isLeader ? 'rgba(201,168,76,0.15)' : 'rgba(0,0,0,0.2)'};">
+      <div style="font-size:10px;color:var(--cream-dim);">${fp.profiles?.display_name?.split(' ')[0] || '?'}</div>
+      <div style="font-family:'Playfair Display',serif;font-size:18px;color:${isLeader ? 'var(--gold)' : 'var(--cream)'};">${n}</div>
+      <div style="font-size:9px;color:var(--cream-dim);">${n * kr} kr</div>
+    </div>`;
+  });
+  if (remainingPot > 1) cards.push(`<div style="flex-shrink:0;text-align:center;padding:7px 12px;border-radius:8px;border:1px solid rgba(82,183,136,0.3);background:rgba(82,183,136,0.1);">
+    <div style="font-size:10px;color:var(--green-light);">Pott</div>
+    <div style="font-family:'Playfair Display',serif;font-size:18px;color:var(--green-light);">×${remainingPot}</div>
+    <div style="font-size:9px;color:var(--cream-dim);">${remainingPot * kr} kr</div>
+  </div>`);
+  el.innerHTML = cards.join('');
+}
+
 function showLeaderboard() {
   const allFP = roundFlights.flatMap(f => f.flight_players || []);
   const standings = allFP.map(fp => {
@@ -2930,7 +3019,69 @@ async function showRoundSummary(roundId) {
   window._summaryData = { round, holes: filteredHoles, sc, allFP, totalHoles, fullCoursePar };
   window._currentSummaryPlayer = null;
   if (allFP[0]) showSummaryPlayer(allFP[0].player_id);
+  // Skins summary
+  const skinsSummaryEl = document.getElementById('skinsSummary');
+  if (skinsSummaryEl) {
+    if (round.skins_amount && allFP.length > 1) {
+      skinsSummaryEl.style.display = 'block';
+      _renderSkinsSummary(round, filteredHoles, sc, allFP, fullCoursePar);
+    } else {
+      skinsSummaryEl.style.display = 'none';
+    }
+  }
 }
+
+function _renderSkinsSummary(round, holes, sc, allFP, fullCoursePar) {
+  const el = document.getElementById('skinsSummary');
+  if (!el) return;
+  const savedFcp = _fullCoursePar;
+  _fullCoursePar = fullCoursePar;
+  const { skinsByPlayer, holeResults, remainingPot } = _computeSkins(holes, sc, allFP, round);
+  _fullCoursePar = savedFcp;
+  const kr = round.skins_amount;
+  const nameOf = id => allFP.find(fp => fp.player_id === id)?.profiles?.display_name?.split(' ')[0] || '?';
+  const holeRows = holeResults.filter(r => !r.noData).map(r => {
+    const sfCells = allFP.map(fp => {
+      const sf = r.sfByPlayer?.[fp.player_id];
+      const isWinner = r.winnerId === fp.player_id;
+      return `<td style="padding:5px 8px;text-align:center;font-family:'Playfair Display',serif;font-size:14px;color:${isWinner ? 'var(--gold)' : sf != null ? 'var(--cream)' : 'var(--cream-dim)'};">${sf != null ? sf + 'p' : '–'}</td>`;
+    }).join('');
+    const winnerCell = r.noScore ? '<td style="padding:5px 8px;text-align:center;font-size:11px;color:var(--cream-dim);">–</td>'
+      : r.tied ? `<td style="padding:5px 8px;text-align:center;font-size:11px;color:var(--green-light);">↩ Rull</td>`
+      : `<td style="padding:5px 8px;text-align:center;font-size:12px;color:var(--gold);font-weight:600;">${r.winnerName} ×${r.pot}</td>`;
+    return `<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+      <td style="padding:5px 8px;color:var(--cream-dim);font-size:12px;">${r.holeNumber}</td>
+      <td style="padding:5px 8px;text-align:center;color:var(--cream-dim);font-size:12px;">${r.par}</td>
+      ${sfCells}${winnerCell}
+    </tr>`;
+  }).join('');
+  const headerCells = allFP.map(fp => `<th style="padding:5px 8px;text-align:center;color:var(--cream-dim);font-size:10px;font-weight:400;text-transform:uppercase;letter-spacing:1px;">${fp.profiles?.display_name?.split(' ')[0] || '?'}</th>`).join('');
+  const totals = allFP.map(fp => {
+    const n = skinsByPlayer[fp.player_id] || 0;
+    return { name: fp.profiles?.display_name?.split(' ')[0] || '?', skins: n, kr: n * kr };
+  }).sort((a, b) => b.skins - a.skins);
+  el.innerHTML = `<div style="background:rgba(201,168,76,0.06);border:1px solid rgba(201,168,76,0.25);border-radius:12px;padding:16px;">
+    <div style="font-size:11px;color:var(--gold);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:14px;">🎰 Skins · ${kr} kr per skin</div>
+    <div style="overflow-x:auto;margin-bottom:14px;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead><tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
+          <th style="padding:5px 8px;text-align:left;color:var(--cream-dim);font-size:10px;font-weight:400;text-transform:uppercase;letter-spacing:1px;">Hull</th>
+          <th style="padding:5px 8px;text-align:center;color:var(--cream-dim);font-size:10px;font-weight:400;text-transform:uppercase;letter-spacing:1px;">Par</th>
+          ${headerCells}
+          <th style="padding:5px 8px;text-align:center;color:var(--cream-dim);font-size:10px;font-weight:400;text-transform:uppercase;letter-spacing:1px;">Vinner</th>
+        </tr></thead>
+        <tbody>${holeRows}</tbody>
+      </table>
+    </div>
+    ${remainingPot > 0 ? `<div style="font-size:12px;color:var(--green-light);margin-bottom:12px;">⚠️ ${remainingPot} skin(s) uten vinner (siste hull uavgjort)</div>` : ''}
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      ${totals.map((t, i) => `<div style="flex:1;min-width:80px;text-align:center;padding:10px;background:${i === 0 && t.skins > 0 ? 'rgba(201,168,76,0.15)' : 'rgba(0,0,0,0.2)'};border-radius:8px;border:1px solid ${i === 0 && t.skins > 0 ? 'rgba(201,168,76,0.3)' : 'rgba(255,255,255,0.07)'};">
+        <div style="font-size:11px;color:var(--cream-dim);">${t.name}</div>
+        <div style="font-family:'Playfair Display',serif;font-size:22px;color:${i === 0 && t.skins > 0 ? 'var(--gold)' : 'var(--cream)'};">${t.skins}</div>
+        <div style="font-size:12px;color:${t.kr > 0 ? 'var(--green-light)' : 'var(--cream-dim)'};">${t.kr} kr</div>
+      </div>`).join('')}
+    </div>
+  </div>`;
 function showSummaryPlayer(playerId, btn) {
   if (btn) {
     document.querySelectorAll('#summaryTabs .tab').forEach(t => t.classList.remove('active'));
@@ -2941,14 +3092,20 @@ function showSummaryPlayer(playerId, btn) {
   const fp = allFP.find(p => p.player_id === playerId);
   if (!fp) return;
   const playerScores = sc[playerId] || {};
+  const hcp = _playingHcp(fp.handicap, round.tee_sets?.slope, round.tee_sets?.course_rating, fullCoursePar || 72);
   let totalStabs = 0, totalStrokes = 0, birdies = 0, pars = 0, bogeys = 0, doubles = 0;
+  const parSf = { 3: [], 4: [], 5: [] };
+  let bestHole = null, worstHole = null;
   const rows = holes.map(h => {
     const s = playerScores[h.hole_number] || 0;
-    const stab = s > 0 ? calcStablefordStatic(s, h.par, _playingHcp(fp.handicap, round.tee_sets?.slope, round.tee_sets?.course_rating, fullCoursePar || holes.reduce((s,h)=>s+(h.par||0),0)||72), h.stroke_index, 18) : 0;
+    const stab = s > 0 ? calcStablefordStatic(s, h.par, hcp, h.stroke_index, 18) : 0;
     totalStabs += stab;
     totalStrokes += s;
-    const d = s > 0 ? s - h.par : null;
-    if (d !== null) {
+    if (s > 0) {
+      if (parSf[h.par]) parSf[h.par].push({ stab, holeNumber: h.hole_number });
+      if (bestHole === null || stab > bestHole.stab) bestHole = { stab, holeNumber: h.hole_number, par: h.par };
+      if (worstHole === null || stab < worstHole.stab) worstHole = { stab, holeNumber: h.hole_number, par: h.par };
+      const d = s - h.par;
       if (d <= -1) birdies++;
       else if (d === 0) pars++;
       else if (d === 1) bogeys++;
@@ -2963,8 +3120,33 @@ function showSummaryPlayer(playerId, btn) {
       <td style="padding:7px 10px; text-align:center; font-family:'Playfair Display',serif; font-size:16px; color:var(--gold);">${stab || '–'}</td>
     </tr>`;
   }).join('');
+  // Par-type averages
+  const parCard = (p) => {
+    const arr = parSf[p];
+    if (!arr.length) return `<div style="flex:1;min-width:60px;background:rgba(0,0,0,0.2);border-radius:8px;padding:10px 6px;text-align:center;"><div style="font-size:10px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Par ${p}</div><div style="font-family:'Playfair Display',serif;font-size:22px;color:var(--cream-dim);">–</div></div>`;
+    const avg = (arr.reduce((a, b) => a + b.stab, 0) / arr.length).toFixed(1);
+    const best = Math.max(...arr.map(x => x.stab));
+    return `<div style="flex:1;min-width:60px;background:rgba(0,0,0,0.2);border-radius:8px;padding:10px 6px;text-align:center;">
+      <div style="font-size:10px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Par ${p}</div>
+      <div style="font-family:'Playfair Display',serif;font-size:22px;color:var(--gold-light);">${avg}</div>
+      <div style="font-size:10px;color:var(--cream-dim);">beste ${best}p</div>
+    </div>`;
+  };
+  const extremes = (bestHole && worstHole && bestHole.holeNumber !== worstHole.holeNumber) ? `
+    <div style="display:flex;gap:8px;margin-bottom:14px;">
+      <div style="flex:1;background:rgba(82,183,136,0.1);border:1px solid rgba(82,183,136,0.25);border-radius:8px;padding:8px 10px;text-align:center;">
+        <div style="font-size:9px;color:var(--green-light);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">Beste hull</div>
+        <div style="font-size:14px;color:var(--cream);">Hull ${bestHole.holeNumber} <span style="color:var(--cream-dim);font-size:12px;">Par ${bestHole.par}</span></div>
+        <div style="font-family:'Playfair Display',serif;font-size:18px;color:var(--green-light);">${bestHole.stab}p</div>
+      </div>
+      <div style="flex:1;background:rgba(192,57,43,0.08);border:1px solid rgba(192,57,43,0.2);border-radius:8px;padding:8px 10px;text-align:center;">
+        <div style="font-size:9px;color:#e88;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">Tøffeste hull</div>
+        <div style="font-size:14px;color:var(--cream);">Hull ${worstHole.holeNumber} <span style="color:var(--cream-dim);font-size:12px;">Par ${worstHole.par}</span></div>
+        <div style="font-family:'Playfair Display',serif;font-size:18px;color:#e88;">${worstHole.stab}p</div>
+      </div>
+    </div>` : '';
   document.getElementById('summaryContent').innerHTML = `
-    <div style="display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap;">
+    <div style="display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap;">
       <div style="flex:1; min-width:80px; background:rgba(0,0,0,0.2); border-radius:8px; padding:12px; text-align:center;">
         <div style="font-size:10px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:1px;">Stableford</div>
         <div style="font-family:'Playfair Display',serif; font-size:28px; color:var(--gold);">${totalStabs}</div>
@@ -2978,6 +3160,8 @@ function showSummaryPlayer(playerId, btn) {
         <div style="font-family:'Playfair Display',serif; font-size:28px; color:var(--gold-light);">${birdies}</div>
       </div>
     </div>
+    <div style="display:flex;gap:8px;margin-bottom:14px;">${parCard(3)}${parCard(4)}${parCard(5)}</div>
+    ${extremes}
     <table style="width:100%; border-collapse:collapse; font-size:13px;">
       <thead><tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
         <th style="padding:6px 10px; text-align:left; color:var(--cream-dim); font-size:11px; font-weight:400; text-transform:uppercase; letter-spacing:1px;">Hull</th>
