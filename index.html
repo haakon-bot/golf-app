@@ -404,7 +404,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.74</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.75</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -546,7 +546,10 @@
         <div id="scRoundDate" style="font-size:11px; color:var(--cream-dim); letter-spacing:1px;"></div>
         <button id="scTeeBtn" onclick="openChangeTee()" style="background:none;border:none;font-size:10px;color:var(--gold-dim);cursor:pointer;font-family:'DM Sans',sans-serif;-webkit-tap-highlight-color:transparent;padding:2px 0;"></button>
       </div>
-      <button onclick="showLeaderboard()" style="background:none; border:none; color:var(--gold-light); font-size:13px; cursor:pointer; font-family:'DM Sans',sans-serif; -webkit-tap-highlight-color:transparent;">Ledertavle</button>
+      <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
+        <button onclick="showLeaderboard()" style="background:none; border:none; color:var(--gold-light); font-size:13px; cursor:pointer; font-family:'DM Sans',sans-serif; -webkit-tap-highlight-color:transparent; touch-action:manipulation;">Ledertavle</button>
+        <button onclick="shareLiveLink(currentRound?.id, currentRound?.courses?.name)" style="background:none; border:none; color:var(--cream-dim); font-size:12px; cursor:pointer; font-family:'DM Sans',sans-serif; -webkit-tap-highlight-color:transparent; touch-action:manipulation;">📤 Del live</button>
+      </div>
     </div>
     <!-- Hull-nummer strip -->
     <div style="display:flex; align-items:center; justify-content:center; gap:16px; padding:12px 16px; background:rgba(0,0,0,0.2); border-bottom:1px solid rgba(255,255,255,0.05);">
