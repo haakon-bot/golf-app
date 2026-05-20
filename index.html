@@ -404,7 +404,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.70</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.71</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -891,6 +891,14 @@ async function init() {
   }
   db.auth.onAuthStateChange(async (event, session) => {
     if (event === 'SIGNED_IN' && session) {
+      // TOKEN_REFRESHED also triggers SIGNED_IN in some Supabase versions.
+      // Don't disrupt an active scoring session on token refresh.
+      const scoringOpen = document.getElementById('scoringScreen')?.style.display !== 'none';
+      if (scoringOpen) {
+        // Just silently refresh the profile so currentProfile stays valid
+        await loadProfile(session.user.id);
+        return;
+      }
       await loadProfile(session.user.id);
       if (currentProfile) {
         if (currentProfile.is_approved === false) { await db.auth.signOut(); showPending(currentProfile.display_name); }
@@ -2783,7 +2791,8 @@ let _adjustScoreLock = false;
 async function adjustScore(playerId, delta) {
   if (_adjustScoreLock) return;
   _adjustScoreLock = true;
-  setTimeout(() => { _adjustScoreLock = false; }, 150);
+  // Always release the lock — even if the DB call fails after wake/network hiccup
+  setTimeout(() => { _adjustScoreLock = false; }, 300);
   if (!roundScores[playerId]) roundScores[playerId] = {};
   const current = roundScores[playerId][currentHole] || 0;
   const newVal = Math.max(1, Math.min(current + delta, 15));
@@ -4065,6 +4074,8 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && currentProfile) {
     clearTimeout(_visibilityDebounce);
     _visibilityDebounce = setTimeout(() => {
+      // Never interfere with an active scoring session
+      if (document.getElementById('scoringScreen')?.style.display !== 'none') return;
       const activePage = document.querySelector('.page.active')?.id?.replace('page-', '');
       if (activePage === 'dashboard') loadDashboard();
       else if (activePage === 'rounds') loadRounds();
