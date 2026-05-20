@@ -404,7 +404,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.75</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.76</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -891,10 +891,10 @@ async function init() {
   }
   db.auth.onAuthStateChange(async (event, session) => {
     if (event === 'SIGNED_IN' && session) {
-      // TOKEN_REFRESHED also triggers SIGNED_IN in some Supabase versions.
-      // Skip everything during an active scoring session — profile is already
-      // loaded and valid; touching it here nulls canEdit and removes +/- buttons.
-      if (document.getElementById('scoringScreen')?.style.display !== 'none') return;
+      // If the app shell is already visible the user is already logged in —
+      // this is a token refresh, not a new sign-in. Don't re-run showApp()
+      // or loadProfile(); it competes with visibilitychange calls and hangs.
+      if (document.getElementById('appShell')?.style.display !== 'none') return;
       await loadProfile(session.user.id);
       if (currentProfile) {
         if (currentProfile.is_approved === false) { await db.auth.signOut(); showPending(currentProfile.display_name); }
@@ -1429,8 +1429,10 @@ async function loadCourses() {
 let currentCourseId = null;
 async function openCourseDetail(courseId) {
   currentCourseId = courseId;
+  openModal('modalCourseDetail');
+  document.getElementById('detailCourseName').textContent = 'Laster...';
   const { data: course, error } = await db.from('courses').select('id, name, location, holes, created_at').eq('id', courseId).single();
-  if (error || !course) { alert('Kunne ikke laste bane.'); return; }
+  if (error || !course) { closeModal('modalCourseDetail'); alert('Kunne ikke laste bane.'); return; }
   const { data: tees } = await db.from('tee_sets').select('*').eq('course_id', courseId);
   const { data: holeRows } = await db.from('holes').select('*').eq('course_id', courseId).order('hole_number');
   const teeList = tees || [];
@@ -1495,7 +1497,6 @@ async function openCourseDetail(courseId) {
   showCourseTab('info');
   const deleteBtn = document.getElementById('btnDeleteCourse');
   if (deleteBtn) deleteBtn.style.display = currentProfile?.is_admin ? 'inline-flex' : 'none';
-  openModal('modalCourseDetail');
 }
 function showCourseTab(tab) {
   document.getElementById('courseTabInfo').style.display = tab === 'info' ? 'block' : 'none';
@@ -2439,14 +2440,16 @@ async function openNewRound() {
   document.getElementById('roundDate').value = new Date().toISOString().split('T')[0];
   const rangeDiv = document.getElementById('roundHoleRangeDiv');
   if (rangeDiv) { rangeDiv.style.display = 'none'; rangeDiv.innerHTML = ''; }
-  const { data: courses } = await db.from('courses').select('id, name').order('name');
+  // Open modal immediately so the button always feels responsive
   const sel = document.getElementById('roundCourse');
+  sel.innerHTML = '<option value="">Laster baner...</option>';
+  openModal('modalNewRound');
+  const { data: courses } = await db.from('courses').select('id, name').order('name');
   sel.innerHTML = '<option value="">Velg bane...</option>' +
     (courses || []).map(c => `<option value="${c.id}">${c.name}</option>`).join('');
   const { data: players } = await db.from('profiles').select('id, display_name, username, handicap').order('display_name');
   allPlayers = players || [];
   addFlight();
-  openModal('modalNewRound');
 }
 async function loadTeeSets(courseId) {
   if (!courseId) return;
@@ -2579,11 +2582,18 @@ async function deleteRound(roundId) {
 }
 
 async function openRound(roundId) {
+  // Show scoring screen immediately so the tap always feels responsive
+  document.getElementById('scCourseName').textContent = 'Laster runde...';
+  document.getElementById('scRoundDate').textContent = '';
+  document.getElementById('scPlayerScores').innerHTML = '<div style="padding:40px;text-align:center;color:var(--cream-dim);">Laster...</div>';
+  document.getElementById('scoringScreen').style.display = 'flex';
+  document.getElementById('scoringScreen').style.flexDirection = 'column';
   const { data: round } = await db.from('rounds')
     .select('*, courses(name, holes), tee_sets(name, slope, course_rating), flights(id, name, flight_players(id, player_id, handicap, profiles(display_name, username)))')
     .eq('id', roundId).single();
-  if (!round) return;
+  if (!round) { document.getElementById('scoringScreen').style.display = 'none'; return; }
   if (!round.course_id) {
+    document.getElementById('scoringScreen').style.display = 'none';
     alert('Denne runden mangler bane og kan ikke åpnes. Slett den fra rundeoversikten.');
     return;
   }
