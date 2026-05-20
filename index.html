@@ -404,7 +404,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.71</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.72</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -892,13 +892,9 @@ async function init() {
   db.auth.onAuthStateChange(async (event, session) => {
     if (event === 'SIGNED_IN' && session) {
       // TOKEN_REFRESHED also triggers SIGNED_IN in some Supabase versions.
-      // Don't disrupt an active scoring session on token refresh.
-      const scoringOpen = document.getElementById('scoringScreen')?.style.display !== 'none';
-      if (scoringOpen) {
-        // Just silently refresh the profile so currentProfile stays valid
-        await loadProfile(session.user.id);
-        return;
-      }
+      // Skip everything during an active scoring session — profile is already
+      // loaded and valid; touching it here nulls canEdit and removes +/- buttons.
+      if (document.getElementById('scoringScreen')?.style.display !== 'none') return;
       await loadProfile(session.user.id);
       if (currentProfile) {
         if (currentProfile.is_approved === false) { await db.auth.signOut(); showPending(currentProfile.display_name); }
@@ -909,7 +905,7 @@ async function init() {
 }
 async function loadProfile(userId) {
   const { data } = await db.from('profiles').select('*').eq('id', userId).single();
-  currentProfile = data;
+  if (data) currentProfile = data;
 }
 function showLogin() {
   document.getElementById('publicLivePage').style.display = 'none';

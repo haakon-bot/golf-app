@@ -1,4 +1,4 @@
-const CACHE = 'fore-v50';
+const CACHE = 'fore-v51';
 const PRECACHE = ['./'];
 
 self.addEventListener('install', e => {
