@@ -404,7 +404,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.72</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.73</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -4021,7 +4021,8 @@ function initPullToRefresh() {
 
   document.addEventListener('touchstart', e => {
     if (window.scrollY !== 0) return;
-    if (document.querySelector('.page.active')?.id === 'page-scoring') return;
+    // scoringScreen is a fixed overlay, not a .page — check it directly
+    if (document.getElementById('scoringScreen')?.style.display !== 'none') return;
     startY = e.touches[0].clientY;
     pulling = true;
     triggered = false;
@@ -4029,6 +4030,8 @@ function initPullToRefresh() {
 
   document.addEventListener('touchmove', e => {
     if (!pulling) return;
+    // Safety: if scoring opened since touchstart, cancel pull tracking immediately
+    if (document.getElementById('scoringScreen')?.style.display !== 'none') { pulling = false; return; }
     if (window.scrollY !== 0) { pulling = false; return; }
     const dy = e.touches[0].clientY - startY;
     if (dy < 6) return;
@@ -4065,19 +4068,35 @@ function initPullToRefresh() {
 }
 initPullToRefresh();
 
+async function _resumeScoring() {
+  if (!currentRound?.id) return;
+  // Re-fetch scores in case other players scored while phone was asleep
+  const { data: scores } = await db.from('scores').select('*').eq('round_id', currentRound.id);
+  if (scores) {
+    roundScores = {};
+    scores.forEach(s => {
+      if (!roundScores[s.player_id]) roundScores[s.player_id] = {};
+      roundScores[s.player_id][s.hole_number] = s.strokes;
+    });
+  }
+  renderScoringHole();
+}
+
 let _visibilityDebounce = null;
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && currentProfile) {
     clearTimeout(_visibilityDebounce);
-    _visibilityDebounce = setTimeout(() => {
-      // Never interfere with an active scoring session
-      if (document.getElementById('scoringScreen')?.style.display !== 'none') return;
+    _visibilityDebounce = setTimeout(async () => {
+      // Scoring screen open: restore full state instead of touching other pages
+      if (document.getElementById('scoringScreen')?.style.display !== 'none') {
+        await _resumeScoring();
+        return;
+      }
       const activePage = document.querySelector('.page.active')?.id?.replace('page-', '');
       if (activePage === 'dashboard') loadDashboard();
       else if (activePage === 'rounds') loadRounds();
       else if (activePage === 'live') loadLivePage();
       else if (activePage === 'profile') {
-        // Don't re-render the whole page on wake — just refresh the data
         if (document.getElementById('statsKpis')) loadAndRenderDifferentials();
         else loadProfilePage();
       }
