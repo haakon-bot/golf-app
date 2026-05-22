@@ -211,6 +211,17 @@ function calcStablefordWithHoles(strokes, par, hcp, si, totalHoles) {
   if (si <= (hcp % totalHoles)) extra++;
   return Math.max(0, par - (strokes - extra) + 2);
 }
+function _fmtVsPar(n) {
+  if (n == null || isNaN(n)) return '–';
+  if (n === 0) return 'E';
+  return n > 0 ? '+' + n : '' + n;
+}
+function _vsParColor(n) {
+  if (n == null || isNaN(n)) return 'var(--cream-dim)';
+  if (n < 0) return 'var(--green-light)';
+  if (n === 0) return 'var(--cream-dim)';
+  return '#f09595';
+}
 function getScoreColor(strokes, par) {
   if (!strokes || !par) return 'var(--cream)';
   const d = strokes - par;
@@ -391,38 +402,117 @@ function renderSkinsTracker() {
 function showLeaderboard() {
   const allFP = roundFlights.flatMap(f => f.flight_players || []);
   const standings = allFP.map(fp => {
-    let stableford = 0, strokes = 0, holes = 0, eagles = 0, birdies = 0, pars = 0, bogeys = 0;
+    const phcp = _playingHcp(fp.handicap, currentRound?.tee_sets?.slope, currentRound?.tee_sets?.course_rating, _fullCoursePar);
+    let brutto = 0, netto = 0, parThru = 0, stab = 0, holesPlayed = 0;
     Object.entries(roundScores[fp.player_id] || {}).forEach(([h, s]) => {
       if (s > 0) {
-        const hd = roundHoles.find(hh => hh.hole_number === parseInt(h)) || { par: null, stroke_index: null };
-        if (hd.par && hd.stroke_index) {
-          stableford += calcStableford(s, hd.par, _playingHcp(fp.handicap, currentRound?.tee_sets?.slope, currentRound?.tee_sets?.course_rating, _fullCoursePar), hd.stroke_index);
-          const d = s - hd.par;
-          if (d <= -2) eagles++;
-          else if (d === -1) birdies++;
-          else if (d === 0) pars++;
-          else if (d === 1) bogeys++;
+        const hd = roundHoles.find(hh => hh.hole_number === parseInt(h));
+        if (hd?.par && hd?.stroke_index) {
+          let extra = Math.floor(phcp / 18);
+          if (hd.stroke_index <= (phcp % 18)) extra++;
+          brutto += s;
+          netto += s - extra;
+          parThru += hd.par;
+          stab += calcStableford(s, hd.par, phcp, hd.stroke_index);
+          holesPlayed++;
         }
-        strokes += s;
-        holes++;
       }
     });
-    return { name: fp.profiles?.display_name || '?', stableford, strokes, holes, eagles, birdies, pars, bogeys };
-  }).sort((a, b) => b.stableford - a.stableford);
-  document.getElementById('leaderboardContent').innerHTML = standings.map((p, i) => `
-    <div style="display:flex; align-items:center; gap:14px; padding:14px 0; border-bottom:1px solid rgba(255,255,255,0.07);">
-      <div style="font-family:'Playfair Display',serif; font-size:24px; color:${i === 0 ? 'var(--gold)' : 'var(--cream-dim)'}; width:32px; text-align:center;">${i + 1}</div>
-      <div style="flex:1;">
-        <div style="font-size:15px; color:var(--cream); font-weight:500;">${p.name}</div>
-        <div style="font-size:12px; color:var(--cream-dim); margin-top:2px;">${p.holes} hull${p.eagles ? ` · 🦅${p.eagles}` : ''} · 🐦${p.birdies} · par${p.pars} · bog${p.bogeys}</div>
+    const bruttoVsPar = holesPlayed ? brutto - parThru : null;
+    const nettoVsPar = holesPlayed ? netto - parThru : null;
+    return { fp, phcp, stab, holesPlayed, bruttoVsPar, nettoVsPar };
+  }).sort((a, b) => b.stab - a.stab);
+  document.getElementById('leaderboardContent').innerHTML = standings.map((p, i) => {
+    const isLead = i === 0;
+    const firstName = (p.fp.profiles?.display_name || '?').split(' ')[0];
+    return `<div onclick="showPlayerScorecardFromRound('${p.fp.player_id}')" style="display:grid;grid-template-columns:24px 1fr auto auto auto;align-items:center;gap:8px;padding:12px 16px;${i < standings.length-1 ? 'border-bottom:1px solid rgba(255,255,255,0.05);' : ''}${isLead ? 'background:rgba(201,168,76,0.07);' : ''}cursor:pointer;-webkit-tap-highlight-color:transparent;">
+      <div style="font-size:13px;color:${isLead ? 'var(--gold)' : 'var(--cream-dim)'};text-align:center;">${i+1}</div>
+      <div>
+        <div style="font-size:14px;color:var(--cream);font-weight:${isLead ? '600' : '400'};">${firstName}</div>
+        <div style="font-size:11px;color:var(--cream-dim);">thru ${p.holesPlayed} · HCP ${p.fp.handicap ?? '–'}</div>
       </div>
-      <div style="text-align:right;">
-        <div style="font-family:'Playfair Display',serif; font-size:24px; color:var(--gold);">${p.stableford}p</div>
-        <div style="font-size:12px; color:var(--cream-dim);">${p.strokes || '–'} slag</div>
+      <div style="text-align:center;min-width:38px;">
+        <div style="font-size:10px;color:var(--cream-dim);margin-bottom:2px;">Brutto</div>
+        <div style="font-size:14px;font-weight:600;color:${_vsParColor(p.bruttoVsPar)};">${_fmtVsPar(p.bruttoVsPar)}</div>
       </div>
-    </div>
-  `).join('');
+      <div style="text-align:center;min-width:38px;">
+        <div style="font-size:10px;color:var(--cream-dim);margin-bottom:2px;">Netto</div>
+        <div style="font-size:14px;font-weight:600;color:${_vsParColor(p.nettoVsPar)};">${_fmtVsPar(p.nettoVsPar)}</div>
+      </div>
+      <div style="text-align:center;min-width:38px;">
+        <div style="font-size:10px;color:var(--cream-dim);margin-bottom:2px;">Stab</div>
+        <div style="font-size:16px;font-weight:600;color:var(--gold);">${p.stab}p</div>
+      </div>
+    </div>`;
+  }).join('');
   openModal('modalLeaderboard');
+}
+function showPlayerScorecardFromRound(playerId) {
+  const allFP = roundFlights.flatMap(f => f.flight_players || []);
+  const fp = allFP.find(f => f.player_id === playerId);
+  if (!fp) return;
+  closeModal('modalLeaderboard');
+  showPlayerScorecard(fp, roundScores[playerId] || {}, roundHoles, currentRound, _fullCoursePar);
+}
+function showPlayerScorecard(fp, scores, holes, round, fullCoursePar) {
+  const name = fp.profiles?.display_name || '?';
+  const phcp = _playingHcp(fp.handicap, round?.tee_sets?.slope, round?.tee_sets?.course_rating, fullCoursePar || 72);
+  let totalBrutto = 0, totalNetto = 0, totalPar = 0, totalStab = 0, played = 0;
+  const rows = holes.map(h => {
+    const s = scores[h.hole_number];
+    if (!s || s <= 0 || !h.par || !h.stroke_index) {
+      return `<tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
+        <td style="padding:6px 8px;color:var(--gold-dim);font-weight:600;">${h.hole_number}</td>
+        <td style="padding:6px 8px;text-align:center;color:var(--cream-dim);">${h.par || '–'}</td>
+        <td colspan="5" style="padding:6px 8px;text-align:center;color:rgba(255,255,255,0.2);">–</td>
+      </tr>`;
+    }
+    let extra = Math.floor(phcp / 18);
+    if (h.stroke_index <= (phcp % 18)) extra++;
+    const netto = s - extra;
+    const bvp = s - h.par;
+    const nvp = netto - h.par;
+    const stab = Math.max(0, h.par - netto + 2);
+    totalBrutto += s; totalNetto += netto; totalPar += h.par; totalStab += stab; played++;
+    return `<tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
+      <td style="padding:6px 8px;color:var(--gold-dim);font-weight:600;">${h.hole_number}</td>
+      <td style="padding:6px 8px;text-align:center;color:var(--cream-dim);">${h.par}</td>
+      <td style="padding:6px 8px;text-align:center;color:var(--cream);font-weight:500;">${s}</td>
+      <td style="padding:6px 8px;text-align:center;font-weight:600;color:${_vsParColor(bvp)};">${_fmtVsPar(bvp)}</td>
+      <td style="padding:6px 8px;text-align:center;color:var(--cream);">${netto}</td>
+      <td style="padding:6px 8px;text-align:center;font-weight:600;color:${_vsParColor(nvp)};">${_fmtVsPar(nvp)}</td>
+      <td style="padding:6px 8px;text-align:center;font-weight:600;color:${stab >= 3 ? 'var(--gold)' : stab === 2 ? 'var(--cream)' : '#f09595'};">${stab}p</td>
+    </tr>`;
+  }).join('');
+  const bvpTot = played ? totalBrutto - totalPar : null;
+  const nvpTot = played ? totalNetto - totalPar : null;
+  const thStyle = 'padding:5px 8px;text-align:center;color:var(--cream-dim);font-size:10px;font-weight:400;text-transform:uppercase;letter-spacing:1px;';
+  document.getElementById('scorecardModalTitle').textContent = `${name} · ${phcp} slag`;
+  document.getElementById('scorecardModalContent').innerHTML = `
+    <div style="overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead><tr style="border-bottom:1px solid rgba(255,255,255,0.12);">
+          <th style="${thStyle}text-align:left;">Hull</th>
+          <th style="${thStyle}">Par</th>
+          <th style="${thStyle}">Slag</th>
+          <th style="${thStyle}">±</th>
+          <th style="${thStyle}">Netto</th>
+          <th style="${thStyle}">N±</th>
+          <th style="${thStyle}">Stab</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr style="border-top:1px solid rgba(255,255,255,0.12);">
+          <td style="padding:8px;color:var(--cream);font-weight:600;">Tot</td>
+          <td style="padding:8px;text-align:center;color:var(--cream-dim);">${totalPar || '–'}</td>
+          <td style="padding:8px;text-align:center;color:var(--cream);font-weight:600;">${played ? totalBrutto : '–'}</td>
+          <td style="padding:8px;text-align:center;font-weight:700;color:${_vsParColor(bvpTot)};">${_fmtVsPar(bvpTot)}</td>
+          <td style="padding:8px;text-align:center;color:var(--cream);">${played ? totalNetto : '–'}</td>
+          <td style="padding:8px;text-align:center;font-weight:700;color:${_vsParColor(nvpTot)};">${_fmtVsPar(nvpTot)}</td>
+          <td style="padding:8px;text-align:center;font-weight:700;color:var(--gold);">${totalStab}p</td>
+        </tr></tfoot>
+      </table>
+    </div>`;
+  openModal('modalPlayerScorecard');
 }
 async function openChangeTee() {
   if (!currentRound) return;

@@ -13,7 +13,7 @@ async function loadLivePage() {
     el.innerHTML = '<div class="loading"><div class="spinner"></div> Laster...</div>';
 
     const { data: active } = await db.from('rounds')
-      .select('*, courses(name, holes), tee_sets(name, slope), flights(id, name, flight_players(id, player_id, handicap, profiles(display_name)))')
+      .select('*, courses(name, holes), tee_sets(name, slope, course_rating), flights(id, name, flight_players(id, player_id, handicap, profiles(display_name)))')
       .eq('status', 'active')
       .order('created_at', { ascending: false });
 
@@ -64,18 +64,25 @@ async function renderLiveView(round) {
   // Calculate standings
   const standings = allFP.map(fp => {
     const playerScores = scoreMap[fp.player_id] || {};
-    let stableford = 0;
-    let holesPlayed = 0;
+    const phcp = _playingHcp(fp.handicap, round.tee_sets?.slope, round.tee_sets?.course_rating, _livePar);
+    let stableford = 0, brutto = 0, netto = 0, parThru = 0, holesPlayed = 0;
     Object.entries(playerScores).forEach(([hn, strokes]) => {
       if (strokes > 0) {
-        holesPlayed++;
         const h = holeMap[parseInt(hn)];
         if (h?.par && h?.stroke_index) {
-          stableford += calcStablefordLive(strokes, h.par, _playingHcp(fp.handicap, round.tee_sets?.slope, round.tee_sets?.course_rating, _livePar), h.stroke_index, 18);
+          let extra = Math.floor(phcp / 18);
+          if (h.stroke_index <= (phcp % 18)) extra++;
+          stableford += calcStablefordLive(strokes, h.par, phcp, h.stroke_index, 18);
+          brutto += strokes;
+          netto += strokes - extra;
+          parThru += h.par;
+          holesPlayed++;
         }
       }
     });
-    return { fp, name: fp.profiles?.display_name || '?', stableford, holesPlayed, scores: playerScores };
+    const bruttoVsPar = holesPlayed ? brutto - parThru : null;
+    const nettoVsPar = holesPlayed ? netto - parThru : null;
+    return { fp, name: fp.profiles?.display_name || '?', stableford, holesPlayed, scores: playerScores, bruttoVsPar, nettoVsPar, phcp };
   }).sort((a, b) => b.stableford - a.stableford);
 
   const maxHole = standings.reduce((max, s) => Math.max(max, s.holesPlayed), 0);
@@ -99,61 +106,7 @@ async function renderLiveView(round) {
     feedEvents.push({ hole: s.hole_number, par: h.par, label, dot, emoji, firstName, strokes: s.strokes, created_at: s.created_at });
   });
 
-  // Scorecards for all players — PGA style
-  const holes9 = _liveActiveHoles.map(h => h.hole_number);
-  function buildScorecard(playerScores, hcp) {
-    return holes9.map(hn => {
-      const h = holeMap[hn];
-      const strokes = playerScores[hn];
-      if (!strokes || !h?.par) return `
-        <div style="text-align:center; padding:2px 1px;">
-          <div style="width:28px; height:28px; margin:0 auto; display:flex; align-items:center; justify-content:center; font-size:13px; color:rgba(255,255,255,0.2);">–</div>
-          <div style="font-size:9px; color:rgba(255,255,255,0.15); margin-top:1px;">–</div>
-        </div>`;
-      const diff = strokes - h.par;
-      const pts = h.stroke_index ? calcStablefordLive(strokes, h.par, hcp || 36, h.stroke_index, 18) : 0;
-
-      // PGA shapes
-      let cellStyle = '';
-      if (strokes === 1) {
-        cellStyle = `width:28px;height:28px;border-radius:50%;background:#fac775;color:#412402;outline:2px solid #ef9f27;outline-offset:2px;`;
-      } else if (diff <= -2) {
-        cellStyle = `width:26px;height:26px;border-radius:2px;background:#faeeda;color:#633806;outline:2px solid #fac775;outline-offset:2px;`;
-      } else if (diff === -1) {
-        cellStyle = `width:28px;height:28px;border-radius:50%;background:transparent;color:#85b7eb;border:2px solid #85b7eb;`;
-      } else if (diff === 0) {
-        cellStyle = `width:28px;height:28px;border-radius:2px;background:transparent;color:var(--cream);`;
-      } else if (diff === 1) {
-        cellStyle = `width:26px;height:26px;border-radius:2px;background:transparent;color:#f09595;border:2px solid #f09595;`;
-      } else {
-        cellStyle = `width:26px;height:26px;border-radius:2px;background:#e24b4a;color:#fff;outline:2px solid #e24b4a;outline-offset:2px;`;
-      }
-
-      return `
-        <div style="text-align:center; padding:2px 1px;">
-          <div style="margin:0 auto; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:600; ${cellStyle}">${strokes}</div>
-          <div style="font-size:9px; color:${pts >= 3 ? '#fac775' : pts === 2 ? 'var(--cream-dim)' : '#f09595'}; margin-top:2px; font-weight:500;">${pts}p</div>
-        </div>`;
-    }).join('');
-  }
-  const allScorecardsHtml = standings.map(s => `
-    <div style="margin-bottom:14px;">
-      <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px; padding-left:2px;">
-        <div style="font-size:13px; color:var(--cream); font-weight:500;">${s.name}</div>
-        <div style="font-size:12px; color:var(--gold);">${s.stableford}p totalt</div>
-      </div>
-      <div style="background:rgba(0,0,0,0.2); border-radius:10px; padding:10px 12px; border:1px solid rgba(255,255,255,0.06);">
-        <div style="display:grid; grid-template-columns:repeat(9,1fr); gap:2px; margin-bottom:4px;">
-          ${holes9.map(hn => {
-            const h = holeMap[hn];
-            return `<div style="text-align:center; font-size:10px; color:var(--cream-dim); padding:1px;">${hn}${h?.par ? `<span style="color:rgba(255,255,255,0.25);font-size:8px;"> p${h.par}</span>` : ''}</div>`;
-          }).join('')}
-        </div>
-        <div style="display:grid; grid-template-columns:repeat(9,1fr); gap:2px;">
-          ${buildScorecard(s.scores, _playingHcp(s.fp.handicap, round.tee_sets?.slope, round.tee_sets?.course_rating, _livePar))}
-        </div>
-      </div>
-    </div>`).join('');
+  window._liveContext = { standings, holes: _liveActiveHoles, holeMap, round, _livePar };
 
   el.innerHTML = `
     <div style="background:rgba(201,168,76,0.08); border:1px solid rgba(201,168,76,0.25); border-radius:12px; padding:14px 16px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center;">
@@ -169,13 +122,25 @@ async function renderLiveView(round) {
     <div style="background:rgba(0,0,0,0.2); border-radius:12px; overflow:hidden; margin-bottom:16px; border:1px solid rgba(255,255,255,0.06);">
       ${standings.map((s, i) => {
         const isLead = i === 0;
-        return `<div style="display:flex; align-items:center; gap:12px; padding:13px 16px; ${i < standings.length-1 ? 'border-bottom:1px solid rgba(255,255,255,0.05)' : ''}; ${isLead ? 'background:rgba(201,168,76,0.07)' : ''};">
-          <div style="font-size:13px; color:var(--cream-dim); min-width:20px; text-align:center;">${i+1}</div>
-          <div style="flex:1;">
-            <div style="font-size:14px; color:var(--cream); font-weight:${isLead ? '600' : '400'};">${s.name}</div>
-            <div style="font-size:11px; color:var(--cream-dim);">HCP ${s.fp.handicap || '–'} · thru ${s.holesPlayed}</div>
+        const firstName = s.name.split(' ')[0];
+        return `<div onclick="showLivePlayerScorecard('${s.fp.player_id}')" style="display:grid;grid-template-columns:24px 1fr auto auto auto;align-items:center;gap:8px;padding:12px 16px;${i < standings.length-1 ? 'border-bottom:1px solid rgba(255,255,255,0.05);' : ''}${isLead ? 'background:rgba(201,168,76,0.07);' : ''}cursor:pointer;-webkit-tap-highlight-color:transparent;">
+          <div style="font-size:13px;color:${isLead ? 'var(--gold)' : 'var(--cream-dim)'};text-align:center;">${i+1}</div>
+          <div>
+            <div style="font-size:14px;color:var(--cream);font-weight:${isLead ? '600' : '400'};">${firstName}</div>
+            <div style="font-size:11px;color:var(--cream-dim);">thru ${s.holesPlayed} · HCP ${s.fp.handicap ?? '–'}</div>
           </div>
-          <div style="font-size:22px; font-weight:600; color:var(--gold); min-width:40px; text-align:right;">${s.stableford}p</div>
+          <div style="text-align:center;min-width:38px;">
+            <div style="font-size:10px;color:var(--cream-dim);margin-bottom:2px;">Brutto</div>
+            <div style="font-size:14px;font-weight:600;color:${_vsParColor(s.bruttoVsPar)};">${_fmtVsPar(s.bruttoVsPar)}</div>
+          </div>
+          <div style="text-align:center;min-width:38px;">
+            <div style="font-size:10px;color:var(--cream-dim);margin-bottom:2px;">Netto</div>
+            <div style="font-size:14px;font-weight:600;color:${_vsParColor(s.nettoVsPar)};">${_fmtVsPar(s.nettoVsPar)}</div>
+          </div>
+          <div style="text-align:center;min-width:38px;">
+            <div style="font-size:10px;color:var(--cream-dim);margin-bottom:2px;">Stab</div>
+            <div style="font-size:16px;font-weight:600;color:var(--gold);">${s.stableford}p</div>
+          </div>
         </div>`;
       }).join('')}
     </div>
@@ -193,10 +158,7 @@ async function renderLiveView(round) {
         </div>`).join('')}
     </div>` : ''}
 
-    <div style="font-size:11px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px;">Scorecards</div>
-    ${allScorecardsHtml}
-
-    <div style="font-size:11px; color:var(--cream-dim); text-align:center; margin-top:8px;">Oppdateres automatisk hvert 20 sek</div>
+    <div style="font-size:11px; color:var(--cream-dim); text-align:center; margin-top:8px;">Oppdateres automatisk hvert 20 sek · Trykk spiller for scorecard</div>
   `;
 }
 
@@ -230,4 +192,11 @@ function shareLiveLink(roundId, courseName) {
       prompt('Kopier lenken:', url);
     });
   }
+}
+function showLivePlayerScorecard(playerId) {
+  const ctx = window._liveContext;
+  if (!ctx) return;
+  const s = ctx.standings.find(s => s.fp.player_id === playerId);
+  if (!s) return;
+  showPlayerScorecard(s.fp, s.scores, ctx.holes, ctx.round, ctx._livePar);
 }
