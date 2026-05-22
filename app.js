@@ -1,0 +1,3196 @@
+// ── SUPABASE INIT ──
+const SUPABASE_URL = 'https://fqiwnsmhypxtsdipzntm.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZxaXduc21oeXB4dHNkaXB6bnRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2MTA2NjIsImV4cCI6MjA5MzE4NjY2Mn0.QZjHeK-ckcM5aAIRsjeZalHQuLgkwCVcoxTL1pBpG68';
+const CLAUDE_PROXY = 'https://fqiwnsmhypxtsdipzntm.supabase.co/functions/v1/claude-proxy';
+const { createClient } = supabase;
+const db = createClient(SUPABASE_URL, SUPABASE_ANON);
+let currentUser = null;
+let currentProfile = null;
+
+// ── AUTH ──
+async function init() {
+  const { data: { session } } = await db.auth.getSession();
+  if (session) {
+    await loadProfile(session.user.id);
+    if (currentProfile) {
+      if (currentProfile.is_approved === false) {
+        await db.auth.signOut();
+        showPending(currentProfile.display_name);
+      } else {
+        showApp();
+        if (location.hash === '#live') {
+          setTimeout(() => { showPage('live'); }, 400);
+        }
+      }
+    } else showLogin();
+  } else {
+    if (location.hash === '#live') {
+      showPublicLive();
+    } else {
+      showLogin();
+    }
+  }
+  db.auth.onAuthStateChange(async (event, session) => {
+    if (event === 'SIGNED_IN' && session) {
+      // If the app shell is already visible the user is already logged in —
+      // this is a token refresh, not a new sign-in. Don't re-run showApp()
+      // or loadProfile(); it competes with visibilitychange calls and hangs.
+      if (document.getElementById('appShell')?.style.display !== 'none') return;
+      await loadProfile(session.user.id);
+      if (currentProfile?.is_approved === false) { await db.auth.signOut(); showPending(currentProfile.display_name); return; }
+      showApp();
+    }
+  });
+}
+async function loadProfile(userId) {
+  const { data } = await db.from('profiles').select('*').eq('id', userId).single();
+  if (data) currentProfile = data;
+}
+function showLogin() {
+  document.getElementById('publicLivePage').style.display = 'none';
+  document.getElementById('loginPage').style.display = 'flex';
+  document.getElementById('appShell').style.display = 'none';
+  document.getElementById('pendingPage').style.display = 'none';
+}
+function showPending(displayName) {
+  document.getElementById('loginPage').style.display = 'none';
+  document.getElementById('appShell').style.display = 'none';
+  document.getElementById('publicLivePage').style.display = 'none';
+  document.getElementById('pendingPage').style.display = 'flex';
+  const el = document.getElementById('pendingName');
+  if (el) el.textContent = displayName || '';
+}
+function showLoginFromPublic() {
+  document.getElementById('publicLivePage').style.display = 'none';
+  document.getElementById('loginPage').style.display = 'flex';
+}
+let _publicLiveInterval = null;
+async function showPublicLive() {
+  document.getElementById('loginPage').style.display = 'none';
+  document.getElementById('appShell').style.display = 'none';
+  document.getElementById('publicLivePage').style.display = 'block';
+  await renderPublicLive();
+  if (!_publicLiveInterval) _publicLiveInterval = setInterval(renderPublicLive, 20000);
+}
+async function renderPublicLive() {
+  const statusEl = document.getElementById('publicLiveStatus');
+  const contentEl = document.getElementById('publicLiveContent');
+  const { data: active } = await db.from('rounds')
+    .select('*, courses(name, holes), tee_sets(name, slope), flights(id, name, flight_players(id, player_id, handicap, profiles(display_name)))')
+    .eq('status', 'active').order('created_at', { ascending: false });
+  if (!active?.length) {
+    statusEl.textContent = 'Ingen aktive runder akkurat nå';
+    contentEl.innerHTML = `<div style="text-align:center; padding:60px 20px; color:var(--cream-dim);">
+      <div style="font-size:48px; margin-bottom:16px;">⛳</div>
+      <div style="font-size:16px; color:var(--cream);">Ingen aktive runder</div>
+      <div style="font-size:13px; margin-top:8px;">Siden oppdateres automatisk</div>
+    </div>`;
+    return;
+  }
+  const round = active[0];
+  statusEl.textContent = '🟢 Live · ' + round.courses?.name + ' · ' + round.date;
+  const { data: scores } = await db.from('scores').select('*').eq('round_id', round.id);
+  const { data: holes } = await db.from('holes').select('*').eq('course_id', round.course_id).order('hole_number');
+  const allFP = (round.flights || []).flatMap(f => f.flight_players || []);
+  const _pubRange = round.hole_range || 'all';
+  const _pubActiveHoles = _pubRange === 'front9' ? (holes||[]).filter(h => h.hole_number <= 9)
+    : _pubRange === 'back9' ? (holes||[]).filter(h => h.hole_number >= 10) : (holes||[]);
+  const holeCount = _pubActiveHoles.length || round.courses?.holes || 18;
+  const scoreMap = {}, holeMap = {};
+  (scores || []).forEach(s => { if (!scoreMap[s.player_id]) scoreMap[s.player_id] = {}; scoreMap[s.player_id][s.hole_number] = s.strokes; });
+  _pubActiveHoles.forEach(h => { holeMap[h.hole_number] = h; });
+  const _pubPar = (holes||[]).reduce((s,h) => s + (h.par||0), 0) || 72;
+  const standings = allFP.map(fp => {
+    const ps = scoreMap[fp.player_id] || {};
+    let pts = 0, played = 0;
+    Object.entries(ps).forEach(([hn, strokes]) => {
+      if (strokes > 0) { played++; const h = holeMap[parseInt(hn)]; if (h?.par && h?.stroke_index) pts += calcStablefordLive(strokes, h.par, _playingHcp(fp.handicap, round.tee_sets?.slope, round.tee_sets?.course_rating, _pubPar), h.stroke_index, 18); }
+    });
+    return { name: fp.profiles?.display_name || '?', pts, played, scores: ps };
+  }).sort((a, b) => b.pts - a.pts);
+  const maxHole = standings.reduce((m, s) => Math.max(m, s.played), 0);
+  const feedEvents = (scores || []).filter(s => s.strokes > 0 && holeMap[s.hole_number]?.par)
+    .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')).slice(0, 5)
+    .map(s => {
+      const h = holeMap[s.hole_number], fp = allFP.find(p => p.player_id === s.player_id);
+      const diff = s.strokes - h.par;
+      let label = 'Par', dot = '#888780';
+      if (s.strokes === 1) { label = 'Hole in One 🏆'; dot = '#fac775'; }
+      else if (diff <= -2) { label = 'Eagle 🦅'; dot = '#fac775'; }
+      else if (diff === -1) { label = 'Birdie 🐦'; dot = '#85b7eb'; }
+      else if (diff === 1) { label = 'Bogey'; dot = '#f09595'; }
+      else if (diff >= 2) { label = `+${diff}`; dot = '#e24b4a'; }
+      return { hole: s.hole_number, par: h.par, label, dot, name: (fp?.profiles?.display_name || '?').split(' ')[0], strokes: s.strokes };
+    });
+  contentEl.innerHTML = `
+    <div style="background:rgba(201,168,76,0.08); border:1px solid rgba(201,168,76,0.2); border-radius:12px; padding:14px 16px; margin-bottom:16px;">
+      <div style="font-size:11px; color:var(--gold); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:4px;">Hull ${maxHole} av ${holeCount}</div>
+      <div style="font-size:16px; color:var(--cream); font-weight:500;">${round.courses?.name}</div>
+      <div style="font-size:12px; color:var(--cream-dim); margin-top:2px;">${round.tee_sets?.name || ''}</div>
+    </div>
+    <div style="font-size:11px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px;">Leaderboard</div>
+    <div style="background:rgba(0,0,0,0.2); border-radius:12px; overflow:hidden; margin-bottom:16px; border:1px solid rgba(255,255,255,0.06);">
+      ${standings.map((s, i) => `
+        <div style="display:flex; align-items:center; gap:12px; padding:13px 16px; ${i < standings.length-1 ? 'border-bottom:1px solid rgba(255,255,255,0.05)' : ''}; ${i===0 ? 'background:rgba(201,168,76,0.07)' : ''};">
+          <div style="font-size:13px; color:var(--cream-dim); min-width:20px;">${i+1}</div>
+          <div style="flex:1;">
+            <div style="font-size:14px; color:var(--cream); font-weight:${i===0?'600':'400'};">${s.name}</div>
+            <div style="font-size:11px; color:var(--cream-dim);">thru ${s.played}</div>
+          </div>
+          <div style="font-size:22px; font-weight:600; color:var(--gold);">${s.pts}p</div>
+        </div>`).join('')}
+    </div>
+    ${feedEvents.length ? `
+    <div style="font-size:11px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px;">Live feed</div>
+    <div style="background:rgba(0,0,0,0.2); border-radius:12px; padding:14px 16px; border:1px solid rgba(255,255,255,0.06);">
+      ${feedEvents.map((e, i) => `
+        <div style="display:flex; gap:10px; align-items:flex-start; ${i>0?'margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.05)':''}">
+          <div style="width:8px;height:8px;border-radius:50%;background:${e.dot};flex-shrink:0;margin-top:5px;"></div>
+          <div>
+            <div style="font-size:13px;font-weight:500;color:var(--cream);">Hull ${e.hole} · Par ${e.par}</div>
+            <div style="font-size:12px;color:var(--cream-dim);margin-top:2px;">${e.name} · ${e.label} · ${e.strokes} slag</div>
+          </div>
+        </div>`).join('')}
+    </div>` : ''}
+    <div style="font-size:11px;color:var(--cream-dim);text-align:center;margin-top:16px;">Oppdateres automatisk hvert 20 sek</div>
+  `;
+}
+function showApp() {
+  document.getElementById('loginPage').style.display = 'none';
+  document.getElementById('appShell').style.display = 'block';
+  document.getElementById('topbarUsername').textContent = currentProfile?.username || '–';
+  document.getElementById('dashGreeting').textContent = `Hei, ${currentProfile?.display_name || currentProfile?.username}!`;
+  const _golfQuotes = [
+    { text: "The most important shot in golf is the next one.", author: "Ben Hogan" },
+    { text: "Golf is a good walk spoiled.", author: "Mark Twain" },
+    { text: "The more I practice, the luckier I get.", author: "Gary Player" },
+    { text: "The older I get, the better I used to be.", author: "Lee Trevino" },
+    { text: "Nobody asked how you looked, just what you shot.", author: "Sam Snead" },
+    { text: "To find a man's true character, play golf with him.", author: "P.G. Wodehouse" },
+    { text: "The only thing a golfer needs is more daylight.", author: "Ben Hogan" },
+    { text: "Drive for show, putt for dough.", author: "Bobby Locke" },
+    { text: "Golf is deceptively simple and endlessly complicated.", author: "Arnold Palmer" },
+    { text: "Happiness is a long walk with a putter.", author: "Greg Norman" },
+    { text: "If you drink, don't drive. Don't even putt.", author: "Dean Martin" },
+    { text: "They call it golf because all the other four-letter words were taken.", author: "Raymond Floyd" },
+    { text: "Serenity is knowing that your worst shot is still pretty good.", author: "Johnny Miller" },
+    { text: "You can't go into a shop and buy a good game of golf.", author: "Sam Snead" },
+    { text: "I know I'm getting better at golf because I'm hitting fewer spectators.", author: "Gerald Ford" },
+    { text: "Golf is a game in which you yell fore, shoot six, and write down five.", author: "Paul Harvey" },
+    { text: "If you think it's hard to meet people, try picking up the wrong golf ball.", author: "Jack Lemmon" },
+    { text: "Every day is a good day on the golf course.", author: "Anonymous" },
+    { text: "Concentration comes out of a combination of confidence and hunger.", author: "Arnold Palmer" },
+    { text: "A good golfer has the determination to win and the patience to wait for the breaks.", author: "Gary Player" },
+  ];
+  const _q = _golfQuotes[Math.floor(Date.now() / 86400000) % _golfQuotes.length];
+  const _qEl = document.getElementById('dashQuote');
+  if (_qEl) _qEl.textContent = `"${_q.text}" – ${_q.author}`;
+  if (currentProfile?.is_admin) {
+    // admin-rettigheter aktive
+  }
+  // players vises via Meg-siden
+  loadCourses();
+  loadDashboard();
+}
+function switchAuthTab(tab) {
+  const isLogin = tab === 'login';
+  document.getElementById('tabLogin').style.display = isLogin ? 'block' : 'none';
+  document.getElementById('tabRegister').style.display = isLogin ? 'none' : 'block';
+  document.getElementById('tabLoginBtn').style.background = isLogin ? 'rgba(201,168,76,0.2)' : 'transparent';
+  document.getElementById('tabLoginBtn').style.color = isLogin ? 'var(--gold-light)' : 'var(--cream-dim)';
+  document.getElementById('tabRegisterBtn').style.background = isLogin ? 'transparent' : 'rgba(201,168,76,0.2)';
+  document.getElementById('tabRegisterBtn').style.color = isLogin ? 'var(--cream-dim)' : 'var(--gold-light)';
+}
+async function handleLogin() {
+  const username = document.getElementById('loginUsername').value.trim().toLowerCase();
+  const password = document.getElementById('loginPassword').value;
+  if (!username || !password) { showAlert('loginAlert', 'Fyll inn brukernavn og passord', 'error'); return; }
+  const { data: profile, error: profileErr } = await db.from('profiles').select('id').eq('username', username).single();
+  if (profileErr || !profile) { showAlert('loginAlert', 'Brukernavn ikke funnet', 'error'); return; }
+  const { data: fullProfile } = await db.from('profiles').select('email').eq('username', username).single();
+  const email = fullProfile?.email;
+  if (!email) { showAlert('loginAlert', 'Ingen e-post koblet til brukeren. Kontakt Hawk.', 'error'); return; }
+  const { data: authData, error } = await db.auth.signInWithPassword({ email, password });
+  if (error) { showAlert('loginAlert', 'Feil brukernavn eller passord', 'error'); return; }
+  const userId = authData?.user?.id;
+  if (userId) await loadProfile(userId);
+  if (currentProfile?.is_approved === false) { await db.auth.signOut(); showPending(currentProfile.display_name); return; }
+  showApp();
+}
+async function handleRegister() {
+  const username = document.getElementById('regUsername').value.trim().toLowerCase();
+  const displayName = document.getElementById('regDisplayName').value.trim();
+  const password = document.getElementById('regPassword').value;
+  const hcp = parseFloat(document.getElementById('regHcp').value) || 54.0;
+  const inviteCode = document.getElementById('regInviteCode').value.trim().toUpperCase();
+  if (!username || !displayName || !password) { showAlert('registerAlert', 'Fyll inn alle påkrevde felt', 'error'); return; }
+  if (password.length < 6) { showAlert('registerAlert', 'Passordet må være minst 6 tegn', 'error'); return; }
+  if (inviteCode !== 'FORE') { showAlert('registerAlert', 'Feil invitasjonskode – spør Hawk om kode', 'error'); return; }
+  const { data: existing } = await db.from('profiles').select('id').eq('username', username).single();
+  if (existing) { showAlert('registerAlert', 'Brukernavnet er allerede tatt – velg et annet', 'error'); return; }
+  // Auto-generer intern e-post – brukeren ser den aldri
+  const email = `${username}@fantastic-fore.app`;
+  const { data, error } = await db.auth.signUp({ email, password });
+  if (error) { showAlert('registerAlert', error.message, 'error'); return; }
+  if (data.user) {
+    const { error: profileError } = await db.from('profiles').insert({
+      id: data.user.id, username, display_name: displayName, email, handicap: hcp, is_admin: false, is_approved: false
+    });
+    if (profileError) { showAlert('registerAlert', 'Profil feilet: ' + profileError.message, 'error'); return; }
+  }
+  await db.auth.signOut();
+  showPending(displayName);
+}
+async function handleLogout() {
+  await db.auth.signOut();
+  currentProfile = null;
+  showLogin();
+}
+
+// ── NAVIGATION ──
+function showPage(pageId) {
+  // Stop live polling when navigating away
+  if (pageId !== 'live' && _liveRefreshInterval) {
+    clearInterval(_liveRefreshInterval);
+    _liveRefreshInterval = null;
+  }
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  const page = document.getElementById('page-' + pageId);
+  if (page) page.classList.add('active');
+  const navMap = { dashboard: 'navDashboard', rounds: 'navRounds', live: 'navLive', courses: 'navCourses', profile: 'navProfile', players: 'navProfile' };
+  const navBtn = document.getElementById(navMap[pageId]);
+  if (navBtn) navBtn.classList.add('active');
+  if (pageId === 'players') loadPlayers();
+  if (pageId === 'profile') loadProfilePage();
+  if (pageId === 'rounds') loadRounds();
+  if (pageId === 'dashboard') loadDashboard();
+  if (pageId === 'live') loadLivePage();
+}
+
+// ── ADD COURSE FLOW ──
+let _ac = {};
+let _acTeeCount = 0;
+
+function openAddCourse() {
+  _ac = { step: 1, fileData: null, fileType: null, holeData: [], tees: [], detectedRange: null };
+  _acTeeCount = 0;
+  document.getElementById('acName').value = '';
+  document.getElementById('acLocation').value = '';
+  document.getElementById('acTeeRows').innerHTML = '';
+  document.getElementById('acSlopeStatus').textContent = '';
+  document.getElementById('acScorecardStatus').innerHTML = '';
+  document.getElementById('acHoleTable').style.display = 'none';
+  document.getElementById('acHoleTable').innerHTML = '';
+  document.getElementById('acScorecardPreview').style.display = 'none';
+  document.getElementById('acScorecardIcon').textContent = '📸';
+  document.getElementById('acScorecardLabel').textContent = 'Last opp scorekort';
+  document.getElementById('acAnalyzeBtn').style.display = 'none';
+  document.getElementById('acSaveBtn').style.display = 'none';
+  document.getElementById('acAlert').innerHTML = '';
+  const slopeInput = document.getElementById('acSlopeFile');
+  if (slopeInput) slopeInput.value = '';
+  const scInput = document.getElementById('acScorecardFile');
+  if (scInput) scInput.value = '';
+  acAddTee();
+  acStep(1);
+  openModal('modalAddCourse');
+}
+
+function acUpdateStepIndicator(step) {
+  for (let i = 1; i <= 3; i++) {
+    const dot = document.getElementById('acStepDot' + i);
+    if (!dot) continue;
+    const done = i < step;
+    const active = i === step;
+    dot.style.background = active ? 'var(--gold)' : done ? 'var(--green-light)' : 'rgba(255,255,255,0.1)';
+    dot.style.color = (active || done) ? 'var(--green-deep)' : 'var(--cream-dim)';
+    dot.textContent = done ? '✓' : String(i);
+    if (i < 3) {
+      const line = document.getElementById('acLine' + i);
+      if (line) line.style.background = done ? 'var(--green-light)' : 'rgba(255,255,255,0.1)';
+    }
+  }
+}
+
+function acStep(n) {
+  document.getElementById('acAlert').innerHTML = '';
+  for (let i = 1; i <= 3; i++) {
+    document.getElementById('acStep' + i).style.display = i === n ? 'block' : 'none';
+  }
+  acUpdateStepIndicator(n);
+}
+
+function acNext(fromStep) {
+  document.getElementById('acAlert').innerHTML = '';
+  if (fromStep === 1) {
+    const name = document.getElementById('acName').value.trim();
+    if (!name) { showAlert('acAlert', 'Banenavn er påkrevd', 'error'); return; }
+    _ac.name = name;
+    _ac.location = document.getElementById('acLocation').value.trim();
+    acStep(2);
+  } else if (fromStep === 2) {
+    _ac.tees = acCollectTees();
+    acStep(3);
+  }
+}
+
+function acSkipAndSave() {
+  _ac.holeData = [];
+  _ac.detectedRange = null;
+  acSave();
+}
+
+function acCollectTees() {
+  const tees = [];
+  document.querySelectorAll('#acTeeRows .ac-tee-row').forEach(row => {
+    const id = row.dataset.id;
+    const name = document.getElementById('act-name-' + id)?.value?.trim();
+    if (!name) return;
+    tees.push({
+      name,
+      cr: parseFloat(document.getElementById('act-cr-' + id)?.value) || null,
+      slope: parseInt(document.getElementById('act-slope-' + id)?.value) || null,
+      color: document.getElementById('act-color-' + id)?.value || null
+    });
+  });
+  return tees;
+}
+
+function acCollectHoles() {
+  const isBack = _ac.detectedRange === 'back9';
+  const isAll = _ac.detectedRange === 'all18';
+  const startHole = isBack ? 10 : 1;
+  const endHole = isAll ? 18 : (isBack ? 18 : 9);
+  const holes = [];
+  for (let i = startHole; i <= endHole; i++) {
+    const par = parseInt(document.getElementById('ach-par-' + i)?.value || '0');
+    const si = parseInt(document.getElementById('ach-si-' + i)?.value || '0');
+    if (par && si) holes.push({ hole: i, par, si });
+  }
+  return holes;
+}
+
+function acAddTee() {
+  _acTeeCount++;
+  const id = _acTeeCount;
+  const defaultColors = ['#FFD700', '#FFFFFF', '#3366CC', '#CC3333', '#52b788', '#222222'];
+  const defaultColor = defaultColors[(id - 1) % defaultColors.length];
+  const row = document.createElement('div');
+  row.className = 'ac-tee-row';
+  row.dataset.id = id;
+  row.style.cssText = 'display:grid;grid-template-columns:1fr 56px 56px 42px auto;gap:6px;margin-bottom:8px;align-items:center;';
+  const isFirst = document.querySelectorAll('#acTeeRows .ac-tee-row').length === 0;
+  row.innerHTML = `
+    <input type="text" id="act-name-${id}" placeholder="f.eks. Gul" style="padding:8px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.3);color:var(--cream);font-size:14px;font-family:'DM Sans',sans-serif;width:100%;">
+    <input type="number" id="act-cr-${id}" placeholder="71.5" step="0.1" min="55" max="85" style="padding:8px 6px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.3);color:var(--cream);font-size:13px;font-family:'DM Sans',sans-serif;text-align:center;width:100%;">
+    <input type="number" id="act-slope-${id}" placeholder="113" min="55" max="155" style="padding:8px 6px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.3);color:var(--cream);font-size:13px;font-family:'DM Sans',sans-serif;text-align:center;width:100%;">
+    <input type="color" id="act-color-${id}" value="${defaultColor}" style="height:38px;width:100%;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:none;cursor:pointer;padding:2px;">
+    <button onclick="acRemoveTee(${id})" class="remove-btn" ${isFirst ? 'style="visibility:hidden"' : ''}>×</button>
+  `;
+  document.getElementById('acTeeRows').appendChild(row);
+}
+
+function acRemoveTee(id) {
+  const row = document.querySelector(`.ac-tee-row[data-id="${id}"]`);
+  if (row) row.remove();
+}
+
+async function acLoadSlope(file) {
+  if (!file) return;
+  const statusEl = document.getElementById('acSlopeStatus');
+  statusEl.innerHTML = '⏳ Leser slopetabell...';
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const data = e.target.result.split(',')[1];
+    try {
+      const parsed = await callClaudeProxy(
+        data, file.type,
+        'Dette er en slopetabell fra en norsk golfbane. Trekk ut alle tee-sett og returner KUN gyldig JSON:\n{"tees":[{"name":"tee-navn","course_rating":72.6,"slope":129,"color":"#hexfarge"}]}\nFarger: gul=#FFD700, hvit=#FFFFFF, blå=#3366CC, rød=#CC3333, svart=#222222. Kun JSON.',
+        1200
+      );
+      const tees = parsed.tees || [];
+      document.getElementById('acTeeRows').innerHTML = '';
+      _acTeeCount = 0;
+      for (const t of tees) {
+        _acTeeCount++;
+        const id = _acTeeCount;
+        const row = document.createElement('div');
+        row.className = 'ac-tee-row';
+        row.dataset.id = id;
+        row.style.cssText = 'display:grid;grid-template-columns:1fr 56px 56px 42px auto;gap:6px;margin-bottom:8px;align-items:center;';
+        row.innerHTML = `
+          <input type="text" id="act-name-${id}" value="${(t.name||'').replace(/"/g,'&quot;')}" placeholder="f.eks. Gul" style="padding:8px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.3);color:var(--cream);font-size:14px;font-family:'DM Sans',sans-serif;width:100%;">
+          <input type="number" id="act-cr-${id}" value="${t.course_rating||''}" placeholder="71.5" step="0.1" min="55" max="85" style="padding:8px 6px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.3);color:var(--cream);font-size:13px;font-family:'DM Sans',sans-serif;text-align:center;width:100%;">
+          <input type="number" id="act-slope-${id}" value="${t.slope||''}" placeholder="113" min="55" max="155" style="padding:8px 6px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.3);color:var(--cream);font-size:13px;font-family:'DM Sans',sans-serif;text-align:center;width:100%;">
+          <input type="color" id="act-color-${id}" value="${t.color||'#e8c97a'}" style="height:38px;width:100%;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:none;cursor:pointer;padding:2px;">
+          <button onclick="acRemoveTee(${id})" class="remove-btn">×</button>
+        `;
+        document.getElementById('acTeeRows').appendChild(row);
+      }
+      statusEl.innerHTML = `<span style="color:var(--green-light);">✅ ${tees.length} tee-sett lest inn automatisk</span>`;
+    } catch(e) {
+      statusEl.innerHTML = `<span style="color:var(--danger);">⚠️ Feil: ${e.message}. Fyll inn manuelt.</span>`;
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+function acLoadScorecard(file) {
+  if (!file) return;
+  _ac.fileData = null;
+  _ac.fileType = file.type;
+  document.getElementById('acScorecardIcon').textContent = '✓';
+  document.getElementById('acScorecardLabel').textContent = file.name;
+  document.getElementById('acAnalyzeBtn').style.display = 'inline-flex';
+  document.getElementById('acSaveBtn').style.display = 'none';
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    _ac.fileData = e.target.result.split(',')[1];
+    if (file.type.startsWith('image/')) {
+      document.getElementById('acScorecardPreviewImg').src = e.target.result;
+      document.getElementById('acScorecardPreview').style.display = 'block';
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+async function acAnalyzeScorecard() {
+  if (!_ac.fileData) return;
+  const btn = document.getElementById('acAnalyzeBtn');
+  btn.textContent = '⏳ Analyserer...';
+  btn.disabled = true;
+  const statusEl = document.getElementById('acScorecardStatus');
+  statusEl.innerHTML = '<div style="color:var(--cream-dim);font-size:13px;">⏳ Sender til Claude – vent...</div>';
+  try {
+    const parsed = await callClaudeProxy(
+      _ac.fileData, _ac.fileType,
+      'Dette er et scorekort fra en norsk golfbane. Detekter hvilke hull som er med: "front9" (hull 1-9), "back9" (hull 10-18), eller "all18" (hull 1-18). Trekk ut par og SI/Index per hull. Returner KUN JSON: {"hole_range":"front9","holes":[{"hole":1,"par":4,"si":7}]}. Kun JSON.',
+      2000
+    );
+    const holes = parsed.holes || [];
+    const detectedRange = parsed.hole_range || (holes.some(h => h.hole >= 10) ? (holes.some(h => h.hole <= 9) ? 'all18' : 'back9') : 'front9');
+    if (!holes.length) throw new Error('Fant ingen hull i scorekortet');
+    _ac.detectedRange = detectedRange;
+    _ac.holeData = holes.map(h => ({ hole: h.hole, par: h.par, si: h.si }));
+    acRenderHoleTable(holes, detectedRange);
+    const rangeLabel = detectedRange === 'all18' ? 'Hull 1–18' : detectedRange === 'back9' ? 'Hull 10–18 (bak 9)' : 'Hull 1–9 (front 9)';
+    statusEl.innerHTML = `<div style="color:var(--green-light);font-size:13px;margin-bottom:8px;">✅ Detektert: ${rangeLabel} · ${holes.length} hull lest inn – sjekk og korriger om nødvendig</div>`;
+    document.getElementById('acSaveBtn').style.display = 'inline-flex';
+  } catch(e) {
+    statusEl.innerHTML = `<div style="color:var(--danger);font-size:13px;">${e.message}</div>`;
+  }
+  btn.textContent = '📖 Les scorekort';
+  btn.disabled = false;
+}
+
+function acRenderHoleTable(holes, detectedRange) {
+  const isBack = detectedRange === 'back9';
+  const isAll = detectedRange === 'all18';
+  const startHole = isBack ? 10 : 1;
+  const endHole = isAll ? 18 : (isBack ? 18 : 9);
+  const siMax = 9;
+  const el = document.getElementById('acHoleTable');
+  el.style.display = 'block';
+  el.innerHTML = '<table class="hole-table"><thead><tr><th>Hull</th><th>Par</th><th>SI</th></tr></thead><tbody>' +
+    Array.from({length: endHole - startHole + 1}, (_, i) => {
+      const holeNum = startHole + i;
+      const h = holes.find(x => x.hole === holeNum) || {};
+      return `<tr><td class="hole-num">${holeNum}</td>` +
+        `<td><input type="number" id="ach-par-${holeNum}" value="${h.par||''}" min="3" max="5" style="width:60px;"></td>` +
+        `<td><input type="number" id="ach-si-${holeNum}" value="${h.si||''}" min="1" max="${siMax}" style="width:60px;"></td></tr>`;
+    }).join('') +
+    '</tbody></table>';
+}
+
+async function acSave() {
+  if (_ac.detectedRange) _ac.holeData = acCollectHoles();
+  const btn = document.getElementById('acSaveBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Lagrer...'; }
+  showAlert('acAlert', '⏳ Lagrer bane...', 'success');
+  try {
+    const { data: course, error: ce } = await db.from('courses').insert({
+      name: _ac.name,
+      location: _ac.location || null,
+      holes: 18,
+      created_by: currentProfile?.id
+    }).select().single();
+    if (ce) throw new Error('Feil ved lagring av bane: ' + ce.message);
+    for (const t of (_ac.tees || [])) {
+      if (!t.name) continue;
+      await db.from('tee_sets').insert({
+        course_id: course.id, name: t.name,
+        slope: t.slope || null, course_rating: t.cr || null, color: t.color || null
+      });
+    }
+    const holeData = (_ac.holeData || []).filter(h => h.par && h.si);
+    if (holeData.length > 0) {
+      const { error: he } = await db.from('holes').insert(
+        holeData.map(h => ({ course_id: course.id, hole_number: h.hole, par: h.par, stroke_index: h.si }))
+      );
+      if (he) throw new Error('Feil ved lagring av hull: ' + he.message);
+    }
+    showAlert('acAlert', '✅ Bane lagret!', 'success');
+    loadCourses();
+    setTimeout(() => { closeModal('modalAddCourse'); openCourseDetail(course.id); }, 800);
+  } catch(e) {
+    showAlert('acAlert', e.message, 'error');
+    if (btn) { btn.disabled = false; btn.textContent = '✅ Lagre bane'; }
+  }
+}
+async function loadCourses() {
+  const { data: courses, error } = await db.from('courses').select('*, tee_sets(*)').order('name');
+  const el = document.getElementById('coursesList');
+  if (error || !courses?.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">🏌️</div><h3>Ingen baner enda</h3><p>Legg til den første banen!</p></div>`;
+    return;
+  }
+  el.innerHTML = courses.map(c => `
+    <div class="course-item" onclick="openCourseDetail('${c.id}')">
+      <div>
+        <div class="course-name">${c.name}</div>
+        <div class="course-meta">${c.location || ''} · ${c.tee_sets?.length || 0} tee-sett</div>
+      </div>
+      <div class="tee-dots">
+        ${(c.tee_sets || []).map(t => `<div class="tee-dot" style="background:${t.color || '#888'};" title="${t.name}"></div>`).join('')}
+        <span style="font-size:12px; color:var(--cream-dim); margin-left:4px;">›</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+
+// ── COURSE DETAIL ──
+let currentCourseId = null;
+async function openCourseDetail(courseId) {
+  currentCourseId = courseId;
+  openModal('modalCourseDetail');
+  document.getElementById('detailCourseName').textContent = 'Laster...';
+  const { data: course, error } = await db.from('courses').select('id, name, location, holes, created_at').eq('id', courseId).single();
+  if (error || !course) { closeModal('modalCourseDetail'); alert('Kunne ikke laste bane.'); return; }
+  const { data: tees } = await db.from('tee_sets').select('*').eq('course_id', courseId);
+  const { data: holeRows } = await db.from('holes').select('*').eq('course_id', courseId).order('hole_number');
+  const teeList = tees || [];
+  const holeList = holeRows || [];
+  const hasFront = holeList.some(h => h.hole_number <= 9);
+  const hasBack = holeList.some(h => h.hole_number >= 10);
+  const hullStatus = hasFront && hasBack ? 'Hull 1–18' : hasFront ? 'Hull 1–9' : hasBack ? 'Hull 10–18' : 'Ingen hull registrert';
+  document.getElementById('detailCourseName').textContent = course.name;
+  document.getElementById('courseTabInfo').innerHTML = `
+    <div class="card">
+      <h3 style="font-family:'Playfair Display',serif;font-size:20px;color:var(--cream);margin-bottom:12px;">${course.name}</h3>
+      <div class="grid-2">
+        <div><p style="font-size:12px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;">Sted</p><p style="margin-top:4px;">${course.location || '–'}</p></div>
+        <div><p style="font-size:12px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;">Hull</p><p style="margin-top:4px;color:${(hasFront||hasBack)?'var(--green-light)':'var(--cream-dim)'};">${hullStatus}</p></div>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 10px;">
+      <h3 style="font-family:'Playfair Display',serif; font-size:16px; color:var(--cream-dim);">Tee-sett</h3>
+      <button onclick="showAddTeeForm('${courseId}')" class="btn-sm">+ Legg til tee</button>
+    </div>
+    <div id="addTeeForm-${courseId}" style="display:none; background:rgba(0,0,0,0.2); border-radius:8px; padding:14px; margin-bottom:10px; border:1px solid rgba(201,168,76,0.2);">
+      <div style="display:grid; grid-template-columns:1fr 60px 60px 44px; gap:8px; margin-bottom:10px;">
+        <input type="text" id="newTee-name-${courseId}" placeholder="Navn (f.eks. 59)" style="padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.3); color:var(--cream); font-size:13px; font-family:'DM Sans',sans-serif;">
+        <input type="number" id="newTee-slope-${courseId}" placeholder="Slope" style="padding:8px 6px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.3); color:var(--cream); font-size:13px; font-family:'DM Sans',sans-serif; text-align:center;">
+        <input type="number" id="newTee-cr-${courseId}" placeholder="CR" step="0.1" style="padding:8px 6px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.3); color:var(--cream); font-size:13px; font-family:'DM Sans',sans-serif; text-align:center;">
+        <input type="color" id="newTee-color-${courseId}" value="#e8c97a" style="height:38px; width:100%; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:none; cursor:pointer; padding:2px;">
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button onclick="saveNewTee('${courseId}')" class="btn btn-auto" style="font-size:13px; padding:8px 16px;">Lagre</button>
+        <button onclick="document.getElementById('addTeeForm-${courseId}').style.display='none'" class="btn btn-outline btn-auto" style="font-size:13px; padding:8px 16px;">Avbryt</button>
+      </div>
+    </div>
+    ${teeList.map(t => `
+      <div id="teeRow-${t.id}">
+        <div class="player-item" style="cursor:default;">
+          <div style="width:20px;height:20px;border-radius:50%;background:${t.color||'#888'};border:2px solid rgba(255,255,255,0.2);flex-shrink:0;"></div>
+          <div class="player-info">
+            <div class="player-name">${t.name}</div>
+            <div class="player-meta">Slope: ${t.slope||'–'} · CR: ${t.course_rating||'–'}</div>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <button onclick="toggleTeeEdit('${t.id}')" style="background:none;border:1px solid rgba(201,168,76,0.3);color:var(--gold);cursor:pointer;font-size:12px;padding:4px 10px;border-radius:6px;font-family:'DM Sans',sans-serif;">Rediger</button>
+            ${currentProfile?.is_admin ? `<button onclick="deleteTeeSet('${t.id}')" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:18px;padding:4px 8px;">🗑</button>` : ''}
+          </div>
+        </div>
+        <div id="teeEdit-${t.id}" style="display:none; background:rgba(0,0,0,0.2); border-radius:8px; padding:14px; margin:-4px 0 8px; border:1px solid rgba(201,168,76,0.2);">
+          <div style="display:grid; grid-template-columns:1fr 60px 60px 44px; gap:8px; margin-bottom:10px;">
+            <input type="text" id="editName-${t.id}" value="${t.name}" placeholder="Navn" style="padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.3); color:var(--cream); font-size:13px; font-family:'DM Sans',sans-serif;">
+            <input type="number" id="editSlope-${t.id}" value="${t.slope||''}" placeholder="Slope" style="padding:8px 6px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.3); color:var(--cream); font-size:13px; font-family:'DM Sans',sans-serif; text-align:center;">
+            <input type="number" id="editCR-${t.id}" value="${t.course_rating||''}" placeholder="CR" step="0.1" style="padding:8px 6px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.3); color:var(--cream); font-size:13px; font-family:'DM Sans',sans-serif; text-align:center;">
+            <input type="color" id="editColor-${t.id}" value="${t.color||'#e8c97a'}" style="height:38px; width:100%; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:none; cursor:pointer; padding:2px;">
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button onclick="saveTeeEdit('${t.id}')" class="btn btn-auto" style="font-size:13px; padding:8px 16px;">Lagre</button>
+            <button onclick="toggleTeeEdit('${t.id}')" class="btn btn-outline btn-auto" style="font-size:13px; padding:8px 16px;">Avbryt</button>
+          </div>
+        </div>
+      </div>
+    `).join('') || '<p style="color:var(--cream-dim);font-size:14px;">Ingen tee-sett registrert.</p>'}
+  `;
+  renderHolesTab({ id: courseId, holes: holeList });
+  showCourseTab('info');
+  const deleteBtn = document.getElementById('btnDeleteCourse');
+  if (deleteBtn) deleteBtn.style.display = currentProfile?.is_admin ? 'inline-flex' : 'none';
+}
+function showCourseTab(tab) {
+  document.getElementById('courseTabInfo').style.display = tab === 'info' ? 'block' : 'none';
+  document.getElementById('courseTabHoles').style.display = tab === 'holes' ? 'block' : 'none';
+  document.querySelectorAll('#modalCourseDetail .tab').forEach((t, i) => {
+    t.classList.toggle('active', (i === 0 && tab === 'info') || (i === 1 && tab === 'holes'));
+  });
+}
+function renderHolesTab(course) {
+  const courseId = course.id || currentCourseId;
+  const existingFront = {}, existingBack = {};
+  (course.holes || []).forEach(h => {
+    if (h.hole_number <= 9) existingFront[h.hole_number] = h;
+    else existingBack[h.hole_number] = h;
+  });
+  const el = document.getElementById('courseTabHoles');
+  el.innerHTML = buildHoleSection('front9', 1, 9, existingFront, courseId) +
+                 '<hr style="border:none;border-top:1px solid rgba(255,255,255,0.07);margin:8px 0 20px;">' +
+                 buildHoleSection('back9', 10, 18, existingBack, courseId);
+}
+
+function buildHoleSection(range, startHole, endHole, existing, courseId) {
+  const hasData = Object.keys(existing).length > 0;
+  const label = range === 'front9' ? 'Hull 1–9' : 'Hull 10–18';
+  const statusBadge = hasData
+    ? '<span style="font-size:12px;color:var(--green-light);">✓ Registrert</span>'
+    : '<span style="font-size:12px;color:var(--cream-dim);">Ikke registrert</span>';
+  let rows = '';
+  for (let i = startHole; i <= endHole; i++) {
+    const h = existing[i] || {};
+    rows += `<tr><td class="hole-num">${i}</td>` +
+      `<td><input type="number" id="hpar-${i}" value="${h.par||''}" placeholder="4" min="3" max="5" style="width:60px;"></td>` +
+      `<td><input type="number" id="hsi-${i}" value="${h.stroke_index||''}" placeholder="${i-startHole+1}" min="1" max="9" style="width:60px;"></td></tr>`;
+  }
+  return `<div style="margin-bottom:4px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <h4 style="font-family:'Playfair Display',serif;font-size:15px;color:var(--cream);">${label}</h4>
+      ${statusBadge}
+    </div>
+    <div style="margin-bottom:10px;">
+      <label style="padding:5px 12px;border-radius:6px;border:1px solid rgba(201,168,76,0.4);color:var(--gold);font-size:12px;cursor:pointer;display:inline-block;">
+        📸 Les scorekort
+        <input type="file" accept="image/png,image/jpeg,image/jpg,application/pdf" style="display:none;"
+          onchange="analyzeHullScorecard(this.files[0],'${courseId}','${range}')">
+      </label>
+      <div id="hullStatus-${range}" style="margin-top:6px;font-size:12px;"></div>
+    </div>
+    <table class="hole-table">
+      <thead><tr><th>Hull</th><th>Par</th><th>SI</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <button class="btn" onclick="saveHoles('${courseId}','${range}')" style="margin-top:12px;font-size:13px;padding:8px 20px;">Lagre ${label}</button>
+    <div id="holesAlert-${range}" style="margin-top:8px;"></div>
+  </div>`;
+}
+
+async function saveHoles(courseId, range) {
+  const isBack = range === 'back9';
+  const startHole = isBack ? 10 : 1;
+  const endHole = isBack ? 18 : 9;
+  const holes = [], usedSI = [], errors = [];
+  for (let i = startHole; i <= endHole; i++) {
+    const parVal = document.getElementById(`hpar-${i}`)?.value?.trim();
+    const siVal = document.getElementById(`hsi-${i}`)?.value?.trim();
+    if (!parVal && !siVal) continue;
+    if (!parVal) { errors.push(`Hull ${i}: Par mangler`); continue; }
+    if (!siVal)  { errors.push(`Hull ${i}: SI mangler`); continue; }
+    const par = parseInt(parVal), si = parseInt(siVal);
+    if (![3, 4, 5].includes(par)) { errors.push(`Hull ${i}: Par må være 3–5`); continue; }
+    if (isNaN(si) || si < 1 || si > 9) { errors.push(`Hull ${i}: SI må være 1–9`); continue; }
+    if (usedSI.includes(si)) { errors.push(`Hull ${i}: SI ${si} er allerede brukt`); continue; }
+    usedSI.push(si);
+    holes.push({ course_id: courseId, hole_number: i, par, stroke_index: si });
+  }
+  const alertId = `holesAlert-${range}`;
+  if (errors.length) { showAlert(alertId, '⚠️ Feil:<br>' + errors.join('<br>'), 'error'); return; }
+  if (!holes.length) { showAlert(alertId, 'Ingen hull å lagre', 'error'); return; }
+  const { error: de } = await db.from('holes').delete().eq('course_id', courseId).gte('hole_number', startHole).lte('hole_number', endHole);
+  if (de) { showAlert(alertId, 'Feil: ' + de.message, 'error'); return; }
+  const { error } = await db.from('holes').insert(holes);
+  if (error) { showAlert(alertId, 'Feil: ' + error.message, 'error'); return; }
+  showAlert(alertId, `✅ ${holes.length} hull lagret!`, 'success');
+}
+
+// ── PLAYERS ──
+async function loadPlayers() {
+  const { data: players } = await db.from('profiles').select('*').order('username');
+  const el = document.getElementById('playersList');
+  if (!players?.length) { el.innerHTML = '<div class="empty"><div class="empty-icon">👤</div><h3>Ingen spillere</h3></div>'; return; }
+  el.innerHTML = players.map(p => `
+    <div class="player-item">
+      <div class="player-avatar">${p.display_name?.[0] || p.username?.[0] || '?'}</div>
+      <div class="player-info">
+        <div class="player-name">${p.display_name} <span style="color:var(--cream-dim);font-size:13px;">@${p.username}</span> ${p.is_admin ? '<span class="badge badge-gold">Admin</span>' : ''}</div>
+        <div class="player-meta">HCP: ${p.handicap ?? '–'}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div class="hcp-badge">${p.handicap ?? '–'}</div>
+        ${currentProfile?.is_admin ? `
+          <button onclick="openEditPlayer('${p.id}','${(p.display_name||'').replace(/'/g,"\\'")}',${p.handicap??'null'})" style="background:none;border:1px solid rgba(201,168,76,0.3);color:var(--gold);border-radius:6px;padding:5px 10px;cursor:pointer;font-size:12px;font-family:'DM Sans',sans-serif;">Rediger</button>
+          <button onclick="openResetPassword('${p.id}','${(p.display_name||'').replace(/'/g,"\\'")}','${p.username}')" style="background:none;border:1px solid rgba(82,183,136,0.3);color:var(--green-light);border-radius:6px;padding:5px 10px;cursor:pointer;font-size:12px;font-family:'DM Sans',sans-serif;">Reset pw</button>
+          <button onclick="deletePlayer('${p.id}','${(p.display_name||'').replace(/'/g,"\\'")}','${p.username}')" style="background:none;border:1px solid rgba(192,57,43,0.4);color:var(--danger);border-radius:6px;padding:5px 10px;cursor:pointer;font-size:12px;font-family:'DM Sans',sans-serif;">Slett</button>
+        ` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+function openEditPlayer(playerId, displayName, handicap) {
+  const overlay = document.createElement('div');
+  overlay.id = 'editPlayerOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+  overlay.innerHTML = `
+    <div style="background:var(--green-dark);border:1px solid rgba(201,168,76,0.3);border-radius:12px;padding:28px;max-width:420px;width:100%;">
+      <h3 style="font-family:'Playfair Display',serif;color:var(--gold-light);margin-bottom:20px;">Rediger spiller</h3>
+      <div id="editPlayerAlert"></div>
+      <div class="form-group">
+        <label>Visningsnavn</label>
+        <input type="text" id="ep-name" value="${displayName}" style="width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:var(--cream);font-size:14px;font-family:'DM Sans',sans-serif;">
+      </div>
+      <div class="form-group">
+        <label>Handicap</label>
+        <input type="number" id="ep-hcp" value="${handicap !== 'null' ? handicap : ''}" step="0.1" min="-10" max="54" style="width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:var(--cream);font-size:14px;font-family:'DM Sans',sans-serif;">
+      </div>
+      <div style="display:flex;gap:10px;margin-top:20px;">
+        <button onclick="document.getElementById('editPlayerOverlay').remove()" style="flex:1;padding:10px;border-radius:8px;border:1px solid rgba(201,168,76,0.4);background:transparent;color:var(--gold);cursor:pointer;font-family:'DM Sans',sans-serif;">Avbryt</button>
+        <button onclick="saveEditPlayer('${playerId}')" style="flex:1;padding:10px;border-radius:8px;border:none;background:var(--gold);color:var(--green-deep);font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;">Lagre</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+async function saveEditPlayer(playerId) {
+  const name = document.getElementById('ep-name').value.trim();
+  const hcp = parseFloat(document.getElementById('ep-hcp').value);
+  if (!name) { document.getElementById('editPlayerAlert').innerHTML = '<div class="alert alert-error">Navn er påkrevd</div>'; return; }
+  const { error } = await db.from('profiles').update({ display_name: name, handicap: isNaN(hcp) ? null : hcp }).eq('id', playerId);
+  if (error) { document.getElementById('editPlayerAlert').innerHTML = `<div class="alert alert-error">${error.message}</div>`; return; }
+  document.getElementById('editPlayerOverlay')?.remove();
+  loadPlayers();
+}
+
+async function deletePlayer(playerId, displayName, username) {
+  if (playerId === currentProfile?.id) {
+    alert('Du kan ikke slette din egen bruker!');
+    return;
+  }
+  const confirmed = await showConfirm(`Slette ${displayName} (@${username})? Dette kan ikke angres.`);
+  if (!confirmed) return;
+  await db.from('flight_players').delete().eq('player_id', playerId);
+  await db.from('scores').delete().eq('player_id', playerId);
+  await db.from('notifications').delete().eq('player_id', playerId);
+  const { error } = await db.from('profiles').delete().eq('id', playerId);
+  if (error) { alert('Feil ved sletting: ' + error.message); return; }
+  loadPlayers();
+}
+function openResetPassword(playerId, displayName, username) {
+  const overlay = document.createElement('div');
+  overlay.id = 'resetPwOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+  overlay.innerHTML = `
+    <div style="background:var(--green-dark);border:1px solid rgba(201,168,76,0.3);border-radius:12px;padding:28px;max-width:420px;width:100%;">
+      <h3 style="font-family:'Playfair Display',serif;color:var(--gold-light);margin-bottom:8px;">Reset passord</h3>
+      <p style="font-size:13px;color:var(--cream-dim);margin-bottom:20px;">Sett et midlertidig passord for <strong style="color:var(--cream);">${displayName} (@${username})</strong>. Spilleren bør bytte dette selv under Min Profil.</p>
+      <div id="resetPwAlert"></div>
+      <div class="form-group">
+        <label>Midlertidig passord</label>
+        <input type="text" id="rp-pass" placeholder="f.eks. golf2026" style="width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:var(--cream);font-size:14px;font-family:'DM Sans',sans-serif;">
+      </div>
+      <div style="display:flex;gap:10px;margin-top:20px;">
+        <button onclick="document.getElementById('resetPwOverlay').remove()" style="flex:1;padding:10px;border-radius:8px;border:1px solid rgba(201,168,76,0.4);background:transparent;color:var(--gold);cursor:pointer;font-family:'DM Sans',sans-serif;">Avbryt</button>
+        <button onclick="doResetPassword('${playerId}')" style="flex:1;padding:10px;border-radius:8px;border:none;background:var(--green-mid);color:var(--cream);font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;">Sett passord</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+async function doResetPassword(playerId) {
+  const newPassword = document.getElementById('rp-pass').value.trim();
+  if (!newPassword || newPassword.length < 6) {
+    document.getElementById('resetPwAlert').innerHTML = '<div class="alert alert-error">Passord må være minst 6 tegn</div>';
+    return;
+  }
+  try {
+    const response = await fetch('https://fqiwnsmhypxtsdipzntm.supabase.co/functions/v1/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SUPABASE_ANON },
+      body: JSON.stringify({ userId: playerId, newPassword })
+    });
+    const data = await response.json();
+    if (data.error) {
+      document.getElementById('resetPwAlert').innerHTML = `<div class="alert alert-error">${data.error}</div>`;
+      return;
+    }
+    document.getElementById('resetPwAlert').innerHTML = '<div class="alert alert-success">✅ Passord satt! Gi det videre til spilleren.</div>';
+    setTimeout(() => document.getElementById('resetPwOverlay')?.remove(), 2000);
+  } catch(e) {
+    document.getElementById('resetPwAlert').innerHTML = `<div class="alert alert-error">Feil: ${e.message}</div>`;
+  }
+}
+function openAddPlayer() {
+  document.getElementById('addPlayerAlert').innerHTML = '';
+  ['newUsername','newDisplayName','newHcp','newPlayerPassword'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  openModal('modalAddPlayer');
+}
+async function savePlayer() {
+  const username = document.getElementById('newUsername').value.trim().toLowerCase();
+  const displayName = document.getElementById('newDisplayName').value.trim();
+  const password = document.getElementById('newPlayerPassword')?.value || '';
+  const hcp = parseFloat(document.getElementById('newHcp').value) || 54.0;
+  if (!username || !displayName || !password || password.length < 6) { 
+    showAlert('addPlayerAlert', 'Fyll inn brukernavn, navn og passord (minst 6 tegn)', 'error'); 
+    return; 
+  }
+  const { data: existing } = await db.from('profiles').select('id').eq('username', username).single();
+  if (existing) { showAlert('addPlayerAlert', 'Brukernavnet er allerede tatt', 'error'); return; }
+  const email = `${username}@fantastic-fore.app`;
+  const finalPassword = password || Math.random().toString(36).slice(-10);
+  const { data, error } = await db.auth.signUp({ email, password: finalPassword });
+  if (error) { showAlert('addPlayerAlert', error.message, 'error'); return; }
+  if (data.user) {
+    const { error: profileError } = await db.from('profiles').insert({
+      id: data.user.id, username, display_name: displayName, email, handicap: hcp, is_admin: false, is_approved: true
+    });
+    if (profileError) { showAlert('addPlayerAlert', 'Profil feilet: ' + profileError.message, 'error'); return; }
+  }
+  showAlert('addPlayerAlert', `✅ ${displayName} opprettet! Brukernavn: <strong>${username}</strong> · Passord: <strong>${password}</strong> — gi dette til spilleren.`, 'success');
+  setTimeout(() => { closeModal('modalAddPlayer'); loadPlayers(); }, 1000);
+}
+let _profileLoading = false;
+let _profileScoreCache = null;
+let _profileDiffsCache = null;
+
+function _makeCollapsibleHTML(id, title, contentHTML) {
+  return `<div style="border-radius:12px;overflow:hidden;background:rgba(0,0,0,0.2);border:1px solid rgba(255,255,255,0.07);margin-bottom:2px;">
+    <button onclick="_toggleSection('${id}')" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:16px 18px;background:none;border:none;color:var(--cream);cursor:pointer;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:500;text-align:left;-webkit-tap-highlight-color:transparent;">
+      <span>${title}</span>
+      <span id="${id}-arrow" style="font-size:10px;color:var(--cream-dim);transition:transform 0.3s ease;display:inline-block;flex-shrink:0;margin-left:12px;">▼</span>
+    </button>
+    <div id="${id}" style="max-height:0;overflow:hidden;transition:max-height 0.4s ease;" data-open="0" data-loaded="0">
+      <div style="padding:0 18px 20px;">${contentHTML}</div>
+    </div>
+  </div>`;
+}
+
+function _toggleSection(id) {
+  const section = document.getElementById(id);
+  const arrow = document.getElementById(id + '-arrow');
+  if (!section) return;
+  const isOpen = section.getAttribute('data-open') === '1';
+  if (isOpen) {
+    section.style.maxHeight = section.scrollHeight + 'px';
+    requestAnimationFrame(() => requestAnimationFrame(() => { section.style.maxHeight = '0'; }));
+    section.setAttribute('data-open', '0');
+    if (arrow) arrow.style.transform = '';
+  } else {
+    section.style.maxHeight = '4000px';
+    section.setAttribute('data-open', '1');
+    if (arrow) arrow.style.transform = 'rotate(180deg)';
+    if (section.getAttribute('data-loaded') === '0') {
+      section.setAttribute('data-loaded', '1');
+      if (id === 'secHull') _lazyLoadHullStats();
+      else if (id === 'secRunder') _lazyLoadAlleRunder();
+    }
+  }
+}
+
+async function loadProfilePage() {
+  if (_profileLoading) return;
+  _profileLoading = true;
+  _profileScoreCache = null;
+  _profileDiffsCache = null;
+  const p = currentProfile;
+  if (!p) { _profileLoading = false; return; }
+  document.getElementById('profileContent').innerHTML = `
+    <div class="page-header"><div><h1>Min Profil</h1></div></div>
+    <div class="profile-header">
+      <div class="profile-avatar">${p.display_name?.[0] || '?'}</div>
+      <div>
+        <h2 style="font-family:'Playfair Display',serif;font-size:22px;">${p.display_name}</h2>
+        <p style="color:var(--cream-dim);">@${p.username}${p.is_admin ? ' · <span class="badge badge-gold">Admin</span>' : ''}</p>
+      </div>
+    </div>
+    <div id="statsKpis" style="margin-bottom:20px;"><div class="loading"><div class="spinner"></div></div></div>
+    <div style="display:flex;flex-direction:column;gap:2px;">
+      ${_makeCollapsibleHTML('secHcp', '📈 HCP-utvikling', `
+        <div id="statsMotivation" style="margin-bottom:16px;"></div>
+        <div id="hcpGraph" style="margin-bottom:20px;"></div>
+        <div id="hcpHistoryList"></div>
+      `)}
+      ${_makeCollapsibleHTML('secHull', '🏆 Hull-statistikk', `
+        <div id="hullStats"><div class="loading"><div class="spinner"></div></div></div>
+      `)}
+      ${_makeCollapsibleHTML('secRunder', '📋 Alle runder', `
+        <div id="alleRunderList"><div class="loading"><div class="spinner"></div></div></div>
+      `)}
+      ${_makeCollapsibleHTML('secGolfbox', '📷 Importer fra Golfbox', `
+        <p style="font-size:13px;color:var(--cream-dim);margin-bottom:16px;">Importer dine tidligere runder fra Golfbox ved å ta bilde av score-tabellen. Ta gjerne flere bilder til du har minst 20 runder dekket.</p>
+        <button class="btn btn-outline btn-auto" onclick="openGolfboxImport()">📷 Importer fra Golfbox</button>
+        <div id="golfboxImportList" style="margin-top:16px;"></div>
+      `)}
+      ${_makeCollapsibleHTML('secEditProfile', '✏️ Rediger profil', `
+        <div id="profileAlert"></div>
+        <div class="form-group"><label>Visningsnavn</label><input type="text" id="editDisplayName" value="${p.display_name || ''}"></div>
+        <div class="form-group"><label>Handicap (følg Golfbox)</label><input type="number" id="editHcp" value="${p.handicap ?? ''}" step="0.1" min="-10" max="54"></div>
+        <button class="btn btn-auto" onclick="saveProfile()">Lagre endringer</button>
+      `)}
+      ${_makeCollapsibleHTML('secPassword', '🔐 Bytt passord', `
+        <p style="font-size:13px;color:var(--cream-dim);margin-bottom:16px;">Logg inn med nytt passord neste gang.</p>
+        <div id="passwordAlert"></div>
+        <div class="form-group"><label>Nytt passord</label><input type="password" id="newPassword1" placeholder="Minst 6 tegn"></div>
+        <div class="form-group"><label>Bekreft nytt passord</label><input type="password" id="newPassword2" placeholder="Gjenta passord"></div>
+        <button class="btn btn-auto" onclick="changePassword()">Endre passord</button>
+      `)}
+      ${p.is_admin ? _makeCollapsibleHTML('secAdmin', '⚙️ Admin', `
+        <button class="btn btn-outline btn-auto" onclick="showPage('players')" style="width:100%;margin-bottom:8px;">Administrer spillere</button>
+      `) : ''}
+    </div>
+  `;
+  _profileLoading = false;
+  loadAndRenderDifferentials();
+}
+
+async function _ensureProfileScoreCache(profileId, diffs, currentHI) {
+  if (_profileScoreCache) return _profileScoreCache;
+  const hiNum = currentHI != null ? parseFloat(currentHI) : null;
+  const { data: scoreRows } = await db.from('scores').select('round_id,hole_number,strokes')
+    .eq('player_id', profileId).gt('strokes', 0);
+  if (!scoreRows?.length) { _profileScoreCache = { holeScores: [], roundSummaries: [] }; return _profileScoreCache; }
+  const roundIds = [...new Set(scoreRows.map(s => s.round_id))];
+  const { data: roundRows } = await db.from('rounds')
+    .select('id,date,hole_range,course_id,tee_set_id,courses(name),tee_sets(slope,course_rating)')
+    .in('id', roundIds).order('date', { ascending: false });
+  const roundMap = {};
+  for (const r of (roundRows || [])) roundMap[r.id] = { ...r, scoreMap: {} };
+  for (const s of scoreRows) { if (roundMap[s.round_id]) roundMap[s.round_id].scoreMap[s.hole_number] = s.strokes; }
+  const courseIds = [...new Set((roundRows || []).map(r => r.course_id).filter(Boolean))];
+  const holesByCourse = {};
+  if (courseIds.length) {
+    const { data: allHoles } = await db.from('holes').select('course_id,hole_number,par,stroke_index').in('course_id', courseIds);
+    (allHoles || []).forEach(h => { (holesByCourse[h.course_id] = holesByCourse[h.course_id] || {})[h.hole_number] = h; });
+  }
+  const holeScores = [], roundSummaries = [];
+  for (const round of Object.values(roundMap)) {
+    const courseHoles = Object.values(holesByCourse[round.course_id] || {});
+    if (!courseHoles.length) continue;
+    const holeRange = round.hole_range || 'all';
+    const relevant = holeRange === 'front9' ? courseHoles.filter(h => h.hole_number <= 9)
+      : holeRange === 'back9' ? courseHoles.filter(h => h.hole_number >= 10) : courseHoles;
+    if (!relevant.length) continue;
+    const coursePar = courseHoles.reduce((s, h) => s + (h.par || 0), 0) || 72;
+    const slope = round.tee_sets?.slope || 113, cr = round.tee_sets?.course_rating || 72;
+    const matchDiff = (diffs || []).find(d => d.date === round.date && d.source === 'fore');
+    const hi = matchDiff?.hcp_before ?? hiNum ?? 36;
+    const hcp = _playingHcp(hi, slope, cr, coursePar);
+    let roundTotal = 0, played = 0;
+    for (const hole of relevant) {
+      const strokes = round.scoreMap[hole.hole_number];
+      if (!strokes || strokes <= 0) continue;
+      played++;
+      const sf = calcStableford(strokes, hole.par, hcp, hole.stroke_index);
+      roundTotal += sf;
+      holeScores.push({ date: round.date, roundId: round.id, courseId: round.course_id,
+        courseName: round.courses?.name || '–', holeNumber: hole.hole_number, par: hole.par, sf, strokes });
+    }
+    if (played >= Math.ceil(relevant.length * 0.5)) {
+      roundSummaries.push({ id: round.id, date: round.date, courseName: round.courses?.name || '–',
+        holeRange, sf: roundTotal, played, totalH: relevant.length,
+        is18: holeRange === 'all' && relevant.length > 9 && played >= Math.ceil(relevant.length * 0.7) });
+    }
+  }
+  roundSummaries.sort((a, b) => new Date(b.date) - new Date(a.date));
+  _profileScoreCache = { holeScores, roundSummaries };
+  return _profileScoreCache;
+}
+
+async function _lazyLoadHullStats() {
+  const el = document.getElementById('hullStats');
+  if (!el) return;
+  const diffs = _profileDiffsCache || [];
+  const cache = await _ensureProfileScoreCache(currentProfile.id, diffs, currentProfile?.handicap ?? null);
+  const { holeScores } = cache;
+  if (!holeScores.length) { el.innerHTML = '<p style="font-size:13px;color:var(--cream-dim);">Ingen app-runder ennå.</p>'; return; }
+
+  // Par-type aggregates
+  const byPar = { 3: [], 4: [], 5: [] };
+  for (const s of holeScores) { if (byPar[s.par]) byPar[s.par].push(s.sf); }
+  const parCard = (p) => {
+    const arr = byPar[p];
+    if (!arr.length) return `<div style="flex:1;background:rgba(0,0,0,0.25);border-radius:10px;padding:12px 8px;text-align:center;border:1px solid rgba(255,255,255,0.07);">
+      <div style="font-size:9px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Par ${p}</div>
+      <div style="font-family:'Playfair Display',serif;font-size:24px;color:var(--cream-dim);">–</div></div>`;
+    const avg = (arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(1);
+    const best = Math.max(...arr);
+    const col = parseFloat(avg) >= 2 ? 'var(--green-light)' : parseFloat(avg) >= 1.5 ? 'var(--gold-light)' : 'var(--cream)';
+    return `<div style="flex:1;background:rgba(0,0,0,0.25);border-radius:10px;padding:12px 8px;text-align:center;border:1px solid rgba(255,255,255,0.07);">
+      <div style="font-size:9px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Par ${p}</div>
+      <div style="font-family:'Playfair Display',serif;font-size:24px;color:${col};line-height:1;">${avg}</div>
+      <div style="font-size:10px;color:var(--cream-dim);margin-top:4px;">${arr.length} hull · beste ${best}p</div>
+    </div>`;
+  };
+
+  // Per-hole aggregates
+  const byKey = {};
+  for (const s of holeScores) {
+    const key = s.courseId + ':' + s.holeNumber;
+    if (!byKey[key]) byKey[key] = { holeNumber: s.holeNumber, courseName: s.courseName, par: s.par, scores: [] };
+    byKey[key].scores.push(s.sf);
+  }
+  const avgs = Object.values(byKey).filter(h => h.scores.length >= 2).map(h => ({
+    ...h, avg: h.scores.reduce((a, b) => a + b, 0) / h.scores.length, count: h.scores.length
+  }));
+  const row = (h, i, good) => `<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div style="width:22px;height:22px;border-radius:50%;background:${good ? 'rgba(82,183,136,0.2)' : 'rgba(192,57,43,0.15)'};display:flex;align-items:center;justify-content:center;font-size:10px;color:${good ? 'var(--green-light)' : '#e88'};flex-shrink:0;">${i + 1}</div>
+      <div>
+        <div style="font-size:13px;color:var(--cream);">Hull ${h.holeNumber} <span style="color:var(--cream-dim);font-size:11px;">Par ${h.par}</span></div>
+        <div style="font-size:11px;color:var(--cream-dim);">${h.courseName} · ${h.count} runder</div>
+      </div>
+    </div>
+    <div style="font-family:'Playfair Display',serif;font-size:18px;color:${good ? 'var(--green-light)' : '#e88'};">${h.avg.toFixed(1)}p</div>
+  </div>`;
+
+  const parSection = `<div style="margin-bottom:20px;">
+    <div style="font-size:10px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;">Snitt per par-type</div>
+    <div style="display:flex;gap:10px;">${parCard(3)}${parCard(4)}${parCard(5)}</div>
+  </div>`;
+
+  if (avgs.length < 3) {
+    el.innerHTML = parSection + '<p style="font-size:13px;color:var(--cream-dim);">Trenger flere runder for hull-for-hull-statistikk (minst 2 runder per hull).</p>';
+    return;
+  }
+  const best = [...avgs].sort((a, b) => b.avg - a.avg).slice(0, 5);
+  const worst = [...avgs].sort((a, b) => a.avg - b.avg).slice(0, 5);
+  el.innerHTML = parSection + `<div style="margin-bottom:20px;">
+    <div style="font-size:10px;color:var(--gold);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;">Beste hull historisk</div>
+    ${best.map((h, i) => row(h, i, true)).join('')}
+  </div>
+  <div>
+    <div style="font-size:10px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;">Tøffeste hull historisk</div>
+    ${worst.map((h, i) => row(h, i, false)).join('')}
+  </div>`;
+}
+
+async function _lazyLoadAlleRunder() {
+  const el = document.getElementById('alleRunderList');
+  if (!el) return;
+  const diffs = _profileDiffsCache || [];
+  const cache = await _ensureProfileScoreCache(currentProfile.id, diffs, currentProfile?.handicap ?? null);
+  const appRounds = cache.roundSummaries.map(r => ({
+    date: r.date, label: r.courseName,
+    sub: r.holeRange === 'front9' ? 'Hull 1–9' : r.holeRange === 'back9' ? 'Hull 10–18' : 'Full runde',
+    right: r.sf + 'p', source: 'fore'
+  }));
+  const imported = diffs.filter(d => d.source !== 'fore').map(d => ({
+    date: d.date, label: d.course_name || 'Importert runde',
+    sub: 'Diff: ' + (d.differential ?? '–') + (d.hcp_after != null ? ' · HCP ' + d.hcp_after : ''),
+    right: d.source || 'golfbox', source: d.source
+  }));
+  const all = [...appRounds, ...imported].sort((a, b) => new Date(b.date) - new Date(a.date));
+  if (!all.length) { el.innerHTML = '<p style="font-size:13px;color:var(--cream-dim);">Ingen runder registrert ennå.</p>'; return; }
+  el.innerHTML = all.map(r => `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
+    <div style="min-width:0;">
+      <div style="font-size:13px;color:var(--cream);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.date} · ${r.label}</div>
+      <div style="font-size:11px;color:var(--cream-dim);margin-top:2px;">${r.sub}</div>
+    </div>
+    <div style="font-family:${r.source === 'fore' ? "'Playfair Display',serif" : "'DM Sans',sans-serif"};font-size:${r.source === 'fore' ? '16' : '11'}px;color:${r.source === 'fore' ? 'var(--gold)' : 'var(--cream-dim)'};flex-shrink:0;${r.source !== 'fore' ? 'background:rgba(201,168,76,0.12);padding:2px 7px;border-radius:4px;' : ''}">${r.right}</div>
+  </div>`).join('');
+}
+async function changePassword() {
+  const p1 = document.getElementById('newPassword1').value;
+  const p2 = document.getElementById('newPassword2').value;
+  if (!p1 || p1.length < 6) { showAlert('passwordAlert', 'Passord må være minst 6 tegn', 'error'); return; }
+  if (p1 !== p2) { showAlert('passwordAlert', 'Passordene er ikke like', 'error'); return; }
+  const { error } = await db.auth.updateUser({ password: p1 });
+  if (error) { showAlert('passwordAlert', 'Feil: ' + error.message, 'error'); return; }
+  showAlert('passwordAlert', '✅ Passord endret!', 'success');
+  document.getElementById('newPassword1').value = '';
+  document.getElementById('newPassword2').value = '';
+}
+async function saveProfile() {
+  const displayName = document.getElementById('editDisplayName').value.trim();
+  const hcp = parseFloat(document.getElementById('editHcp').value);
+  const { error } = await db.from('profiles').update({ display_name: displayName, handicap: hcp }).eq('id', currentProfile.id);
+  if (error) { showAlert('profileAlert', 'Feil: ' + error.message, 'error'); return; }
+  currentProfile.display_name = displayName;
+  currentProfile.handicap = hcp;
+  showAlert('profileAlert', 'Profil oppdatert!', 'success');
+  document.getElementById('topbarUsername').textContent = currentProfile.username;
+}
+
+// ── HCP MOTIVATION ENGINE ──
+// WHS lookup: index = number of differentials available (0-20) → number to use
+const _WHS_TABLE = [0,0,0,1,1,1,2,2,2,3,3,3,4,4,4,5,5,5,6,7,8];
+
+function _calcHcpIndexWHS(sortedDiffsAsc) {
+  const n = Math.min(sortedDiffsAsc.length, 20);
+  const use = n < _WHS_TABLE.length ? _WHS_TABLE[n] : 8;
+  if (!use) return null;
+  return +(sortedDiffsAsc.slice(0, use).reduce((s, d) => s + d, 0) / use * 0.96).toFixed(1);
+}
+
+// Pure WHS simulation: take 20 most recent differentials, find best 8, avg × 0.96 = currentHI.
+// Simulates next round: oldest of the 20 drops out, new differential comes in.
+// Validated against Golfbox: diff 18.0 → 21.1→20.4, diff 19.6 → 21.3→20.9.
+function _calcHcpMotivation(diffs, slope = 113, courseRating = 72, coursePar = 72, knownHI = null) {
+  const withDiff = (diffs || []).filter(d => d.differential != null && d.source !== 'fore');
+  if (withDiff.length < 8) return null;
+  const byDate = [...withDiff].sort((a, b) => new Date(b.date) - new Date(a.date));
+  const last20 = byDate.slice(0, 20);
+  const sortedAsc = last20.map(d => parseFloat(d.differential)).sort((a, b) => a - b);
+  const currentHI = knownHI != null ? parseFloat(knownHI) : _calcHcpIndexWHS(sortedAsc);
+  if (currentHI === null) return null;
+  // Playing HCP for actual tee (shown per tee in new round flow)
+  const playingHCP = Math.round(currentHI * slope / 113 + (courseRating - coursePar));
+  // Stableford thresholds always on normalbane (course-independent): round(36 + normHCP - diff)
+  const normHCP = Math.round(currentHI);
+  const toNorm = diff => Math.round(36 + normHCP - diff);
+  const stablefordImprove = toNorm(sortedAsc[7]) + 1;
+  const droppedRound = last20.length >= 20 ? last20[19] : null;
+  const stablefordDecline = droppedRound ? toNorm(parseFloat(droppedRound.differential)) : null;
+  const last20Avg = sortedAsc.reduce((s, d) => s + d, 0) / sortedAsc.length;
+  const droppedDiff = droppedRound ? parseFloat(droppedRound.differential) : null;
+  const droppedContext = droppedDiff != null ? (droppedDiff > last20Avg ? 'good_drop' : 'bad_drop') : null;
+  return { currentHI, playingHCP, stablefordImprove, stablefordDecline, droppedContext, count: last20.length };
+}
+
+function _renderMotivBanner(motiv, detailed = false, isEstimate = false) {
+  if (!motiv) return '';
+  const { stablefordImprove: X, stablefordDecline: Y } = motiv;
+  const estimateNote = isEstimate
+    ? `<div style="font-size:10px;color:rgba(255,255,255,0.3);margin-top:8px;">Beregnet for normalbane (slope 113)</div>`
+    : '';
+  return `<div style="background:rgba(82,183,136,0.08);border:1px solid rgba(82,183,136,0.3);border-radius:10px;padding:14px 16px;">
+    <div style="font-size:10px;color:rgba(82,183,136,0.9);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;">🎯 HCP-mål for neste runde</div>
+    <div style="padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.06);font-size:14px;color:#4caf7d;">Spill <strong>${X}</strong> poeng eller mer → HCP kan gå ned</div>
+    ${Y != null ? `<div style="padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.06);font-size:14px;color:rgba(255,120,100,0.9);">Spill under <strong>${Y}</strong> poeng → HCP kan gå opp</div>` : ''}
+    <div style="padding:5px 0;font-size:13px;color:var(--cream-dim);">${Y != null ? `Mellom ${Y} og ${X - 1} poeng` : `Under ${X} poeng`} → ingen endring</div>
+    ${motiv.droppedContext === 'good_drop' ? `<div style="padding:5px 0;font-size:12px;color:rgba(82,183,136,0.8);font-style:italic;">En dårlig runde faller ut — godt utgangspunkt!</div>` : motiv.droppedContext === 'bad_drop' ? `<div style="padding:5px 0;font-size:12px;color:rgba(255,180,100,0.85);font-style:italic;">En god runde faller ut — vær obs!</div>` : ''}
+    ${estimateNote}
+  </div>`;
+}
+
+async function updateRoundMotivation() {
+  const teeId = document.getElementById('roundTee').value;
+  const el = document.getElementById('teeMotivDiv');
+  if (!el) return;
+  if (!teeId) { el.innerHTML = ''; return; }
+  el.innerHTML = '<div style="font-size:12px;color:var(--cream-dim);padding:8px 0;">⏳ Beregner HCP-mål...</div>';
+  try {
+    const { data: tee } = await db.from('tee_sets').select('slope,course_rating,course_id').eq('id', teeId).single();
+    if (!tee?.slope || !tee?.course_rating) { el.innerHTML = ''; return; }
+    const slope = tee.slope, cr = tee.course_rating;
+    const { data: courseHoles } = await db.from('holes').select('hole_number,par,stroke_index').eq('course_id', tee.course_id);
+    const holeRange = document.getElementById('roundHoleRange')?.value || 'all';
+    const par = (courseHoles||[]).reduce((s,h) => s + (h.par||0), 0) || 72;
+    const motivActiveHoles = holeRange === 'front9' ? (courseHoles||[]).filter(h => h.hole_number <= 9)
+      : holeRange === 'back9' ? (courseHoles||[]).filter(h => h.hole_number >= 10)
+      : (courseHoles||[]);
+    const playerIds = allPlayers.map(p => p.id);
+    if (!playerIds.length) { el.innerHTML = ''; return; }
+    const { data: allDiffs } = await db.from('score_differentials').select('player_id,date,differential,source').in('player_id', playerIds);
+    const byPlayer = {};
+    (allDiffs || []).forEach(d => { (byPlayer[d.player_id] = byPlayer[d.player_id] || []).push(d); });
+    const courseName = document.getElementById('roundCourse').options[document.getElementById('roundCourse').selectedIndex]?.text || '';
+    const playerRows = allPlayers
+      .map(p => ({ p, motiv: _calcHcpMotivation(byPlayer[p.id] || [], slope, cr, par, p.handicap ?? null) }))
+      .filter(({ motiv }) => motiv !== null)
+      .map(({ p, motiv }) => {
+        const X = motiv.stablefordImprove, Y = motiv.stablefordDecline;
+        const activeS = _activeStrokes(motiv.playingHCP, motivActiveHoles);
+        return `
+        <div style="padding:9px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
+            <div style="font-size:13px;color:var(--cream);">${p.display_name}</div>
+            <div style="font-size:11px;color:rgba(255,255,255,0.4);">Tildelte slag: ${activeS}</div>
+          </div>
+          <div style="font-size:12px;color:#4caf7d;">${X}p eller mer → HCP ned</div>
+          ${Y != null ? `<div style="font-size:12px;color:rgba(255,120,100,0.9);">Under ${Y}p → HCP opp</div>` : ''}
+          <div style="font-size:11px;color:rgba(255,255,255,0.3);">${Y != null ? `${Y}–${X - 1}p` : `Under ${X}p`} → ingen endring</div>
+          ${motiv.droppedContext === 'good_drop' ? `<div style="font-size:11px;color:rgba(82,183,136,0.7);font-style:italic;">En dårlig runde faller ut — godt utgangspunkt!</div>` : motiv.droppedContext === 'bad_drop' ? `<div style="font-size:11px;color:rgba(255,180,100,0.75);font-style:italic;">En god runde faller ut — vær obs!</div>` : ''}
+        </div>`;
+      });
+    if (!playerRows.length) { el.innerHTML = ''; return; }
+    el.innerHTML = `<div style="background:rgba(0,0,0,0.2);border-radius:10px;padding:14px;border:1px solid rgba(255,255,255,0.07);margin-bottom:4px;">
+      <div style="font-size:10px;color:var(--gold);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;">🎯 HCP-mål · ${courseName} · Slope ${slope}</div>
+      ${playerRows.join('')}
+    </div>`;
+  } catch(e) {
+    el.innerHTML = '';
+  }
+}
+
+// ── GOLFBOX IMPORT ──
+let _golfboxFiles = [];
+let _golfboxParsed = [];
+
+function openGolfboxImport() {
+  _golfboxFiles = [];
+  _golfboxParsed = [];
+  document.getElementById('gbImportAlert').innerHTML = '';
+  document.getElementById('gbFileList').innerHTML = '';
+  document.getElementById('gbStep1').style.display = 'block';
+  document.getElementById('gbStep2').style.display = 'none';
+  document.getElementById('gbAnalyzeBtn').style.display = 'none';
+  document.getElementById('gbImportFileInput').value = '';
+  openModal('modalGolfboxImport');
+}
+
+function handleGolfboxFiles(input) {
+  _golfboxFiles = Array.from(input.files);
+  const list = document.getElementById('gbFileList');
+  if (!_golfboxFiles.length) { list.innerHTML = ''; document.getElementById('gbAnalyzeBtn').style.display = 'none'; return; }
+  list.innerHTML = _golfboxFiles.map(f => `
+    <div style="display:flex; align-items:center; gap:8px; padding:8px 12px; background:rgba(0,0,0,0.2); border-radius:8px; margin-bottom:6px;">
+      <span style="font-size:18px;">🖼️</span>
+      <span style="font-size:13px; color:var(--cream); flex:1;">${f.name}</span>
+      <span style="font-size:11px; color:var(--cream-dim);">${(f.size/1024).toFixed(0)} KB</span>
+    </div>`).join('');
+  document.getElementById('gbAnalyzeBtn').style.display = 'block';
+}
+
+async function analyzeGolfboxImages() {
+  if (!_golfboxFiles.length) return;
+  const btn = document.getElementById('gbAnalyzeBtn');
+  const alertEl = document.getElementById('gbImportAlert');
+  btn.disabled = true;
+  alertEl.innerHTML = '';
+  _golfboxParsed = [];
+  const prompt = `Du ser et skjermbilde eller foto av en poengliste fra Golfbox eller Gimmie (norske golf-apper).
+Trekk ut ALLE synlige runder. For hver runde returner:
+- date: dato i format YYYY-MM-DD
+- differential: "HCP spilt til"-verdien (desimaltall, f.eks. 24.3)
+- hcp_before: handicap FØR runden, hvis synlig (null ellers)
+- hcp_after: handicap ETTER runden, hvis synlig (null ellers)
+- course_name: banens navn, hvis synlig (null ellers)
+- source: "gimmie" hvis Gimmie-appen, "golfbox" hvis Golfbox
+
+Returner KUN dette JSON-objektet (ingen annen tekst):
+{"rounds":[{"date":"2024-03-15","differential":12.4,"hcp_before":13.2,"hcp_after":12.9,"course_name":"Hvam Golf","source":"golfbox"}]}
+Hvis ingen runder er lesbare, returner {"rounds":[]}.`;
+
+  for (let i = 0; i < _golfboxFiles.length; i++) {
+    btn.textContent = `⏳ Analyserer bilde ${i + 1} av ${_golfboxFiles.length}…`;
+    try {
+      const base64 = await _fileToBase64(_golfboxFiles[i]);
+      const result = await callClaudeProxy(base64, _golfboxFiles[i].type, prompt, 2000);
+      if (result.rounds && Array.isArray(result.rounds)) _golfboxParsed.push(...result.rounds);
+    } catch (e) {
+      alertEl.innerHTML = `<div class="alert alert-error">Feil på bilde ${i + 1}: ${e.message}</div>`;
+    }
+  }
+  btn.disabled = false;
+  btn.textContent = '🔍 Analyser med Claude';
+  if (!_golfboxParsed.length) {
+    alertEl.innerHTML = '<div class="alert alert-error">Ingen runder funnet. Prøv klarere bilder med dato og HCP-kolonne synlig.</div>';
+    return;
+  }
+  _golfboxParsed.sort((a, b) => new Date(b.date) - new Date(a.date));
+  document.getElementById('gbStep1').style.display = 'none';
+  document.getElementById('gbStep2').style.display = 'block';
+  _renderGolfboxPreview();
+}
+
+function _renderGolfboxPreview() {
+  document.getElementById('gbPreviewCount').textContent = _golfboxParsed.length + ' runder funnet';
+  document.getElementById('gbPreviewList').innerHTML = _golfboxParsed.map((r, i) => `
+    <div style="display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid rgba(255,255,255,0.06);">
+      <div style="flex:1;">
+        <div style="font-size:13px; color:var(--cream);">${r.date}${r.course_name ? ' · ' + r.course_name : ''}</div>
+        <div style="font-size:11px; color:var(--cream-dim);">Diff: ${r.differential ?? '–'}${r.hcp_before != null ? ' · HCP: ' + r.hcp_before + ' → ' + (r.hcp_after ?? '?') : ''}</div>
+      </div>
+      <span style="font-size:11px; padding:2px 7px; border-radius:4px; background:rgba(201,168,76,0.15); color:var(--gold-dim);">${r.source || 'golfbox'}</span>
+      <button onclick="_removeGolfboxEntry(${i})" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:16px;padding:0 4px;">✕</button>
+    </div>`).join('');
+}
+
+function _removeGolfboxEntry(i) { _golfboxParsed.splice(i, 1); _renderGolfboxPreview(); }
+
+async function saveGolfboxHistory() {
+  if (!_golfboxParsed.length) return;
+  const btn = document.getElementById('gbSaveBtn');
+  btn.disabled = true;
+  let saved = 0, skipped = 0;
+  for (let i = 0; i < _golfboxParsed.length; i++) {
+    btn.textContent = `⏳ Lagrer ${i + 1} av ${_golfboxParsed.length}…`;
+    const r = _golfboxParsed[i];
+    const { error } = await db.from('score_differentials').upsert({
+      player_id: currentProfile.id,
+      date: r.date,
+      differential: r.differential,
+      source: r.source || 'golfbox',
+      course_name: r.course_name || null,
+      hcp_before: r.hcp_before ?? null,
+      hcp_after: r.hcp_after ?? null,
+    }, { onConflict: 'player_id,date,source,differential' });
+    if (error) { skipped++; } else { saved++; }
+  }
+  btn.disabled = false; btn.textContent = 'Lagre historikk';
+  if (saved === 0 && skipped > 0) {
+    document.getElementById('gbImportAlert').innerHTML = `<div class="alert alert-error">Ingen runder ble lagret (${skipped} feilet).</div>`;
+    return;
+  }
+  closeModal('modalGolfboxImport');
+  loadProfilePage();
+}
+
+function _fileToBase64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = e => res(e.target.result.split(',')[1]);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+}
+
+async function _fetchStablefordStats(profileId, diffs, currentHI) {
+  try {
+    const hiNum = currentHI != null ? parseFloat(currentHI) : null;
+    const entries = [];
+    const gimmieDiffs = (diffs || []).filter(d => d.source !== 'fore' && d.differential != null);
+    for (const d of gimmieDiffs) {
+      const nh = d.hcp_before != null ? Math.round(parseFloat(d.hcp_before)) : (hiNum != null ? Math.round(hiNum) : null);
+      if (nh == null) continue;
+      const sf = Math.round(36 + nh - parseFloat(d.differential));
+      if (sf >= 10 && sf <= 60) entries.push({ date: d.date, sf });
+    }
+    const cache = await _ensureProfileScoreCache(profileId, diffs, currentHI);
+    for (const r of cache.roundSummaries) {
+      if (r.is18) entries.push({ date: r.date, sf: r.sf });
+    }
+    entries.sort((a, b) => new Date(b.date) - new Date(a.date));
+    const recent = entries.slice(0, 10).map(e => e.sf);
+    return recent.length ? { eighteen: recent } : null;
+  } catch (_) { return null; }
+}
+
+let _diffsLoading = false;
+async function loadAndRenderDifferentials() {
+  if (_diffsLoading) return;
+  _diffsLoading = true;
+  try {
+    const { data, error } = await db.from('score_differentials')
+      .select('*').eq('player_id', currentProfile.id).order('date', { ascending: true });
+    if (error) throw error;
+    const diffs = data || [];
+    _profileDiffsCache = diffs;
+    _renderGolfboxImportList(diffs);
+    const sfStats = await _fetchStablefordStats(currentProfile.id, diffs, currentProfile?.handicap ?? null);
+    _renderStatCards(diffs, sfStats);
+    const smEl = document.getElementById('statsMotivation');
+    if (smEl) {
+      const motiv = _calcHcpMotivation(diffs, 113, 72, 72, currentProfile?.handicap ?? null);
+      smEl.innerHTML = motiv ? _renderMotivBanner(motiv, true, true) : '';
+    }
+    _renderHcpGraph(diffs);
+    _renderHcpHistoryList(diffs);
+  } catch (_) {
+    // Network/auth hiccup on wake — keep existing rendered data
+  } finally {
+    _diffsLoading = false;
+  }
+}
+
+function _renderStatCards(diffs, sfStats) {
+  const el = document.getElementById('statsKpis');
+  if (!el) return;
+  if (!diffs.length) {
+    el.innerHTML = '<p style="font-size:13px;color:var(--cream-dim);">Ingen data ennå – importer runder for å se statistikk.</p>';
+    return;
+  }
+  const sorted = [...diffs].sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  // HCP nå + trend
+  const withHcp = sorted.filter(d => d.hcp_after != null);
+  const hcpNow  = withHcp.length ? parseFloat(withHcp[withHcp.length - 1].hcp_after) : null;
+  const hcpPrev = withHcp.length > 1 ? parseFloat(withHcp[withHcp.length - 2].hcp_after) : null;
+  const delta   = hcpNow != null && hcpPrev != null ? +(hcpNow - hcpPrev).toFixed(1) : null;
+  const improved = delta != null && delta < 0;
+  const worsened = delta != null && delta > 0;
+  const trendColor  = improved ? '#4caf7d' : worsened ? 'var(--danger)' : 'var(--cream-dim)';
+  const trendArrow  = improved ? '↓' : worsened ? '↑' : '–';
+  const trendLabel  = delta != null && delta !== 0 ? (delta > 0 ? '+' : '') + delta : '';
+
+  // Stableford stats (18h only)
+  const sf18 = sfStats?.eighteen || [];
+  const best18 = sf18.length ? Math.max(...sf18) : null;
+  const avg18  = sf18.length ? Math.round(sf18.reduce((s,v)=>s+v,0)/sf18.length) : null;
+
+  const cardStyle = 'background:rgba(0,0,0,0.25);border-radius:10px;padding:14px 8px;text-align:center;border:1px solid rgba(255,255,255,0.07);';
+  const labelStyle = 'font-size:9px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;';
+  const bigStyle = "font-family:'Playfair Display',serif;font-size:26px;line-height:1;";
+  const subStyle = 'font-size:11px;color:var(--cream-dim);margin-top:6px;min-height:18px;';
+
+  el.innerHTML = `
+    <div style="display:flex;gap:10px;">
+      <div style="flex:1;${cardStyle}">
+        <div style="${labelStyle}">HCP nå</div>
+        <div style="${bigStyle}color:var(--cream);">${hcpNow != null ? hcpNow.toFixed(1) : '–'}</div>
+        <div style="font-size:13px;color:${trendColor};margin-top:6px;font-weight:600;min-height:18px;">${trendArrow !== '–' ? trendArrow + ' ' + trendLabel : (hcpNow != null ? '<span style="color:var(--cream-dim);font-size:11px;">stabil</span>' : '')}</div>
+      </div>
+      <div style="flex:1;${cardStyle}">
+        <div style="${labelStyle}">Beste 18h runde</div>
+        <div style="${bigStyle}color:${best18 != null ? 'var(--gold)' : 'var(--cream)'};">${best18 ?? '–'}</div>
+        <div style="${subStyle}">${best18 != null ? 'Stableford' : ''}</div>
+      </div>
+      <div style="flex:1;${cardStyle}">
+        <div style="${labelStyle}">Snitt 18h</div>
+        <div style="${bigStyle}color:var(--cream);">${avg18 ?? '–'}</div>
+        <div style="${subStyle}">${avg18 != null ? sf18.length + ' runder' : ''}</div>
+      </div>
+    </div>`;
+}
+
+
+function _renderGolfboxImportList(diffs) {
+  const el = document.getElementById('golfboxImportList');
+  if (!el) return;
+  const imported = diffs.filter(d => d.source !== 'fore').sort((a, b) => new Date(b.date) - new Date(a.date));
+  if (!imported.length) { el.innerHTML = '<p style="font-size:13px; color:var(--cream-dim); margin-top:8px;">Ingen importerte runder ennå.</p>'; return; }
+  const show = imported.slice(0, 5);
+  el.innerHTML = show.map(d => `
+    <div style="display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.06);">
+      <div style="flex:1;">
+        <div style="font-size:13px; color:var(--cream);">${d.date}${d.course_name ? ' · ' + d.course_name : ''}</div>
+        <div style="font-size:11px; color:var(--cream-dim);">Differential: ${d.differential ?? '–'}</div>
+      </div>
+      <span style="font-size:11px; padding:2px 7px; border-radius:4px; background:rgba(201,168,76,0.15); color:var(--gold-dim);">${d.source}</span>
+    </div>`).join('') + (imported.length > 5 ? `<p style="font-size:12px; color:var(--cream-dim); margin-top:8px;">+ ${imported.length - 5} eldre runder — se HCP-utvikling for full historikk</p>` : '');
+}
+
+function _renderHcpGraph(diffs) {
+  const el = document.getElementById('hcpGraph');
+  if (!el) return;
+  const pts = diffs.filter(d => d.hcp_after != null).map(d => ({ date: d.date, hcp: parseFloat(d.hcp_after) }));
+  if (pts.length < 2) { el.innerHTML = '<p style="font-size:13px; color:var(--cream-dim); text-align:center; padding:12px 0;">Importér minst 2 runder med HCP-verdi for å se grafen.</p>'; return; }
+  const W = 340, H = 130, pL = 34, pR = 10, pT = 10, pB = 22;
+  const hcps = pts.map(p => p.hcp);
+  const minH = Math.min(...hcps), maxH = Math.max(...hcps), range = maxH - minH || 1;
+  const xS = i => pL + (i / (pts.length - 1)) * (W - pL - pR);
+  const yS = h => pT + (1 - (h - minH) / range) * (H - pT - pB);
+  const poly = pts.map((p, i) => `${xS(i).toFixed(1)},${yS(p.hcp).toFixed(1)}`).join(' ');
+  const dots = pts.map((p, i) => `<circle cx="${xS(i).toFixed(1)}" cy="${yS(p.hcp).toFixed(1)}" r="3.5" fill="var(--gold)" stroke="var(--green-deep)" stroke-width="1.5"/>`).join('');
+  const yLabels = [minH, (minH+maxH)/2, maxH].map(h => `<text x="${pL-5}" y="${yS(h).toFixed(1)}" fill="rgba(255,255,255,0.4)" font-size="9" text-anchor="end" dominant-baseline="middle">${h.toFixed(1)}</text>`).join('');
+  const lastIdx = pts.length - 1;
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;overflow:visible;" xmlns="http://www.w3.org/2000/svg">
+    <line x1="${pL}" y1="${pT}" x2="${pL}" y2="${H-pB}" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+    <line x1="${pL}" y1="${H-pB}" x2="${W-pR}" y2="${H-pB}" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+    ${yLabels}
+    <text x="${xS(0).toFixed(1)}" y="${H-5}" fill="rgba(255,255,255,0.4)" font-size="9" text-anchor="start">${pts[0].date.slice(5)}</text>
+    <text x="${xS(lastIdx).toFixed(1)}" y="${H-5}" fill="rgba(255,255,255,0.4)" font-size="9" text-anchor="end">${pts[lastIdx].date.slice(5)}</text>
+    <polyline points="${poly}" fill="none" stroke="var(--gold)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    ${dots}
+  </svg>`;
+}
+
+function _renderHcpHistoryList(diffs) {
+  const el = document.getElementById('hcpHistoryList');
+  if (!el) return;
+  if (!diffs.length) { el.innerHTML = '<p style="font-size:13px; color:var(--cream-dim);">Ingen historikk ennå.</p>'; return; }
+  const sorted = [...diffs].sort((a, b) => new Date(b.date) - new Date(a.date));
+  el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px;">
+    <thead><tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
+      <th style="padding:6px 4px;text-align:left;color:var(--cream-dim);font-size:11px;font-weight:400;text-transform:uppercase;letter-spacing:1px;">Dato</th>
+      <th style="padding:6px 4px;text-align:left;color:var(--cream-dim);font-size:11px;font-weight:400;text-transform:uppercase;letter-spacing:1px;">Bane</th>
+      <th style="padding:6px 4px;text-align:right;color:var(--cream-dim);font-size:11px;font-weight:400;text-transform:uppercase;letter-spacing:1px;">Diff</th>
+      <th style="padding:6px 4px;text-align:right;color:var(--cream-dim);font-size:11px;font-weight:400;text-transform:uppercase;letter-spacing:1px;">HCP</th>
+      <th style="padding:6px 4px;text-align:center;color:var(--cream-dim);font-size:11px;font-weight:400;text-transform:uppercase;letter-spacing:1px;">Kilde</th>
+    </tr></thead>
+    <tbody>${sorted.map(d => `
+      <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+        <td style="padding:8px 4px;color:var(--cream);">${d.date}</td>
+        <td style="padding:8px 4px;color:var(--cream-dim);font-size:12px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${d.course_name || '–'}</td>
+        <td style="padding:8px 4px;text-align:right;font-family:'Playfair Display',serif;color:var(--gold);">${d.differential != null ? d.differential : '–'}</td>
+        <td style="padding:8px 4px;text-align:right;color:var(--cream-dim);font-size:12px;">${d.hcp_before != null ? d.hcp_before + ' → ' + (d.hcp_after ?? '?') : (d.hcp_after != null ? d.hcp_after : '–')}</td>
+        <td style="padding:8px 4px;text-align:center;"><span style="font-size:10px;padding:2px 6px;border-radius:4px;background:rgba(201,168,76,0.15);color:var(--gold-dim);">${d.source || '–'}</span></td>
+      </tr>`).join('')}
+    </tbody></table>`;
+}
+
+// ── UTILITIES ──
+function openModal(id) { document.getElementById(id).style.display = 'flex'; }
+function closeModal(id) {
+  document.getElementById(id).style.display = 'none';
+  // Stopp eventuell tale ved lukking
+  if (window.speechSynthesis?.speaking) window.speechSynthesis.cancel();
+}
+function closeModalOnOverlay(event, id) { if (event.target.id === id) closeModal(id); }
+function showAlert(containerId, msg, type) {
+  const el = document.getElementById(containerId);
+  if (el) el.innerHTML = `<div class="alert alert-${type}">${msg}</div>`;
+}
+
+
+// ── ROUNDS ──
+let allPlayers = [];
+let flightCount = 0;
+async function loadRounds() {
+  const { data: rounds } = await db.from('rounds')
+    .select('*, courses(name), tee_sets(name, slope, course_rating), flights(id, name, flight_players(id, handicap, profiles(display_name, username)))')
+    .order('created_at', { ascending: false })
+    .limit(20);
+  const el = document.getElementById('roundsList');
+  if (!rounds?.length) {
+    el.innerHTML = '<div class="empty"><div class="empty-icon">⛳</div><h3>Ingen runder ennå</h3><p>Trykk "+ Ny runde" for å starte!</p></div>';
+    return;
+  }
+  el.innerHTML = rounds.map(r => {
+    const playerCount = (r.flights || []).reduce((sum, f) => sum + (f.flight_players?.length || 0), 0);
+    const statusColor = r.status === 'active' ? 'var(--green-light)' : 'var(--cream-dim)';
+    const statusText = r.status === 'active' ? '🟢 Aktiv' : '✅ Avsluttet';
+    const teeName = r.tee_sets?.name ? ` · ${r.tee_sets.name}` : '';
+    const courseName = r.courses?.name || '(slettet bane)';
+    const playerNames = (r.flights || [])
+      .flatMap(f => f.flight_players || [])
+      .map(fp => fp.profiles?.display_name?.split(' ')[0] || '?')
+      .join(', ');
+    const clickFn = r.status === 'completed' ? `showRoundSummary('${r.id}')` : `openRound('${r.id}')`;
+    return `
+    <div style="padding:16px 20px; background:rgba(0,0,0,0.2); border-radius:10px; margin-bottom:10px; border:1px solid rgba(255,255,255,0.06); transition:all 0.2s; display:flex; align-items:center; gap:12px;" onmouseover="this.style.borderColor='rgba(201,168,76,0.3)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.06)'">
+      <div onclick="${clickFn}" style="flex:1; cursor:pointer;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+          <div>
+            <div style="font-size:16px; color:var(--cream); font-weight:500;">${courseName}</div>
+            <div style="font-size:12px; color:var(--cream-dim); margin-top:3px;">${r.date}${teeName ? ' · Tee ' + r.tee_sets.name : ''}</div>
+            <div style="font-size:12px; color:var(--gold-dim); margin-top:2px;">👤 ${playerNames || '–'}</div>
+          </div>
+          <div style="font-size:12px; color:${statusColor};">${statusText}</div>
+        </div>
+      </div>
+      <button onclick="deleteRound('${r.id}')" style="background:none; border:1px solid rgba(192,57,43,0.4); color:var(--danger); border-radius:6px; padding:6px 10px; cursor:pointer; font-size:14px; flex-shrink:0;" title="Slett runde">🗑</button>
+    </div>`;
+  }).join('');
+}
+let _roundAvailableRanges = { hasFront9: false, hasBack9: false };
+async function openNewRound() {
+  flightCount = 0;
+  _roundAvailableRanges = { hasFront9: false, hasBack9: false };
+  document.getElementById('newRoundAlert').innerHTML = '';
+  document.getElementById('flightList').innerHTML = '';
+  document.getElementById('roundDate').value = new Date().toISOString().split('T')[0];
+  const rangeDiv = document.getElementById('roundHoleRangeDiv');
+  if (rangeDiv) { rangeDiv.style.display = 'none'; rangeDiv.innerHTML = ''; }
+  // Open modal immediately so the button always feels responsive
+  const sel = document.getElementById('roundCourse');
+  sel.innerHTML = '<option value="">Laster baner...</option>';
+  openModal('modalNewRound');
+  const { data: courses } = await db.from('courses').select('id, name').order('name');
+  sel.innerHTML = '<option value="">Velg bane...</option>' +
+    (courses || []).map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  const { data: players } = await db.from('profiles').select('id, display_name, username, handicap').order('display_name');
+  allPlayers = players || [];
+  addFlight();
+}
+async function loadTeeSets(courseId) {
+  if (!courseId) return;
+  const { data: tees } = await db.from('tee_sets').select('*').eq('course_id', courseId);
+  const sel = document.getElementById('roundTee');
+  sel.innerHTML = '<option value="">Velg tee...</option>' +
+    (tees || []).map(t => `<option value="${t.id}">${t.name} — Slope ${t.slope}, CR ${t.course_rating}</option>`).join('');
+  sel.removeEventListener('change', updateRoundMotivation);
+  sel.addEventListener('change', updateRoundMotivation);
+  document.getElementById('teeMotivDiv').innerHTML = '';
+  const { data: holes } = await db.from('holes').select('hole_number').eq('course_id', courseId);
+  const holeNums = (holes || []).map(h => h.hole_number);
+  const hasFront9 = holeNums.some(n => n <= 9);
+  const hasBack9 = holeNums.some(n => n >= 10);
+  _roundAvailableRanges = { hasFront9, hasBack9 };
+  const warningEl = document.getElementById('roundHoleWarning');
+  if (warningEl) warningEl.style.display = holeNums.length === 0 ? 'block' : 'none';
+  const rangeDiv = document.getElementById('roundHoleRangeDiv');
+  if (!rangeDiv) return;
+  if (hasFront9 && hasBack9) {
+    rangeDiv.style.display = 'block';
+    rangeDiv.innerHTML = `<label style="font-size:13px;font-weight:500;color:var(--cream);display:block;margin-bottom:6px;">Hull</label>
+      <select id="roundHoleRange" style="width:100%;padding:12px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:var(--cream);font-size:14px;font-family:'DM Sans',sans-serif;">
+        <option value="all">Hull 1–18</option>
+        <option value="front9">Hull 1–9</option>
+        <option value="back9">Hull 10–18</option>
+      </select>`;
+    const rangeSelect = document.getElementById('roundHoleRange');
+    if (rangeSelect) {
+      rangeSelect.removeEventListener('change', updateRoundMotivation);
+      rangeSelect.addEventListener('change', updateRoundMotivation);
+    }
+  } else {
+    rangeDiv.style.display = 'none';
+    rangeDiv.innerHTML = '';
+  }
+}
+function addFlight() {
+  flightCount++;
+  const div = document.createElement('div');
+  div.id = `flight-${flightCount}`;
+  div.style.cssText = 'background:rgba(0,0,0,0.2); border-radius:8px; padding:14px; margin-bottom:10px; border:1px solid rgba(255,255,255,0.07);';
+  div.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <div style="font-size:13px; font-weight:600; color:var(--gold-light);">Flight ${flightCount}</div>
+      ${flightCount > 1 ? `<button onclick="document.getElementById('flight-${flightCount}').remove()" class="remove-btn">×</button>` : ''}
+    </div>
+    <div style="display:flex; flex-wrap:wrap; gap:8px;" id="flight-players-${flightCount}">
+      ${allPlayers.map(p => `
+        <label style="display:flex; align-items:center; gap:6px; padding:6px 12px; background:rgba(255,255,255,0.05); border-radius:20px; cursor:pointer; border:1px solid rgba(255,255,255,0.1); font-size:13px; color:var(--cream-dim);">
+          <input type="checkbox" value="${p.id}" data-name="${p.display_name}" data-hcp="${p.handicap || 36}" style="accent-color:var(--gold);">
+          ${p.display_name} <span style="color:var(--cream-dim); font-size:11px;">(${p.handicap ?? '–'})</span>
+        </label>
+      `).join('')}
+    </div>
+  `;
+  document.getElementById('flightList').appendChild(div);
+}
+async function saveRound() {
+  const courseId = document.getElementById('roundCourse').value;
+  const teeId = document.getElementById('roundTee').value;
+  const date = document.getElementById('roundDate').value;
+  if (!courseId || !teeId || !date) { showAlert('newRoundAlert', 'Fyll inn bane, tee og dato', 'error'); return; }
+  const { hasFront9, hasBack9 } = _roundAvailableRanges;
+  let holeRange;
+  if (hasFront9 && hasBack9) {
+    holeRange = document.getElementById('roundHoleRange')?.value || 'all';
+  } else if (hasFront9) {
+    holeRange = 'front9';
+  } else if (hasBack9) {
+    holeRange = 'back9';
+  } else {
+    holeRange = 'all';
+  }
+  const skinsAmount = document.getElementById('skinsEnabled')?.checked
+    ? (parseInt(document.getElementById('skinsAmount').value) || null) : null;
+  const { data: round, error } = await db.from('rounds').insert({
+    course_id: courseId, tee_set_id: teeId, date, created_by: currentProfile.id, status: 'active',
+    hole_range: holeRange, skins_amount: skinsAmount
+  }).select().single();
+  if (error) { showAlert('newRoundAlert', 'Feil: ' + error.message, 'error'); return; }
+  for (let i = 1; i <= flightCount; i++) {
+    const flightDiv = document.getElementById(`flight-${i}`);
+    if (!flightDiv) continue;
+    const checked = flightDiv.querySelectorAll('input[type=checkbox]:checked');
+    if (!checked.length) continue;
+    const { data: flight } = await db.from('flights').insert({ round_id: round.id, name: `Flight ${i}` }).select().single();
+    for (const cb of checked) {
+      await db.from('flight_players').insert({
+        flight_id: flight.id, player_id: cb.value,
+        handicap: parseFloat(cb.dataset.hcp) || 36, tee_set_id: teeId
+      });
+      if (cb.value !== currentProfile.id) {
+        await db.from('notifications').insert({
+          player_id: cb.value,
+          message: `Du er lagt til i en runde på ${document.getElementById('roundCourse').options[document.getElementById('roundCourse').selectedIndex].text} (${date})`
+        });
+      }
+    }
+  }
+  closeModal('modalNewRound');
+  // Vis del-modal før scoring starter
+  showShareRoundModal(round.id, document.getElementById('roundCourse').options[document.getElementById('roundCourse').selectedIndex].text, date);
+  await openRound(round.id);
+}
+
+// ── SCORING SCREEN ──
+let currentRound = null;
+let currentHole = 1;
+let roundScores = {};
+let roundHoles = [];
+let roundFlights = [];
+let _fullCoursePar = 72; // full 18-hole par, set when opening a round
+async function deleteRound(roundId) {
+  const confirmed = await showConfirm('Slette denne runden? Dette sletter alle scores og kan ikke angres.');
+  if (!confirmed) return;
+  const { error: e1 } = await db.from('scores').delete().eq('round_id', roundId);
+  const { data: flights } = await db.from('flights').select('id').eq('round_id', roundId);
+  for (const f of (flights || [])) {
+    await db.from('flight_players').delete().eq('flight_id', f.id);
+  }
+  await db.from('flights').delete().eq('round_id', roundId);
+  const { error: e2 } = await db.from('rounds').delete().eq('id', roundId);
+  if (e2) {
+    alert('Kunne ikke slette runden. Du må være admin eller delta i runden for å slette den.\n\n' + e2.message);
+    return;
+  }
+  loadRounds();
+  loadDashboard();
+}
+
+async function openRound(roundId) {
+  // Show scoring screen immediately so the tap always feels responsive
+  document.getElementById('scCourseName').textContent = 'Laster runde...';
+  document.getElementById('scRoundDate').textContent = '';
+  document.getElementById('scPlayerScores').innerHTML = '<div style="padding:40px;text-align:center;color:var(--cream-dim);">Laster...</div>';
+  document.getElementById('scoringScreen').style.display = 'flex';
+  document.getElementById('scoringScreen').style.flexDirection = 'column';
+  const { data: round } = await db.from('rounds')
+    .select('*, courses(name, holes), tee_sets(name, slope, course_rating), flights(id, name, flight_players(id, player_id, handicap, profiles(display_name, username)))')
+    .eq('id', roundId).single();
+  if (!round) { document.getElementById('scoringScreen').style.display = 'none'; return; }
+  if (!round.course_id) {
+    document.getElementById('scoringScreen').style.display = 'none';
+    alert('Denne runden mangler bane og kan ikke åpnes. Slett den fra rundeoversikten.');
+    return;
+  }
+  const { data: holes } = await db.from('holes').select('*').eq('course_id', round.course_id).order('hole_number');
+  const { data: scores } = await db.from('scores').select('*').eq('round_id', roundId);
+  currentRound = round;
+  const holeRange = round.hole_range || 'all';
+  const allHoles = holes || [];
+  _fullCoursePar = allHoles.reduce((s,h) => s + (h.par||0), 0) || 72;
+  if (holeRange === 'front9') {
+    roundHoles = allHoles.filter(h => h.hole_number <= 9);
+  } else if (holeRange === 'back9') {
+    roundHoles = allHoles.filter(h => h.hole_number >= 10);
+  } else {
+    roundHoles = allHoles;
+  }
+  currentHole = roundHoles.length > 0 ? Math.min(...roundHoles.map(h => h.hole_number)) : 1;
+  roundFlights = round.flights || [];
+  roundScores = {};
+  (scores || []).forEach(s => {
+    if (!roundScores[s.player_id]) roundScores[s.player_id] = {};
+    roundScores[s.player_id][s.hole_number] = s.strokes;
+  });
+  document.getElementById('scCourseName').textContent = round.courses?.name || '';
+  document.getElementById('scRoundDate').textContent = round.date;
+  const teeBtnEl = document.getElementById('scTeeBtn');
+  if (teeBtnEl) teeBtnEl.textContent = round.tee_sets?.name ? `Tee: ${round.tee_sets.name} ✏️` : '';
+
+  const isParticipant = roundFlights.some(f => f.flight_players?.some(fp => fp.player_id === currentProfile?.id));
+  const finishBtn = document.getElementById('scFinishBtn');
+  const nextBottom = document.getElementById('scNextHoleBottom');
+  if (finishBtn) finishBtn.style.display = isParticipant ? 'inline-block' : 'none';
+  if (nextBottom) nextBottom.style.display = isParticipant ? 'block' : 'none';
+
+  renderScoringHole();
+  document.getElementById('scoringScreen').style.display = 'flex';
+  document.getElementById('scoringScreen').style.flexDirection = 'column';
+}
+function closeScoringScreen() {
+  document.getElementById('scoringScreen').style.display = 'none';
+  loadRounds();
+  loadDashboard();
+}
+function renderScoringHole() {
+  const holeData = roundHoles.find(h => h.hole_number === currentHole) || { par: null, stroke_index: null };
+  const firstHole = roundHoles.length > 0 ? Math.min(...roundHoles.map(h => h.hole_number)) : 1;
+  const lastHole = roundHoles.length > 0 ? Math.max(...roundHoles.map(h => h.hole_number)) : (currentRound?.courses?.holes || 18);
+  const isLastHole = currentHole === lastHole;
+  document.getElementById('scHoleNum').textContent = currentHole;
+  document.getElementById('scPar').textContent = holeData.par ?? '?';
+  document.getElementById('scSI').textContent = holeData.stroke_index ?? '?';
+  document.getElementById('scPrevHole').style.opacity = currentHole === firstHole ? '0.3' : '1';
+  // Oppdater begge Neste-knapper
+  const nextTop = document.getElementById('scNextHole');
+  const nextBottom = document.getElementById('scNextHoleBottom');
+  if (nextTop) nextTop.textContent = isLastHole ? 'Avslutt →' : 'Neste →';
+  if (nextBottom) {
+    nextBottom.textContent = isLastHole ? '🏁 Avslutt runde' : 'Neste hull →';
+    nextBottom.style.background = isLastHole ? 'var(--green-mid)' : 'var(--gold)';
+    nextBottom.style.color = isLastHole ? 'var(--gold-light)' : 'var(--green-deep)';
+  }
+  if (!holeData.par) {
+    document.getElementById('scPar').style.color = 'var(--gold)';
+  } else {
+    document.getElementById('scPar').style.color = 'var(--cream)';
+  }
+  renderHoleStats();
+  renderPlayerInputs(holeData);
+  renderMiniLeaderboard();
+  renderSkinsTracker();
+}
+function renderHoleStats() {
+  const allFP = roundFlights.flatMap(f => f.flight_players || []);
+  const parStats = {};
+  for (const hole of roundHoles) {
+    const p = hole.par;
+    if (![3, 4, 5].includes(p)) continue;
+    if (!parStats[p]) parStats[p] = {};
+    for (const fp of allFP) {
+      const s = roundScores[fp.player_id]?.[hole.hole_number];
+      if (!s || s <= 0) continue;
+      const firstName = (fp.profiles?.display_name || '?').split(' ')[0];
+      if (!parStats[p][fp.player_id]) parStats[p][fp.player_id] = { name: firstName, sum: 0, count: 0 };
+      parStats[p][fp.player_id].sum += s;
+      parStats[p][fp.player_id].count++;
+    }
+  }
+  const colStyle = 'flex:1;padding:8px 4px;text-align:center;border-right:1px solid rgba(255,255,255,0.05);';
+  const html = [3, 4, 5].map((p, i) => {
+    const data = parStats[p];
+    const isLast = i === 2;
+    const players = data ? Object.values(data) : [];
+    const totalCount = players.reduce((s, pl) => s + pl.count, 0);
+    const avg = totalCount ? (players.reduce((s, pl) => s + pl.sum, 0) / totalCount).toFixed(1) : null;
+    const best = players.length ? [...players].sort((a, b) => (a.sum/a.count) - (b.sum/b.count))[0] : null;
+    return `<div style="${colStyle}${isLast ? 'border-right:none;' : ''}">
+      <div style="font-size:9px;color:var(--cream-dim);letter-spacing:1px;text-transform:uppercase;">Par ${p}</div>
+      <div style="font-family:'Playfair Display',serif;font-size:20px;color:${avg ? 'var(--gold-light)' : 'var(--cream-dim)'};">${avg ?? '–'}</div>
+      <div style="font-size:9px;color:var(--gold);min-height:12px;">${best ? best.name : ''}</div>
+    </div>`;
+  }).join('');
+  document.getElementById('scParStats').innerHTML = html;
+}
+function renderPlayerInputs(holeData) {
+  const _rSlope = currentRound?.tee_sets?.slope, _rCr = currentRound?.tee_sets?.course_rating;
+  let html = '';
+  roundFlights.forEach(flight => {
+    const canEdit = flight.flight_players?.some(fp => fp.player_id === currentProfile?.id);
+    html += `<div style="margin-bottom:16px;">
+      <div style="font-size:11px; color:var(--cream-dim); letter-spacing:1.5px; text-transform:uppercase; margin-bottom:8px;">${flight.name}</div>`;
+    (flight.flight_players || []).forEach(fp => {
+      const player = fp.profiles;
+      const strokes = roundScores[fp.player_id]?.[currentHole] || 0;
+      const _phcp = _playingHcp(fp.handicap, _rSlope, _rCr, _fullCoursePar);
+      const stableford = (holeData.par && holeData.stroke_index)
+        ? calcStableford(strokes, holeData.par, _phcp, holeData.stroke_index)
+        : 0;
+      const scoreColor = holeData.par ? getScoreColor(strokes, holeData.par) : 'var(--cream)';
+      const scoreName = holeData.par ? getScoreName(strokes, holeData.par) : '';
+      const activeHcpBadge = _activeStrokes(_phcp, roundHoles);
+      let extraStrokes = 0;
+      if (holeData.stroke_index) {
+        extraStrokes = Math.floor(_phcp / 18);
+        if (holeData.stroke_index <= (_phcp % 18)) extraStrokes++;
+      }
+      const strokesLabel = extraStrokes > 0
+        ? `<span style="color:var(--green-light); font-size:11px;">${extraStrokes === 1 ? '+1 slag' : `+${extraStrokes} slag`}</span>`
+        : '';
+      html += `
+      <div style="display:flex; align-items:center; gap:12px; padding:12px; background:rgba(0,0,0,0.2); border-radius:10px; margin-bottom:8px; border:1px solid rgba(255,255,255,0.06);">
+        <div style="width:36px; height:36px; border-radius:50%; background:var(--green-mid); border:2px solid var(--gold-dim); display:flex; align-items:center; justify-content:center; font-family:'Playfair Display',serif; font-size:14px; color:var(--gold-light); flex-shrink:0;">
+          ${(player?.display_name || '?')[0]}
+        </div>
+        <div style="flex:1;">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <div style="font-size:14px;color:var(--cream);font-weight:500;">${player?.display_name || '?'}</div>
+            <div style="font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(201,168,76,0.15);color:var(--gold-dim);white-space:nowrap;">${activeHcpBadge} slag</div>
+          </div>
+          <div style="font-size:11px;color:var(--cream-dim);">HCP ${fp.handicap || '–'} ${strokesLabel} ${strokes > 0 ? `· <span style="color:${scoreColor}">${scoreName}</span> · ${stableford}p` : ''}</div>
+        </div>
+        ${canEdit ? `
+        <div style="display:flex; align-items:center; gap:8px;">
+          <button onclick="adjustScore('${fp.player_id}', -1)" style="width:48px; height:48px; border-radius:50%; border:1px solid rgba(255,255,255,0.2); background:transparent; color:var(--cream); font-size:24px; cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1; touch-action:manipulation; -webkit-tap-highlight-color:transparent; user-select:none;">−</button>
+          <div id="score-${fp.player_id}" style="font-family:'Playfair Display',serif; font-size:36px; color:${scoreColor}; min-width:40px; text-align:center;">${strokes || '–'}</div>
+          <button onclick="adjustScore('${fp.player_id}', 1)" style="width:48px; height:48px; border-radius:50%; background:var(--green-mid); border:none; color:var(--cream); font-size:24px; cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1; touch-action:manipulation; -webkit-tap-highlight-color:transparent; user-select:none;">+</button>
+        </div>` : `
+        <div style="font-family:'Playfair Display',serif; font-size:32px; color:${scoreColor}; min-width:36px; text-align:center;">${strokes || '–'}</div>`}
+      </div>`;
+    });
+    html += '</div>';
+  });
+  document.getElementById('scPlayerScores').innerHTML = html;
+}
+function _playingHcp(hi, slope, cr, par) { return Math.round((hi || 36) * (slope || 113) / 113 + ((cr || 72) - (par || 72))); }
+// Counts extra strokes from fullHCP that land on the given active holes (full 18-hole distribution).
+function _activeStrokes(fullHCP, activeHoles) {
+  return (activeHoles || []).reduce((sum, hole) => {
+    if (!hole.stroke_index) return sum;
+    let extra = Math.floor(fullHCP / 18);
+    if (hole.stroke_index <= (fullHCP % 18)) extra++;
+    return sum + extra;
+  }, 0);
+}
+function calcStableford(strokes, par, hcp, si) {
+  if (!strokes || !par || !si) return 0;
+  let extra = Math.floor(hcp / 18);
+  if (si <= (hcp % 18)) extra++;
+  return Math.max(0, par - (strokes - extra) + 2);
+}
+function calcStablefordWithHoles(strokes, par, hcp, si, totalHoles) {
+  if (!strokes || !par || !si) return 0;
+  let extra = Math.floor(hcp / totalHoles);
+  if (si <= (hcp % totalHoles)) extra++;
+  return Math.max(0, par - (strokes - extra) + 2);
+}
+function getScoreColor(strokes, par) {
+  if (!strokes || !par) return 'var(--cream)';
+  const d = strokes - par;
+  if (strokes === 1) return '#f5c518';
+  if (d <= -3) return '#f5c518';
+  if (d === -2) return '#f5c518';
+  if (d === -1) return 'var(--gold-light)';
+  if (d === 0) return 'var(--cream)';
+  if (d === 1) return '#e8a070';
+  return 'var(--danger)';
+}
+function getScoreName(strokes, par) {
+  if (!strokes || !par) return '';
+  if (strokes === 1) return 'Hole in One! 🏆';
+  const d = strokes - par;
+  if (d <= -3) return 'Albatross 🦅🦅';
+  if (d === -2) return 'Eagle 🦅';
+  if (d === -1) return 'Birdie 🐦';
+  if (d === 0) return 'Par';
+  if (d === 1) return 'Bogey';
+  if (d === 2) return 'Dobbelt';
+  if (d === 3) return 'Trippel';
+  return `+${d}`;
+}
+let _adjustScoreLock = false;
+async function adjustScore(playerId, delta) {
+  if (_adjustScoreLock) return;
+  _adjustScoreLock = true;
+  // Always release the lock — even if the DB call fails after wake/network hiccup
+  setTimeout(() => { _adjustScoreLock = false; }, 300);
+  if (!roundScores[playerId]) roundScores[playerId] = {};
+  const current = roundScores[playerId][currentHole] || 0;
+  const newVal = Math.max(1, Math.min(current + delta, 15));
+  // Ikke gå under 1 (bruk − for å komme til 0/tomt = slett score)
+  if (delta === -1 && current <= 1) {
+    roundScores[playerId][currentHole] = 0;
+    await db.from('scores').delete()
+      .eq('round_id', currentRound.id)
+      .eq('player_id', playerId)
+      .eq('hole_number', currentHole);
+  } else {
+    roundScores[playerId][currentHole] = newVal;
+    await db.from('scores').upsert({
+      round_id: currentRound.id, player_id: playerId,
+      hole_number: currentHole, strokes: newVal,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'round_id,player_id,hole_number' });
+  }
+  const holeData = roundHoles.find(h => h.hole_number === currentHole) || { par: null, stroke_index: null };
+  renderPlayerInputs(holeData);
+  renderMiniLeaderboard();
+}
+function changeHole(delta) {
+  const firstHole = roundHoles.length > 0 ? Math.min(...roundHoles.map(h => h.hole_number)) : 1;
+  const lastHole = roundHoles.length > 0 ? Math.max(...roundHoles.map(h => h.hole_number)) : (currentRound?.courses?.holes || 18);
+  const newHole = currentHole + delta;
+  if (newHole < firstHole) return;
+  if (newHole > lastHole) { finishRound(); return; }
+  currentHole = newHole;
+  renderScoringHole();
+  document.getElementById('scoringScreen').scrollTo(0, 0);
+}
+function renderMiniLeaderboard() {
+  const _rSlope = currentRound?.tee_sets?.slope, _rCr = currentRound?.tee_sets?.course_rating;
+  const allFP = roundFlights.flatMap(f => f.flight_players || []);
+  const standings = allFP.map(fp => {
+    let total = 0, holes = 0;
+    const hcp = _playingHcp(fp.handicap, _rSlope, _rCr, _fullCoursePar);
+    Object.entries(roundScores[fp.player_id] || {}).forEach(([h, s]) => {
+      if (s > 0) {
+        const hd = roundHoles.find(hh => hh.hole_number === parseInt(h));
+        if (hd?.par && hd?.stroke_index) {
+          let extra = Math.floor(hcp / 18);
+          if (hd.stroke_index <= (hcp % 18)) extra++;
+          const pts = Math.max(0, hd.par - (s - extra) + 2);
+          total += pts;
+        }
+        holes++;
+      }
+    });
+    return { name: fp.profiles?.display_name?.split(' ')[0] || '?', total, holes };
+  }).sort((a, b) => b.total - a.total);
+  document.getElementById('scMiniLeader').innerHTML = standings.map((p, i) => `
+    <div style="flex-shrink:0; text-align:center; padding:8px 14px; background:${i === 0 ? 'rgba(201,168,76,0.2)' : 'rgba(0,0,0,0.2)'}; border-radius:8px; border:1px solid ${i === 0 ? 'rgba(201,168,76,0.3)' : 'rgba(255,255,255,0.06)'};">
+      <div style="font-size:10px; color:var(--cream-dim);">${i + 1}. ${p.name}</div>
+      <div style="font-family:'Playfair Display',serif; font-size:20px; color:${i === 0 ? 'var(--gold)' : 'var(--cream)'};">${p.total}p</div>
+      <div style="font-size:10px; color:var(--cream-dim);">${p.holes} hull</div>
+    </div>
+  `).join('');
+}
+function toggleSkinsAmount() {
+  const wrap = document.getElementById('skinsAmountWrap');
+  if (wrap) wrap.style.display = document.getElementById('skinsEnabled').checked ? 'flex' : 'none';
+}
+
+function _computeSkins(holes, scores, allFP, round) {
+  const slope = round.tee_sets?.slope, cr = round.tee_sets?.course_rating;
+  const fcp = _fullCoursePar || 72;
+  const hcpMap = {};
+  allFP.forEach(fp => { hcpMap[fp.player_id] = _playingHcp(fp.handicap, slope, cr, fcp); });
+  let pot = 0;
+  const skinsByPlayer = {};
+  allFP.forEach(fp => { skinsByPlayer[fp.player_id] = 0; });
+  const holeResults = [];
+  for (const hole of holes) {
+    pot++;
+    if (!hole.par || !hole.stroke_index) {
+      holeResults.push({ holeNumber: hole.hole_number, par: hole.par, winnerId: null, pot, noData: true, sfByPlayer: {} });
+      continue;
+    }
+    const sfByPlayer = {};
+    let maxSf = -1, anyScore = false;
+    for (const fp of allFP) {
+      const s = scores[fp.player_id]?.[hole.hole_number];
+      if (!s || s <= 0) continue;
+      anyScore = true;
+      const sf = calcStableford(s, hole.par, hcpMap[fp.player_id], hole.stroke_index);
+      sfByPlayer[fp.player_id] = sf;
+      if (sf > maxSf) maxSf = sf;
+    }
+    if (!anyScore) {
+      holeResults.push({ holeNumber: hole.hole_number, par: hole.par, winnerId: null, pot, noScore: true, sfByPlayer: {} });
+      continue;
+    }
+    const winners = allFP.filter(fp => sfByPlayer[fp.player_id] === maxSf && maxSf >= 0);
+    if (winners.length === 1) {
+      const w = winners[0];
+      skinsByPlayer[w.player_id] += pot;
+      holeResults.push({ holeNumber: hole.hole_number, par: hole.par, winnerId: w.player_id,
+        winnerName: w.profiles?.display_name?.split(' ')[0] || '?', pot, tied: false, sfByPlayer });
+      pot = 0;
+    } else {
+      holeResults.push({ holeNumber: hole.hole_number, par: hole.par, winnerId: null, pot, tied: true, sfByPlayer });
+    }
+  }
+  return { skinsByPlayer, holeResults, remainingPot: pot };
+}
+
+function renderSkinsTracker() {
+  const strip = document.getElementById('scSkinsStrip');
+  const el = document.getElementById('scSkins');
+  if (!strip || !el || !currentRound?.skins_amount) { if (strip) strip.style.display = 'none'; return; }
+  strip.style.display = 'block';
+  const allFP = roundFlights.flatMap(f => f.flight_players || []);
+  const { skinsByPlayer, holeResults, remainingPot } = _computeSkins(roundHoles, roundScores, allFP, currentRound);
+  const kr = currentRound.skins_amount;
+  const cards = allFP.map(fp => {
+    const n = skinsByPlayer[fp.player_id] || 0;
+    const isLeader = n > 0 && n === Math.max(...allFP.map(f => skinsByPlayer[f.player_id] || 0));
+    return `<div style="flex-shrink:0;text-align:center;padding:7px 12px;border-radius:8px;border:1px solid ${isLeader ? 'rgba(201,168,76,0.4)' : 'rgba(255,255,255,0.07)'};background:${isLeader ? 'rgba(201,168,76,0.15)' : 'rgba(0,0,0,0.2)'};">
+      <div style="font-size:10px;color:var(--cream-dim);">${fp.profiles?.display_name?.split(' ')[0] || '?'}</div>
+      <div style="font-family:'Playfair Display',serif;font-size:18px;color:${isLeader ? 'var(--gold)' : 'var(--cream)'};">${n}</div>
+      <div style="font-size:9px;color:var(--cream-dim);">${n * kr} kr</div>
+    </div>`;
+  });
+  if (remainingPot > 1) cards.push(`<div style="flex-shrink:0;text-align:center;padding:7px 12px;border-radius:8px;border:1px solid rgba(82,183,136,0.3);background:rgba(82,183,136,0.1);">
+    <div style="font-size:10px;color:var(--green-light);">Pott</div>
+    <div style="font-family:'Playfair Display',serif;font-size:18px;color:var(--green-light);">×${remainingPot}</div>
+    <div style="font-size:9px;color:var(--cream-dim);">${remainingPot * kr} kr</div>
+  </div>`);
+  el.innerHTML = cards.join('');
+}
+
+function showLeaderboard() {
+  const allFP = roundFlights.flatMap(f => f.flight_players || []);
+  const standings = allFP.map(fp => {
+    let stableford = 0, strokes = 0, holes = 0, eagles = 0, birdies = 0, pars = 0, bogeys = 0;
+    Object.entries(roundScores[fp.player_id] || {}).forEach(([h, s]) => {
+      if (s > 0) {
+        const hd = roundHoles.find(hh => hh.hole_number === parseInt(h)) || { par: null, stroke_index: null };
+        if (hd.par && hd.stroke_index) {
+          stableford += calcStableford(s, hd.par, _playingHcp(fp.handicap, currentRound?.tee_sets?.slope, currentRound?.tee_sets?.course_rating, _fullCoursePar), hd.stroke_index);
+          const d = s - hd.par;
+          if (d <= -2) eagles++;
+          else if (d === -1) birdies++;
+          else if (d === 0) pars++;
+          else if (d === 1) bogeys++;
+        }
+        strokes += s;
+        holes++;
+      }
+    });
+    return { name: fp.profiles?.display_name || '?', stableford, strokes, holes, eagles, birdies, pars, bogeys };
+  }).sort((a, b) => b.stableford - a.stableford);
+  document.getElementById('leaderboardContent').innerHTML = standings.map((p, i) => `
+    <div style="display:flex; align-items:center; gap:14px; padding:14px 0; border-bottom:1px solid rgba(255,255,255,0.07);">
+      <div style="font-family:'Playfair Display',serif; font-size:24px; color:${i === 0 ? 'var(--gold)' : 'var(--cream-dim)'}; width:32px; text-align:center;">${i + 1}</div>
+      <div style="flex:1;">
+        <div style="font-size:15px; color:var(--cream); font-weight:500;">${p.name}</div>
+        <div style="font-size:12px; color:var(--cream-dim); margin-top:2px;">${p.holes} hull${p.eagles ? ` · 🦅${p.eagles}` : ''} · 🐦${p.birdies} · par${p.pars} · bog${p.bogeys}</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-family:'Playfair Display',serif; font-size:24px; color:var(--gold);">${p.stableford}p</div>
+        <div style="font-size:12px; color:var(--cream-dim);">${p.strokes || '–'} slag</div>
+      </div>
+    </div>
+  `).join('');
+  openModal('modalLeaderboard');
+}
+async function openChangeTee() {
+  if (!currentRound) return;
+  const { data: tees } = await db.from('tee_sets').select('id, name, slope, course_rating').eq('course_id', currentRound.course_id).order('name');
+  const sel = document.getElementById('changeTeeSelect');
+  sel.innerHTML = (tees || []).map(t => `<option value="${t.id}" ${t.id === currentRound.tee_set_id ? 'selected' : ''}>${t.name} — Slope ${t.slope}, CR ${t.course_rating}</option>`).join('');
+  openModal('modalChangeTee');
+}
+async function applyTeeChange() {
+  const newTeeId = document.getElementById('changeTeeSelect').value;
+  if (!newTeeId || newTeeId === currentRound.tee_set_id) { closeModal('modalChangeTee'); return; }
+  await db.from('rounds').update({ tee_set_id: newTeeId }).eq('id', currentRound.id);
+  const { data: tee } = await db.from('tee_sets').select('id, name, slope, course_rating').eq('id', newTeeId).single();
+  if (tee) {
+    currentRound.tee_set_id = tee.id;
+    currentRound.tee_sets = tee;
+    const teeBtnEl = document.getElementById('scTeeBtn');
+    if (teeBtnEl) teeBtnEl.textContent = `Tee: ${tee.name} ✏️`;
+  }
+  closeModal('modalChangeTee');
+  renderScoringHole();
+}
+async function finishRound() {
+  const confirmed = await showConfirm('Avslutt runden og se sammendrag?', 'Avslutt');
+  if (!confirmed) return;
+  const roundId = currentRound.id;
+  await db.from('rounds').update({ status: 'completed' }).eq('id', roundId);
+  document.getElementById('scoringScreen').style.display = 'none';
+  await loadRounds();
+  await loadDashboard();
+  await showRoundSummary(roundId);
+}
+
+
+// ── ROUND SUMMARY ──
+async function showRoundSummary(roundId) {
+  if (!roundId) return;
+  document.getElementById('summaryTitle').textContent = 'Laster...';
+  openModal('modalRoundSummary');
+  const { data: round, error } = await db.from('rounds')
+    .select('*, courses(name, holes), tee_sets(name, slope, course_rating), flights(id, name, flight_players(id, player_id, handicap, profiles(display_name, username)))')
+    .eq('id', roundId).single();
+  if (error || !round) { document.getElementById('summaryTitle').textContent = 'Feil ved lasting'; return; }
+  const { data: scores } = await db.from('scores').select('*').eq('round_id', roundId);
+  const { data: holes } = await db.from('holes').select('*').eq('course_id', round.course_id).order('hole_number');
+  const sc = {};
+  (scores || []).forEach(s => {
+    if (!sc[s.player_id]) sc[s.player_id] = {};
+    sc[s.player_id][s.hole_number] = s.strokes;
+  });
+  const holeRange = round.hole_range || 'all';
+  const allDbHoles = holes || [];
+  const filteredHoles = holeRange === 'front9' ? allDbHoles.filter(h => h.hole_number <= 9)
+    : holeRange === 'back9' ? allDbHoles.filter(h => h.hole_number >= 10)
+    : allDbHoles;
+  const rangeLabel = holeRange === 'front9' ? ' · Første 9' : holeRange === 'back9' ? ' · Siste 9' : '';
+  document.getElementById('summaryTitle').textContent = `${round.courses?.name} · ${round.date}${rangeLabel}`;
+  const allFP = (round.flights || []).flatMap(f => f.flight_players || []);
+  const totalHoles = filteredHoles.length || 18;
+  const fullCoursePar = allDbHoles.reduce((s,h) => s + (h.par||0), 0) || 72;
+  const tabs = allFP.map((fp, i) =>
+    `<button class="tab ${i === 0 ? 'active' : ''}" onclick="showSummaryPlayer('${fp.player_id}', this)">${fp.profiles?.display_name?.split(' ')[0]}</button>`
+  ).join('');
+  document.getElementById('summaryTabs').innerHTML = tabs;
+  window._summaryData = { round, holes: filteredHoles, sc, allFP, totalHoles, fullCoursePar };
+  window._currentSummaryPlayer = null;
+  if (allFP[0]) showSummaryPlayer(allFP[0].player_id);
+  // Skins summary
+  const skinsSummaryEl = document.getElementById('skinsSummary');
+  if (skinsSummaryEl) {
+    if (round.skins_amount && allFP.length > 1) {
+      skinsSummaryEl.style.display = 'block';
+      _renderSkinsSummary(round, filteredHoles, sc, allFP, fullCoursePar);
+    } else {
+      skinsSummaryEl.style.display = 'none';
+    }
+  }
+}
+
+function _renderSkinsSummary(round, holes, sc, allFP, fullCoursePar) {
+  const el = document.getElementById('skinsSummary');
+  if (!el) return;
+  const savedFcp = _fullCoursePar;
+  _fullCoursePar = fullCoursePar;
+  const { skinsByPlayer, holeResults, remainingPot } = _computeSkins(holes, sc, allFP, round);
+  _fullCoursePar = savedFcp;
+  const kr = round.skins_amount;
+  const nameOf = id => allFP.find(fp => fp.player_id === id)?.profiles?.display_name?.split(' ')[0] || '?';
+  const holeRows = holeResults.filter(r => !r.noData).map(r => {
+    const sfCells = allFP.map(fp => {
+      const sf = r.sfByPlayer?.[fp.player_id];
+      const isWinner = r.winnerId === fp.player_id;
+      return `<td style="padding:5px 8px;text-align:center;font-family:'Playfair Display',serif;font-size:14px;color:${isWinner ? 'var(--gold)' : sf != null ? 'var(--cream)' : 'var(--cream-dim)'};">${sf != null ? sf + 'p' : '–'}</td>`;
+    }).join('');
+    const winnerCell = r.noScore ? '<td style="padding:5px 8px;text-align:center;font-size:11px;color:var(--cream-dim);">–</td>'
+      : r.tied ? `<td style="padding:5px 8px;text-align:center;font-size:11px;color:var(--green-light);">↩ Rull</td>`
+      : `<td style="padding:5px 8px;text-align:center;font-size:12px;color:var(--gold);font-weight:600;">${r.winnerName} ×${r.pot}</td>`;
+    return `<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+      <td style="padding:5px 8px;color:var(--cream-dim);font-size:12px;">${r.holeNumber}</td>
+      <td style="padding:5px 8px;text-align:center;color:var(--cream-dim);font-size:12px;">${r.par}</td>
+      ${sfCells}${winnerCell}
+    </tr>`;
+  }).join('');
+  const headerCells = allFP.map(fp => `<th style="padding:5px 8px;text-align:center;color:var(--cream-dim);font-size:10px;font-weight:400;text-transform:uppercase;letter-spacing:1px;">${fp.profiles?.display_name?.split(' ')[0] || '?'}</th>`).join('');
+  const totals = allFP.map(fp => {
+    const n = skinsByPlayer[fp.player_id] || 0;
+    return { name: fp.profiles?.display_name?.split(' ')[0] || '?', skins: n, kr: n * kr };
+  }).sort((a, b) => b.skins - a.skins);
+  el.innerHTML = `<div style="background:rgba(201,168,76,0.06);border:1px solid rgba(201,168,76,0.25);border-radius:12px;padding:16px;">
+    <div style="font-size:11px;color:var(--gold);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:14px;">🎰 Skins · ${kr} kr per skin</div>
+    <div style="overflow-x:auto;margin-bottom:14px;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead><tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
+          <th style="padding:5px 8px;text-align:left;color:var(--cream-dim);font-size:10px;font-weight:400;text-transform:uppercase;letter-spacing:1px;">Hull</th>
+          <th style="padding:5px 8px;text-align:center;color:var(--cream-dim);font-size:10px;font-weight:400;text-transform:uppercase;letter-spacing:1px;">Par</th>
+          ${headerCells}
+          <th style="padding:5px 8px;text-align:center;color:var(--cream-dim);font-size:10px;font-weight:400;text-transform:uppercase;letter-spacing:1px;">Vinner</th>
+        </tr></thead>
+        <tbody>${holeRows}</tbody>
+      </table>
+    </div>
+    ${remainingPot > 0 ? `<div style="font-size:12px;color:var(--green-light);margin-bottom:12px;">⚠️ ${remainingPot} skin(s) uten vinner (siste hull uavgjort)</div>` : ''}
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      ${totals.map((t, i) => `<div style="flex:1;min-width:80px;text-align:center;padding:10px;background:${i === 0 && t.skins > 0 ? 'rgba(201,168,76,0.15)' : 'rgba(0,0,0,0.2)'};border-radius:8px;border:1px solid ${i === 0 && t.skins > 0 ? 'rgba(201,168,76,0.3)' : 'rgba(255,255,255,0.07)'};">
+        <div style="font-size:11px;color:var(--cream-dim);">${t.name}</div>
+        <div style="font-family:'Playfair Display',serif;font-size:22px;color:${i === 0 && t.skins > 0 ? 'var(--gold)' : 'var(--cream)'};">${t.skins}</div>
+        <div style="font-size:12px;color:${t.kr > 0 ? 'var(--green-light)' : 'var(--cream-dim)'};">${t.kr} kr</div>
+      </div>`).join('')}
+    </div>
+  </div>`;
+}
+function showSummaryPlayer(playerId, btn) {
+  if (btn) {
+    document.querySelectorAll('#summaryTabs .tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+  }
+  const { round, holes, sc, allFP, totalHoles, fullCoursePar } = window._summaryData || {};
+  if (!allFP) return;
+  const fp = allFP.find(p => p.player_id === playerId);
+  if (!fp) return;
+  const playerScores = sc[playerId] || {};
+  const hcp = _playingHcp(fp.handicap, round.tee_sets?.slope, round.tee_sets?.course_rating, fullCoursePar || 72);
+  let totalStabs = 0, totalStrokes = 0, birdies = 0, pars = 0, bogeys = 0, doubles = 0;
+  const parSf = { 3: [], 4: [], 5: [] };
+  let bestHole = null, worstHole = null;
+  const rows = holes.map(h => {
+    const s = playerScores[h.hole_number] || 0;
+    const stab = s > 0 ? calcStablefordStatic(s, h.par, hcp, h.stroke_index, 18) : 0;
+    totalStabs += stab;
+    totalStrokes += s;
+    if (s > 0) {
+      if (parSf[h.par]) parSf[h.par].push({ stab, holeNumber: h.hole_number });
+      if (bestHole === null || stab > bestHole.stab) bestHole = { stab, holeNumber: h.hole_number, par: h.par };
+      if (worstHole === null || stab < worstHole.stab) worstHole = { stab, holeNumber: h.hole_number, par: h.par };
+      const d = s - h.par;
+      if (d <= -1) birdies++;
+      else if (d === 0) pars++;
+      else if (d === 1) bogeys++;
+      else doubles++;
+    }
+    const color = s > 0 ? getScoreColor(s, h.par) : 'var(--cream-dim)';
+    return `<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+      <td style="padding:7px 10px; color:var(--cream-dim); font-size:13px;">${h.hole_number}</td>
+      <td style="padding:7px 10px; text-align:center; color:var(--cream-dim); font-size:13px;">${h.par}</td>
+      <td style="padding:7px 10px; text-align:center; color:var(--cream-dim); font-size:13px;">${h.stroke_index}</td>
+      <td style="padding:7px 10px; text-align:center; font-family:'Playfair Display',serif; font-size:16px; color:${color};">${s || '–'}</td>
+      <td style="padding:7px 10px; text-align:center; font-family:'Playfair Display',serif; font-size:16px; color:var(--gold);">${stab || '–'}</td>
+    </tr>`;
+  }).join('');
+  // Par-type averages
+  const parCard = (p) => {
+    const arr = parSf[p];
+    if (!arr.length) return `<div style="flex:1;min-width:60px;background:rgba(0,0,0,0.2);border-radius:8px;padding:10px 6px;text-align:center;"><div style="font-size:10px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Par ${p}</div><div style="font-family:'Playfair Display',serif;font-size:22px;color:var(--cream-dim);">–</div></div>`;
+    const avg = (arr.reduce((a, b) => a + b.stab, 0) / arr.length).toFixed(1);
+    const best = Math.max(...arr.map(x => x.stab));
+    return `<div style="flex:1;min-width:60px;background:rgba(0,0,0,0.2);border-radius:8px;padding:10px 6px;text-align:center;">
+      <div style="font-size:10px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Par ${p}</div>
+      <div style="font-family:'Playfair Display',serif;font-size:22px;color:var(--gold-light);">${avg}</div>
+      <div style="font-size:10px;color:var(--cream-dim);">beste ${best}p</div>
+    </div>`;
+  };
+  const extremes = (bestHole && worstHole && bestHole.holeNumber !== worstHole.holeNumber) ? `
+    <div style="display:flex;gap:8px;margin-bottom:14px;">
+      <div style="flex:1;background:rgba(82,183,136,0.1);border:1px solid rgba(82,183,136,0.25);border-radius:8px;padding:8px 10px;text-align:center;">
+        <div style="font-size:9px;color:var(--green-light);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">Beste hull</div>
+        <div style="font-size:14px;color:var(--cream);">Hull ${bestHole.holeNumber} <span style="color:var(--cream-dim);font-size:12px;">Par ${bestHole.par}</span></div>
+        <div style="font-family:'Playfair Display',serif;font-size:18px;color:var(--green-light);">${bestHole.stab}p</div>
+      </div>
+      <div style="flex:1;background:rgba(192,57,43,0.08);border:1px solid rgba(192,57,43,0.2);border-radius:8px;padding:8px 10px;text-align:center;">
+        <div style="font-size:9px;color:#e88;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">Tøffeste hull</div>
+        <div style="font-size:14px;color:var(--cream);">Hull ${worstHole.holeNumber} <span style="color:var(--cream-dim);font-size:12px;">Par ${worstHole.par}</span></div>
+        <div style="font-family:'Playfair Display',serif;font-size:18px;color:#e88;">${worstHole.stab}p</div>
+      </div>
+    </div>` : '';
+  document.getElementById('summaryContent').innerHTML = `
+    <div style="display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap;">
+      <div style="flex:1; min-width:80px; background:rgba(0,0,0,0.2); border-radius:8px; padding:12px; text-align:center;">
+        <div style="font-size:10px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:1px;">Stableford</div>
+        <div style="font-family:'Playfair Display',serif; font-size:28px; color:var(--gold);">${totalStabs}</div>
+      </div>
+      <div style="flex:1; min-width:80px; background:rgba(0,0,0,0.2); border-radius:8px; padding:12px; text-align:center;">
+        <div style="font-size:10px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:1px;">Slag</div>
+        <div style="font-family:'Playfair Display',serif; font-size:28px; color:var(--cream);">${totalStrokes || '–'}</div>
+      </div>
+      <div style="flex:1; min-width:80px; background:rgba(0,0,0,0.2); border-radius:8px; padding:12px; text-align:center;">
+        <div style="font-size:10px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:1px;">🐦 Birdies</div>
+        <div style="font-family:'Playfair Display',serif; font-size:28px; color:var(--gold-light);">${birdies}</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:14px;">${parCard(3)}${parCard(4)}${parCard(5)}</div>
+    ${extremes}
+    <table style="width:100%; border-collapse:collapse; font-size:13px;">
+      <thead><tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
+        <th style="padding:6px 10px; text-align:left; color:var(--cream-dim); font-size:11px; font-weight:400; text-transform:uppercase; letter-spacing:1px;">Hull</th>
+        <th style="padding:6px 10px; text-align:center; color:var(--cream-dim); font-size:11px; font-weight:400; text-transform:uppercase; letter-spacing:1px;">Par</th>
+        <th style="padding:6px 10px; text-align:center; color:var(--cream-dim); font-size:11px; font-weight:400; text-transform:uppercase; letter-spacing:1px;">SI</th>
+        <th style="padding:6px 10px; text-align:center; color:var(--cream-dim); font-size:11px; font-weight:400; text-transform:uppercase; letter-spacing:1px;">Slag</th>
+        <th style="padding:6px 10px; text-align:center; color:var(--cream-dim); font-size:11px; font-weight:400; text-transform:uppercase; letter-spacing:1px;">Poeng</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+  window._currentSummaryPlayer = { fp, playerScores, holes, round, totalHoles };
+  const activeMode = document.getElementById('golfboxTableBtn')?.classList.contains('active') ? 'table' : 'speak';
+  showGolfboxMode(activeMode);
+}
+function calcStablefordStatic(strokes, par, hcp, si, totalHoles) {
+  if (!strokes || !par) return 0;
+  let extra = Math.floor(hcp / totalHoles);
+  if (si <= (hcp % totalHoles)) extra++;
+  return Math.max(0, par - (strokes - extra) + 2);
+}
+function showGolfboxMode(mode) {
+  const tableBtn = document.getElementById('golfboxTableBtn');
+  const speakBtn = document.getElementById('golfboxSpeakBtn');
+  if (tableBtn) tableBtn.classList.toggle('active', mode === 'table');
+  if (speakBtn) speakBtn.classList.toggle('active', mode === 'speak');
+  const el = document.getElementById('golfboxContent');
+  if (!el) return;
+  if (!window._currentSummaryPlayer) {
+    el.innerHTML = '<p style="color:var(--cream-dim);font-size:14px;">Ingen spillerdata. Velg en spiller over.</p>';
+    return;
+  }
+  const { playerScores, holes } = window._currentSummaryPlayer;
+  if (!holes || !holes.length) {
+    el.innerHTML = '<p style="color:var(--cream-dim);font-size:14px;">Ingen hull-data registrert for denne banen.</p>';
+    return;
+  }
+  if (mode === 'table') {
+    const rows = holes.map(h => {
+      const s = playerScores[h.hole_number];
+      const scoreColor = s ? getScoreColor(s, h.par) : 'var(--cream-dim)';
+      return `<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+        <td style="padding:10px 12px; color:var(--cream-dim); font-size:14px;">Hull ${h.hole_number} <span style="font-size:11px;">(Par ${h.par})</span></td>
+        <td style="padding:10px 12px; text-align:right; font-family:'Playfair Display',serif; font-size:22px; color:${scoreColor};">${s || '–'}</td>
+      </tr>`;
+    }).join('');
+    el.innerHTML = `
+      <p style="font-size:13px; color:var(--cream-dim); margin-bottom:12px;">Les av og tast inn i Golfbox/Gimmie:</p>
+      <table style="width:100%; border-collapse:collapse; background:rgba(0,0,0,0.2); border-radius:8px; overflow:hidden;">${rows}</table>`;
+  } else {
+    el.innerHTML = `
+      <p style="font-size:13px; color:var(--cream-dim); margin-bottom:12px;">Trykk på hullet for å lese opp:</p>
+      <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
+        ${holes.map(h => {
+          const s = playerScores[h.hole_number];
+          return `<button onclick="speakHole(${h.hole_number}, ${s||0}, ${h.par})" style="padding:10px 14px; background:rgba(0,0,0,0.2); border:1px solid ${s ? 'rgba(201,168,76,0.3)' : 'rgba(255,255,255,0.1)'}; border-radius:8px; color:${s ? 'var(--gold-light)' : 'var(--cream-dim)'}; cursor:pointer; font-family:'DM Sans',sans-serif; font-size:14px;">
+            Hull ${h.hole_number}: <strong>${s || '–'}</strong>
+          </button>`;
+        }).join('')}
+      </div>
+      <button id="speakAllBtn" onclick="speakAllHoles()" style="width:100%; padding:12px; background:var(--green-mid); border:1px solid rgba(201,168,76,0.3); color:var(--gold-light); border-radius:8px; cursor:pointer; font-family:'DM Sans',sans-serif; font-size:14px; touch-action:manipulation; -webkit-tap-highlight-color:transparent;">
+        🔊 Les opp alle hull
+      </button>`;
+  }
+}
+let _isSpeaking = false;
+
+function speakHole(hole, strokes, par) {
+  if (!strokes) { alert(`Hull ${hole}: ikke registrert`); return; }
+  window.speechSynthesis.cancel();
+  const msg = new SpeechSynthesisUtterance(`Hull ${hole}, ${strokes} slag, ${getScoreName(strokes, par).replace(/[🏆🦅🐦]/g, '')}`);
+  msg.lang = 'no-NO';
+  window.speechSynthesis.speak(msg);
+}
+
+function speakAllHoles() {
+  const btn = document.getElementById('speakAllBtn');
+  if (_isSpeaking) {
+    _isSpeaking = false;
+    window.speechSynthesis.cancel();
+    if (btn) { btn.textContent = '🔊 Les opp alle hull'; btn.style.background = 'var(--green-mid)'; }
+    return;
+  }
+  const { playerScores, holes } = window._currentSummaryPlayer;
+  const items = holes.map(h => {
+    const s = playerScores[h.hole_number];
+    return s ? { text: `Hull ${h.hole_number}, ${s} slag`, hole: h.hole_number } : null;
+  }).filter(Boolean);
+  if (!items.length) return;
+  _isSpeaking = true;
+  if (btn) { btn.textContent = '⏹ Stopp'; btn.style.background = 'var(--danger)'; }
+  window.speechSynthesis.cancel();
+  let i = 0;
+  function speakNext() {
+    if (!_isSpeaking || i >= items.length) {
+      _isSpeaking = false;
+      if (btn) { btn.textContent = '🔊 Les opp alle hull'; btn.style.background = 'var(--green-mid)'; }
+      return;
+    }
+    const msg = new SpeechSynthesisUtterance(items[i].text);
+    msg.lang = 'no-NO';
+    msg.rate = 0.9;
+    msg.onend = () => {
+      i++;
+      setTimeout(speakNext, 300); // liten pause mellom hull
+    };
+    msg.onerror = () => {
+      i++;
+      setTimeout(speakNext, 300);
+    };
+    window.speechSynthesis.speak(msg);
+  }
+  speakNext();
+}
+let _dashboardLoading = false;
+async function loadDashboard() {
+  if (_dashboardLoading) return;
+  _dashboardLoading = true;
+  try {
+    // Fire all queries in parallel
+    const [
+      { data: active },
+      { data: recent },
+      { data: pending },
+      { data: notifs },
+    ] = await Promise.all([
+      db.from('rounds')
+        .select('*, courses(name), flights(id, flight_players(player_id))')
+        .eq('status', 'active').order('created_at', { ascending: false }),
+      db.from('rounds')
+        .select('*, courses(name), flights(id, flight_players(player_id, handicap, profiles(display_name)))')
+        .eq('status', 'completed').order('date', { ascending: false }).limit(8),
+      currentProfile?.is_admin
+        ? db.from('profiles').select('id').eq('is_approved', false)
+        : Promise.resolve({ data: [] }),
+      db.from('notifications')
+        .select('id').eq('player_id', currentProfile?.id).eq('read', false),
+    ]);
+
+    // Aktiv runde
+    const myActive = (active || []).filter(r =>
+      r.flights?.some(f => f.flight_players?.some(fp => fp.player_id === currentProfile?.id))
+    );
+    const dashActive = document.getElementById('dashActiveRound');
+    if (myActive.length) {
+      dashActive.style.display = 'block';
+      dashActive.innerHTML = `<div onclick="openRound('${myActive[0].id}')" style="padding:18px 20px; background:rgba(201,168,76,0.1); border:1px solid rgba(201,168,76,0.3); border-radius:12px; margin-bottom:20px; cursor:pointer;">
+        <div style="font-size:11px; color:var(--gold); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:6px;">🟢 Aktiv runde</div>
+        <div style="font-size:18px; color:var(--cream); font-weight:500;">${myActive[0].courses?.name}</div>
+        <div style="font-size:13px; color:var(--cream-dim); margin-top:4px;">${myActive[0].date} · Trykk for å fortsette</div>
+      </div>`;
+    } else {
+      dashActive.style.display = 'none';
+    }
+
+    // Sist spilte runder
+    const recentEl = document.getElementById('dashRecentRounds');
+    if (!recent?.length) {
+      recentEl.innerHTML = '<div style="text-align:center; padding:40px 20px; color:var(--cream-dim); font-size:14px;">Ingen runder spilt ennå</div>';
+    } else {
+      recentEl.innerHTML = recent.map(r => {
+        const rPlayers = (r.flights || []).flatMap(f => f.flight_players || []);
+        const playerNames = rPlayers.map(fp => fp.profiles?.display_name?.split(' ')[0] || '?').join(' · ');
+        return `<div style="padding:14px 18px; background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.06); border-radius:12px; margin-bottom:8px; cursor:pointer; transition:border-color 0.2s;" onclick="showPage('rounds');" onmouseover="this.style.borderColor='rgba(201,168,76,0.25)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.06)'">
+          <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:4px;">
+            <div style="font-size:15px; color:var(--cream); font-weight:500;">${r.courses?.name || '–'}</div>
+            <div style="font-size:12px; color:var(--cream-dim);">${r.date}</div>
+          </div>
+          <div style="font-size:12px; color:var(--cream-dim);">${playerNames || 'Ingen spillere registrert'}</div>
+        </div>`;
+      }).join('');
+    }
+
+    // Admin: ventende brukere
+    const pendingBanner = document.getElementById('dashPendingBanner');
+    if (currentProfile?.is_admin) {
+      const count = pending?.length || 0;
+      pendingBanner.innerHTML = count > 0 ? `
+        <div style="padding:14px 18px; background:rgba(201,168,76,0.1); border:1px solid rgba(201,168,76,0.4); border-radius:12px; display:flex; justify-content:space-between; align-items:center; gap:12px;">
+          <div>
+            <div style="font-size:11px; color:var(--gold); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:4px;">⏳ Ventende godkjenning</div>
+            <div style="font-size:15px; color:var(--cream);">${count} bruker${count === 1 ? '' : 'e'} venter</div>
+          </div>
+          <button onclick="openPendingUsers()" class="btn btn-auto" style="font-size:13px; padding:8px 18px; flex-shrink:0;">Godkjenn nå</button>
+        </div>` : '';
+    } else {
+      pendingBanner.innerHTML = '';
+    }
+
+    // Notifikasjonsbadge
+    const badge = document.getElementById('notifBadge');
+    if (notifs?.length) {
+      badge.style.display = 'inline-flex'; badge.style.alignItems = 'center'; badge.style.justifyContent = 'center';
+      badge.textContent = notifs.length;
+    } else {
+      badge.style.display = 'none';
+    }
+
+    // HCP-motivasjon – hentes separat (samme mønster som statistikk-seksjonen)
+    const motivEl = document.getElementById('dashMotivation');
+    if (motivEl && currentProfile) {
+      motivEl.innerHTML = '<div style="font-size:12px;color:var(--cream-dim);padding:6px 0;">⏳ Laster HCP-mål…</div>';
+      try {
+        const { data: myDiffs } = await db.from('score_differentials')
+          .select('*').eq('player_id', currentProfile.id)
+          .order('date', { ascending: true });
+        const motiv = _calcHcpMotivation(myDiffs || [], 113, 72, 72, currentProfile?.handicap ?? null);
+        motivEl.innerHTML = motiv ? _renderMotivBanner(motiv, false, true) : '';
+      } catch(e) {
+        motivEl.innerHTML = `<div style="font-size:11px;color:var(--danger);">Feil: ${e.message}</div>`;
+      }
+    }
+  } finally {
+    _dashboardLoading = false;
+  }
+}
+
+// ── PENDING USERS (ADMIN) ──
+async function openPendingUsers() {
+  openModal('modalPendingUsers');
+  await loadPendingUsersList();
+}
+async function loadPendingUsersList() {
+  const el = document.getElementById('pendingUsersList');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div> Laster...</div>';
+  const { data: pending } = await db.from('profiles').select('id, display_name, username, created_at').eq('is_approved', false).order('created_at', { ascending: true });
+  if (!pending?.length) {
+    el.innerHTML = '<div style="text-align:center; padding:32px; color:var(--cream-dim); font-size:14px;">Ingen ventende brukere 🎉</div>';
+    document.getElementById('dashPendingBanner').innerHTML = '';
+    return;
+  }
+  el.innerHTML = pending.map(u => `
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 0; border-bottom:1px solid rgba(255,255,255,0.07);">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <div style="width:38px; height:38px; border-radius:50%; background:var(--green-mid); border:2px solid var(--gold-dim); display:flex; align-items:center; justify-content:center; font-family:'Playfair Display',serif; font-size:14px; font-weight:700; color:var(--gold-light); flex-shrink:0;">${u.display_name?.[0] || '?'}</div>
+        <div>
+          <div style="font-size:14px; color:var(--cream); font-weight:500;">${u.display_name}</div>
+          <div style="font-size:12px; color:var(--cream-dim);">@${u.username}</div>
+        </div>
+      </div>
+      <div style="display:flex; gap:8px; flex-shrink:0;">
+        <button onclick="approvePendingUser('${u.id}','${u.display_name}')" style="padding:7px 14px; border-radius:6px; border:1px solid rgba(82,183,136,0.5); background:rgba(82,183,136,0.15); color:var(--green-light); font-size:13px; cursor:pointer; font-family:'DM Sans',sans-serif; transition:all 0.2s;" onmouseover="this.style.background='rgba(82,183,136,0.3)'" onmouseout="this.style.background='rgba(82,183,136,0.15)'">✓ Godkjenn</button>
+        <button onclick="rejectPendingUser('${u.id}','${u.display_name}')" style="padding:7px 14px; border-radius:6px; border:1px solid rgba(192,57,43,0.4); background:rgba(192,57,43,0.1); color:#e88; font-size:13px; cursor:pointer; font-family:'DM Sans',sans-serif; transition:all 0.2s;" onmouseover="this.style.background='rgba(192,57,43,0.25)'" onmouseout="this.style.background='rgba(192,57,43,0.1)'">✕ Avvis</button>
+      </div>
+    </div>`).join('');
+}
+async function approvePendingUser(userId, displayName) {
+  const { error } = await db.rpc('approve_user', { target_user_id: userId });
+  if (error) { alert('Feil ved godkjenning: ' + error.message); return; }
+  await loadPendingUsersList();
+  await loadDashboard();
+}
+async function rejectPendingUser(userId, displayName) {
+  const confirmed = await showConfirm(`Avvis og slett kontoen til ${displayName}?`, 'Avvis');
+  if (!confirmed) return;
+  await db.from('profiles').delete().eq('id', userId);
+  await loadPendingUsersList();
+  await loadDashboard();
+}
+
+// ── LIVE PAGE ──
+let _liveRefreshInterval = null;
+let _currentLiveRoundId = null;
+let _liveLoading = false;
+
+async function loadLivePage() {
+  if (_liveLoading) return;
+  _liveLoading = true;
+  if (_liveRefreshInterval) { clearInterval(_liveRefreshInterval); _liveRefreshInterval = null; }
+  try {
+    const el = document.getElementById('liveContent');
+    const sub = document.getElementById('liveSubtitle');
+    el.innerHTML = '<div class="loading"><div class="spinner"></div> Laster...</div>';
+
+    const { data: active } = await db.from('rounds')
+      .select('*, courses(name, holes), tee_sets(name, slope), flights(id, name, flight_players(id, player_id, handicap, profiles(display_name)))')
+      .eq('status', 'active')
+      .order('created_at', { ascending: false });
+
+    if (!active?.length) {
+      sub.textContent = 'Ingen aktive runder akkurat nå';
+      el.innerHTML = `
+        <div style="text-align:center; padding:60px 20px; color:var(--cream-dim);">
+          <div style="font-size:48px; margin-bottom:16px;">⛳</div>
+          <div style="font-size:16px; margin-bottom:8px; color:var(--cream);">Ingen aktive runder</div>
+          <div style="font-size:13px;">Når noen starter en runde vil den vises her</div>
+        </div>`;
+      return;
+    }
+
+    const round = active[0];
+    _currentLiveRoundId = round.id;
+    sub.textContent = round.courses?.name + ' · ' + round.date;
+    await renderLiveView(round);
+    _liveRefreshInterval = setInterval(() => loadLivePage(), 20000);
+  } finally {
+    _liveLoading = false;
+  }
+}
+
+async function renderLiveView(round) {
+  const el = document.getElementById('liveContent');
+  const roundId = round.id;
+
+  const { data: scores } = await db.from('scores').select('*').eq('round_id', roundId);
+  const allFP = (round.flights || []).flatMap(f => f.flight_players || []);
+  // Build score map
+  const scoreMap = {};
+  (scores || []).forEach(s => {
+    if (!scoreMap[s.player_id]) scoreMap[s.player_id] = {};
+    scoreMap[s.player_id][s.hole_number] = s.strokes;
+  });
+
+  // Get hole data, filtered by hole_range
+  const { data: holes } = await db.from('holes').select('*').eq('course_id', round.course_id).order('hole_number');
+  const _liveRange = round.hole_range || 'all';
+  const _liveActiveHoles = _liveRange === 'front9' ? (holes||[]).filter(h => h.hole_number <= 9)
+    : _liveRange === 'back9' ? (holes||[]).filter(h => h.hole_number >= 10) : (holes||[]);
+  const holeCount = _liveActiveHoles.length || round.courses?.holes || 18;
+  const holeMap = {};
+  _liveActiveHoles.forEach(h => { holeMap[h.hole_number] = h; });
+  const _livePar = (holes||[]).reduce((s,h) => s + (h.par||0), 0) || 72;
+
+  // Calculate standings
+  const standings = allFP.map(fp => {
+    const playerScores = scoreMap[fp.player_id] || {};
+    let stableford = 0;
+    let holesPlayed = 0;
+    Object.entries(playerScores).forEach(([hn, strokes]) => {
+      if (strokes > 0) {
+        holesPlayed++;
+        const h = holeMap[parseInt(hn)];
+        if (h?.par && h?.stroke_index) {
+          stableford += calcStablefordLive(strokes, h.par, _playingHcp(fp.handicap, round.tee_sets?.slope, round.tee_sets?.course_rating, _livePar), h.stroke_index, 18);
+        }
+      }
+    });
+    return { fp, name: fp.profiles?.display_name || '?', stableford, holesPlayed, scores: playerScores };
+  }).sort((a, b) => b.stableford - a.stableford);
+
+  const maxHole = standings.reduce((max, s) => Math.max(max, s.holesPlayed), 0);
+
+  // Build feed events
+  const feedEvents = [];
+  (scores || []).sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')).slice(0, 12).forEach(s => {
+    if (!s.strokes) return;
+    const h = holeMap[s.hole_number];
+    const fp = allFP.find(p => p.player_id === s.player_id);
+    if (!fp || !h?.par) return;
+    const diff = s.strokes - h.par;
+    let label = '', dot = '#888780', emoji = '';
+    if (s.strokes === 1) { label = 'Hole in One'; dot = '#fac775'; emoji = '🏆'; }
+    else if (diff <= -2) { label = 'Eagle'; dot = '#fac775'; emoji = '🦅'; }
+    else if (diff === -1) { label = 'Birdie'; dot = '#85b7eb'; emoji = '🐦'; }
+    else if (diff === 0) { label = 'Par'; dot = '#888780'; emoji = ''; }
+    else if (diff === 1) { label = 'Bogey'; dot = '#f09595'; emoji = ''; }
+    else { label = `+${diff}`; dot = '#e24b4a'; emoji = ''; }
+    const firstName = (fp.profiles?.display_name || '?').split(' ')[0];
+    feedEvents.push({ hole: s.hole_number, par: h.par, label, dot, emoji, firstName, strokes: s.strokes, created_at: s.created_at });
+  });
+
+  // Scorecards for all players — PGA style
+  const holes9 = _liveActiveHoles.map(h => h.hole_number);
+  function buildScorecard(playerScores, hcp) {
+    return holes9.map(hn => {
+      const h = holeMap[hn];
+      const strokes = playerScores[hn];
+      if (!strokes || !h?.par) return `
+        <div style="text-align:center; padding:2px 1px;">
+          <div style="width:28px; height:28px; margin:0 auto; display:flex; align-items:center; justify-content:center; font-size:13px; color:rgba(255,255,255,0.2);">–</div>
+          <div style="font-size:9px; color:rgba(255,255,255,0.15); margin-top:1px;">–</div>
+        </div>`;
+      const diff = strokes - h.par;
+      const pts = h.stroke_index ? calcStablefordLive(strokes, h.par, hcp || 36, h.stroke_index, 18) : 0;
+
+      // PGA shapes
+      let cellStyle = '';
+      let textColor = 'var(--cream)';
+      if (strokes === 1) {
+        // Hole in one — gull dobbel sirkel
+        cellStyle = `width:28px;height:28px;border-radius:50%;background:#fac775;color:#412402;outline:2px solid #ef9f27;outline-offset:2px;`;
+      } else if (diff <= -2) {
+        // Eagle — gul firkant med dobbel border
+        cellStyle = `width:26px;height:26px;border-radius:2px;background:#faeeda;color:#633806;outline:2px solid #fac775;outline-offset:2px;`;
+      } else if (diff === -1) {
+        // Birdie — blå sirkel
+        cellStyle = `width:28px;height:28px;border-radius:50%;background:transparent;color:#85b7eb;border:2px solid #85b7eb;`;
+      } else if (diff === 0) {
+        // Par — ingen markering
+        cellStyle = `width:28px;height:28px;border-radius:2px;background:transparent;color:var(--cream);`;
+      } else if (diff === 1) {
+        // Bogey — enkel firkant
+        cellStyle = `width:26px;height:26px;border-radius:2px;background:transparent;color:#f09595;border:2px solid #f09595;`;
+      } else {
+        // Dobbelt+ — dobbel firkant (rød fylt)
+        cellStyle = `width:26px;height:26px;border-radius:2px;background:#e24b4a;color:#fff;outline:2px solid #e24b4a;outline-offset:2px;`;
+      }
+
+      return `
+        <div style="text-align:center; padding:2px 1px;">
+          <div style="margin:0 auto; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:600; ${cellStyle}">${strokes}</div>
+          <div style="font-size:9px; color:${pts >= 3 ? '#fac775' : pts === 2 ? 'var(--cream-dim)' : '#f09595'}; margin-top:2px; font-weight:500;">${pts}p</div>
+        </div>`;
+    }).join('');
+  }
+  const allScorecardsHtml = standings.map(s => `
+    <div style="margin-bottom:14px;">
+      <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px; padding-left:2px;">
+        <div style="font-size:13px; color:var(--cream); font-weight:500;">${s.name}</div>
+        <div style="font-size:12px; color:var(--gold);">${s.stableford}p totalt</div>
+      </div>
+      <div style="background:rgba(0,0,0,0.2); border-radius:10px; padding:10px 12px; border:1px solid rgba(255,255,255,0.06);">
+        <div style="display:grid; grid-template-columns:repeat(9,1fr); gap:2px; margin-bottom:4px;">
+          ${holes9.map(hn => {
+            const h = holeMap[hn];
+            return `<div style="text-align:center; font-size:10px; color:var(--cream-dim); padding:1px;">${hn}${h?.par ? `<span style="color:rgba(255,255,255,0.25);font-size:8px;"> p${h.par}</span>` : ''}</div>`;
+          }).join('')}
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(9,1fr); gap:2px;">
+          ${buildScorecard(s.scores, _playingHcp(s.fp.handicap, round.tee_sets?.slope, round.tee_sets?.course_rating, _livePar))}
+        </div>
+      </div>
+    </div>`).join('');
+
+  el.innerHTML = `
+    <div style="background:rgba(201,168,76,0.08); border:1px solid rgba(201,168,76,0.25); border-radius:12px; padding:14px 16px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center;">
+      <div>
+        <div style="font-size:11px; color:var(--gold); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:4px;">🟢 Live · Hull ${maxHole} av ${holeCount}</div>
+        <div style="font-size:16px; color:var(--cream); font-weight:500;">${round.courses?.name}</div>
+        <div style="font-size:12px; color:var(--cream-dim); margin-top:2px;">${round.date} · ${round.tee_sets?.name || ''}</div>
+      </div>
+      <button onclick="shareLiveLink('${roundId}', '${round.courses?.name || ''}')" style="background:rgba(201,168,76,0.15); border:1px solid rgba(201,168,76,0.3); color:var(--gold); padding:10px 14px; border-radius:10px; cursor:pointer; font-size:13px; font-family:'DM Sans',sans-serif; white-space:nowrap;">📤 Del</button>
+    </div>
+
+    <div style="font-size:11px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px;">Leaderboard</div>
+    <div style="background:rgba(0,0,0,0.2); border-radius:12px; overflow:hidden; margin-bottom:16px; border:1px solid rgba(255,255,255,0.06);">
+      ${standings.map((s, i) => {
+        const isLead = i === 0;
+        return `<div style="display:flex; align-items:center; gap:12px; padding:13px 16px; ${i < standings.length-1 ? 'border-bottom:1px solid rgba(255,255,255,0.05)' : ''}; ${isLead ? 'background:rgba(201,168,76,0.07)' : ''};">
+          <div style="font-size:13px; color:var(--cream-dim); min-width:20px; text-align:center;">${i+1}</div>
+          <div style="flex:1;">
+            <div style="font-size:14px; color:var(--cream); font-weight:${isLead ? '600' : '400'};">${s.name}</div>
+            <div style="font-size:11px; color:var(--cream-dim);">HCP ${s.fp.handicap || '–'} · thru ${s.holesPlayed}</div>
+          </div>
+          <div style="font-size:22px; font-weight:600; color:var(--gold); min-width:40px; text-align:right;">${s.stableford}p</div>
+        </div>`;
+      }).join('')}
+    </div>
+
+    ${feedEvents.length ? `
+    <div style="font-size:11px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px;">Live feed</div>
+    <div style="background:rgba(0,0,0,0.2); border-radius:12px; padding:14px 16px; margin-bottom:16px; border:1px solid rgba(255,255,255,0.06);">
+      ${feedEvents.slice(0, 6).map((e, i) => `
+        <div style="display:flex; gap:10px; align-items:flex-start; ${i > 0 ? 'margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.05);' : ''}">
+          <div style="width:8px; height:8px; border-radius:50%; background:${e.dot}; flex-shrink:0; margin-top:5px;"></div>
+          <div>
+            <div style="font-size:13px; font-weight:500; color:var(--cream);">Hull ${e.hole} · Par ${e.par}</div>
+            <div style="font-size:12px; color:var(--cream-dim); margin-top:2px;">${e.firstName} slo ${e.label}${e.emoji ? ' ' + e.emoji : ''} · ${e.strokes} slag</div>
+          </div>
+        </div>`).join('')}
+    </div>` : ''}
+
+    <div style="font-size:11px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px;">Scorecards</div>
+    ${allScorecardsHtml}
+
+    <div style="font-size:11px; color:var(--cream-dim); text-align:center; margin-top:8px;">Oppdateres automatisk hvert 20 sek</div>
+  `;
+}
+
+function calcStablefordLive(strokes, par, hcp, si, totalHoles) {
+  let extra = Math.floor(hcp / totalHoles);
+  if (si <= (hcp % totalHoles)) extra++;
+  return Math.max(0, par - (strokes - extra) + 2);
+}
+
+function showShareRoundModal(roundId, courseName, date) {
+  document.getElementById('shareRoundDesc').textContent = `${courseName} · ${date}`;
+  window._shareRoundId = roundId;
+  window._shareCourseName = courseName;
+  openModal('modalShareRound');
+}
+
+function doShareRound() {
+  shareLiveLink(window._shareRoundId, window._shareCourseName);
+}
+
+function shareLiveLink(roundId, courseName) {
+  const url = `${location.origin}${location.pathname}#live`;
+  const text = `🏌️ ${courseName || 'Golfrunde'} er i gang – følg med live!\n${url}`;
+  if (navigator.share) {
+    navigator.share({ title: 'The Fantastic FORE! – Live', text, url })
+      .catch(() => {});
+  } else {
+    navigator.clipboard?.writeText(url).then(() => {
+      alert('Live-lenke kopiert til utklippstavlen!');
+    }).catch(() => {
+      prompt('Kopier lenken:', url);
+    });
+  }
+}
+
+// URL routing: #live åpner Live-tab direkte
+
+// ── CLAUDE PROXY HELPER ──
+async function callClaudeProxy(fileData, fileType, prompt, maxTokens = 1500) {
+  const mediaType = fileType === 'application/pdf' ? 'application/pdf' : fileType;
+  const contentType = fileType === 'application/pdf' ? 'document' : 'image';
+  const response = await fetch(CLAUDE_PROXY, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SUPABASE_ANON },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: maxTokens,
+      messages: [{ role: 'user', content: [
+        { type: contentType, source: { type: 'base64', media_type: mediaType, data: fileData } },
+        { type: 'text', text: prompt }
+      ]}]
+    })
+  });
+  if (!response.ok) {
+    const errText = await response.text().catch(() => '');
+    throw new Error(`Proxy-feil (${response.status})${errText ? ': ' + errText.slice(0, 200) : ''}`);
+  }
+  const data = await response.json();
+  if (data.error) throw new Error(typeof data.error === 'string' ? data.error : JSON.stringify(data.error));
+  const text = (data.content || []).map(c => c.text || '').join('');
+  if (!text) throw new Error('Tomt svar fra Claude – prøv igjen');
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error('Fant ingen JSON i svaret: ' + text.slice(0, 120));
+  return JSON.parse(jsonMatch[0]);
+}
+
+// ── SLOPE UPLOAD (frittstående fra Baner-siden) ──
+let _slopeFileData = null;
+let _slopeFileType = null;
+let _parsedTees = null;
+function openSlopeUpload() {
+  _slopeFileData = null;
+  _parsedTees = null;
+  document.getElementById('slopeStep1').style.display = 'block';
+  document.getElementById('slopeStep2').style.display = 'none';
+  document.getElementById('slopeStep1Actions').style.display = 'flex';
+  document.getElementById('slopeUploadAlert').innerHTML = '';
+  document.getElementById('slopePreview').style.display = 'none';
+  document.getElementById('slopeAnalyzeBtn').style.display = 'none';
+  document.getElementById('slopeFileImage').value = '';
+  document.getElementById('slopeFilePDF').value = '';
+  document.getElementById('slopeFileName').style.display = 'none';
+  db.from('courses').select('id, name').order('name').then(({ data }) => {
+    const sel = document.getElementById('slopeCourseSelect');
+    sel.innerHTML = '<option value="">Velg bane...</option>' +
+      (data || []).map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  });
+  openModal('modalSlopeUpload');
+}
+function _compressImage(file, maxBytes = 1_000_000) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+      const maxDim = 1600;
+      if (width > maxDim || height > maxDim) {
+        const scale = maxDim / Math.max(width, height);
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      let quality = 0.8;
+      let dataUrl = canvas.toDataURL('image/jpeg', quality);
+      while (dataUrl.split(',')[1].length * 0.75 > maxBytes && quality > 0.05) {
+        quality = +(quality - 0.1).toFixed(1);
+        if (quality < 0.1) quality = 0.05;
+        dataUrl = canvas.toDataURL('image/jpeg', quality);
+      }
+      res({ base64: dataUrl.split(',')[1], dataUrl });
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('Kunne ikke lese bildet')); };
+    img.src = url;
+  });
+}
+async function handleSlopeFile(file) {
+  if (!file) return;
+  _slopeFileType = file.type;
+  const nameEl = document.getElementById('slopeFileName');
+  if (nameEl) { nameEl.textContent = '✓ ' + file.name; nameEl.style.display = 'block'; }
+  if (file.type.startsWith('image/')) {
+    try {
+      const { base64, dataUrl } = await _compressImage(file);
+      _slopeFileData = base64;
+      _slopeFileType = 'image/jpeg';
+      document.getElementById('slopePreviewImg').src = dataUrl;
+      document.getElementById('slopePreview').style.display = 'block';
+    } catch(e) {
+      showAlert('slopeUploadAlert', 'Kunne ikke lese bildet: ' + e.message, 'error');
+      return;
+    }
+  } else {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      _slopeFileData = e.target.result.split(',')[1];
+      document.getElementById('slopePreview').style.display = 'none';
+      checkSlopeReady();
+    };
+    reader.readAsDataURL(file);
+    return;
+  }
+  checkSlopeReady();
+}
+function checkSlopeReady() {
+  const courseSelected = document.getElementById('slopeCourseSelect').value;
+  const hasFile = !!_slopeFileData;
+  document.getElementById('slopeAnalyzeBtn').style.display = (courseSelected && hasFile) ? 'block' : 'none';
+}
+async function analyzeSlopeImage() {
+  const btn = document.getElementById('slopeAnalyzeBtn');
+  btn.textContent = '⏳ Analyserer...';
+  btn.disabled = true;
+  showAlert('slopeUploadAlert', '⏳ Sender til Claude – dette tar noen sekunder...', 'success');
+  try {
+    const parsed = await callClaudeProxy(
+      _slopeFileData, _slopeFileType,
+      'Dette er en slopetabell fra en norsk golfbane. Trekk ut alle tee-sett og returner KUN gyldig JSON:\n{"course_name":"Banens navn","tees":[{"name":"tee-navn","course_rating":72.6,"slope":129,"color":"#hexfarge"}]}\nFarger: gul=#FFD700, hvit=#FFFFFF, blå=#3366CC, rød=#CC3333, svart=#222222. Kun JSON.',
+      1200
+    );
+    _parsedTees = parsed.tees || [];
+    showAlert('slopeUploadAlert', '', 'success');
+    showSlopeReview(parsed);
+  } catch(e) {
+    showAlert('slopeUploadAlert', '⚠️ Analyse feilet: ' + e.message, 'error');
+    btn.textContent = '🔍 Analyser med Claude';
+    btn.disabled = false;
+  }
+}
+function showSlopeReview(parsed) {
+  document.getElementById('slopeStep1').style.display = 'none';
+  document.getElementById('slopeStep1Actions').style.display = 'none';
+  document.getElementById('slopeStep2').style.display = 'block';
+  document.getElementById('slopeReviewContent').innerHTML = `
+    ${parsed.course_name ? `<p style="font-size:14px; color:var(--gold-light); margin-bottom:16px;">📍 Bane: <strong>${parsed.course_name}</strong></p>` : ''}
+    <div style="font-size:11px; color:var(--cream-dim); margin-bottom:8px; display:grid; grid-template-columns:60px 1fr 80px 80px 60px; gap:8px; padding:0 4px;">
+      <span>Farge</span><span>Navn</span><span style="text-align:center;">CR</span><span style="text-align:center;">Slope</span><span></span>
+    </div>
+    ${(parsed.tees || []).map((t, i) => `
+      <div style="display:grid; grid-template-columns:60px 1fr 80px 80px 60px; gap:8px; align-items:center; margin-bottom:8px;">
+        <input type="color" id="review-color-${i}" value="${t.color || '#FFD700'}" style="height:38px; width:100%; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:none; cursor:pointer; padding:2px;">
+        <input type="text" id="review-name-${i}" value="${t.name || ''}" placeholder="Navn" style="padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.3); color:var(--cream); font-size:13px; font-family:'DM Sans',sans-serif;">
+        <input type="number" id="review-cr-${i}" value="${t.course_rating || ''}" placeholder="CR" step="0.1" style="padding:8px 6px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.3); color:var(--cream); font-size:13px; font-family:'DM Sans',sans-serif; text-align:center;">
+        <input type="number" id="review-slope-${i}" value="${t.slope || ''}" placeholder="Slope" style="padding:8px 6px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.3); color:var(--cream); font-size:13px; font-family:'DM Sans',sans-serif; text-align:center;">
+        <button onclick="this.parentElement.remove()" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:18px;padding:4px;">×</button>
+      </div>
+    `).join('')}
+    <button onclick="addReviewRow()" class="btn-sm" style="margin-top:8px;">+ Legg til rad</button>
+  `;
+}
+let _reviewRowCount = 0;
+function addReviewRow() {
+  _reviewRowCount++;
+  const i = 'new_' + _reviewRowCount;
+  const div = document.createElement('div');
+  div.style.cssText = 'display:grid; grid-template-columns:60px 1fr 80px 80px 60px; gap:8px; align-items:center; margin-bottom:8px;';
+  div.innerHTML = `
+    <input type="color" id="review-color-${i}" value="#FFD700" style="height:38px; width:100%; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:none; cursor:pointer; padding:2px;">
+    <input type="text" id="review-name-${i}" value="" placeholder="Navn" style="padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.3); color:var(--cream); font-size:13px; font-family:'DM Sans',sans-serif;">
+    <input type="number" id="review-cr-${i}" value="" placeholder="CR" step="0.1" style="padding:8px 6px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.3); color:var(--cream); font-size:13px; font-family:'DM Sans',sans-serif; text-align:center;">
+    <input type="number" id="review-slope-${i}" value="" placeholder="Slope" style="padding:8px 6px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.3); color:var(--cream); font-size:13px; font-family:'DM Sans',sans-serif; text-align:center;">
+    <button onclick="this.parentElement.remove()" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:18px;padding:4px;">×</button>
+  `;
+  document.getElementById('slopeReviewContent').appendChild(div);
+}
+async function saveSlopeTees() {
+  const courseId = document.getElementById('slopeCourseSelect').value;
+  if (!courseId) { showAlert('slopeUploadAlert', 'Velg en bane først', 'error'); return; }
+  const tees = [];
+  const content = document.getElementById('slopeReviewContent');
+  if (_parsedTees) {
+    for (let i = 0; i < _parsedTees.length; i++) {
+      const name = document.getElementById(`review-name-${i}`)?.value?.trim();
+      const cr = parseFloat(document.getElementById(`review-cr-${i}`)?.value);
+      const slope = parseInt(document.getElementById(`review-slope-${i}`)?.value);
+      const color = document.getElementById(`review-color-${i}`)?.value;
+      if (name) tees.push({ course_id: courseId, name, course_rating: cr || null, slope: slope || null, color: color || null });
+    }
+  }
+  content.querySelectorAll('div[style*="grid-template-columns"]').forEach(row => {
+    const nameEl = row.querySelector('input[type="text"]');
+    const inputs = row.querySelectorAll('input[type="number"]');
+    const colorEl = row.querySelector('input[type="color"]');
+    if (!nameEl) return;
+    const name = nameEl.value.trim();
+    const cr = parseFloat(inputs[0]?.value);
+    const slope = parseInt(inputs[1]?.value);
+    const color = colorEl?.value;
+    if (name && !tees.find(t => t.name === name)) {
+      tees.push({ course_id: courseId, name, course_rating: cr || null, slope: slope || null, color: color || null });
+    }
+  });
+  if (!tees.length) { showAlert('slopeUploadAlert', 'Ingen tee-sett å lagre', 'error'); return; }
+  await db.from('tee_sets').delete().eq('course_id', courseId);
+  const { error } = await db.from('tee_sets').insert(tees);
+  if (error) { showAlert('slopeUploadAlert', 'Feil: ' + error.message, 'error'); return; }
+  closeModal('modalSlopeUpload');
+  loadCourses();
+}
+function backToSlopeUpload() {
+  document.getElementById('slopeStep1').style.display = 'block';
+  document.getElementById('slopeStep1Actions').style.display = 'flex';
+  document.getElementById('slopeStep2').style.display = 'none';
+  const btn = document.getElementById('slopeAnalyzeBtn');
+  btn.textContent = '🔍 Analyser med Claude';
+  btn.disabled = false;
+}
+
+// ── TEE SET EDIT / ADD ──
+function toggleTeeEdit(teeId) {
+  const el = document.getElementById('teeEdit-' + teeId);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+function showAddTeeForm(courseId) {
+  const el = document.getElementById('addTeeForm-' + courseId);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+async function saveTeeEdit(teeId) {
+  const name = document.getElementById('editName-' + teeId)?.value?.trim();
+  if (!name) { alert('Navn er påkrevd'); return; }
+  const slope = parseInt(document.getElementById('editSlope-' + teeId)?.value) || null;
+  const cr = parseFloat(document.getElementById('editCR-' + teeId)?.value) || null;
+  const color = document.getElementById('editColor-' + teeId)?.value || null;
+  const { error } = await db.from('tee_sets').update({ name, slope, course_rating: cr, color }).eq('id', teeId);
+  if (error) { alert('Feil: ' + error.message); return; }
+  openCourseDetail(currentCourseId);
+}
+async function saveNewTee(courseId) {
+  const name = document.getElementById('newTee-name-' + courseId)?.value?.trim();
+  if (!name) { alert('Navn er påkrevd'); return; }
+  const slope = parseInt(document.getElementById('newTee-slope-' + courseId)?.value) || null;
+  const cr = parseFloat(document.getElementById('newTee-cr-' + courseId)?.value) || null;
+  const color = document.getElementById('newTee-color-' + courseId)?.value || null;
+  const { error } = await db.from('tee_sets').insert({ course_id: courseId, name, slope, course_rating: cr, color });
+  if (error) { alert('Feil: ' + error.message); return; }
+  openCourseDetail(currentCourseId);
+}
+
+// ── DELETE FUNCTIONS ──
+async function deleteCourse() {
+  const courseId = currentCourseId;
+  if (!courseId) return;
+  const courseName = document.getElementById('detailCourseName').textContent;
+  const confirmed = await showConfirm('Slette "' + courseName + '"? Dette sletter banen og alle tee-sett.');
+  if (!confirmed) return;
+  await db.from('rounds').update({ course_id: null }).eq('course_id', courseId);
+  const { data: tees } = await db.from('tee_sets').select('id').eq('course_id', courseId);
+  for (const t of (tees || [])) {
+    await db.from('rounds').update({ tee_set_id: null }).eq('tee_set_id', t.id);
+    await db.from('flight_players').update({ tee_set_id: null }).eq('tee_set_id', t.id);
+  }
+  await db.from('tee_sets').delete().eq('course_id', courseId);
+  await db.from('holes').delete().eq('course_id', courseId);
+  await db.from('courses').delete().eq('id', courseId);
+  closeModal('modalCourseDetail');
+  loadCourses();
+}
+async function deleteTeeSet(teeId) {
+  const confirmed = await showConfirm('Slette dette tee-settet?');
+  if (!confirmed) return;
+  await db.from('rounds').update({ tee_set_id: null }).eq('tee_set_id', teeId);
+  await db.from('flight_players').update({ tee_set_id: null }).eq('tee_set_id', teeId);
+  await db.from('tee_sets').delete().eq('id', teeId);
+  openCourseDetail(currentCourseId);
+}
+
+// ── CONFIRM DIALOG ──
+function showConfirm(message, confirmText = 'Slett') {
+  return new Promise(resolve => {
+    const overlay = document.createElement("div");
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;";
+    const box = document.createElement("div");
+    box.style.cssText = "background:var(--green-dark);border:1px solid rgba(201,168,76,0.3);border-radius:12px;padding:28px;max-width:400px;width:100%;";
+    const p = document.createElement("p");
+    p.style.cssText = "color:var(--cream);font-size:15px;margin-bottom:24px;line-height:1.5;";
+    p.textContent = message;
+    const btns = document.createElement("div");
+    btns.style.cssText = "display:flex;gap:12px;justify-content:flex-end;";
+    const no = document.createElement("button");
+    no.textContent = "Avbryt";
+    no.style.cssText = "padding:10px 20px;border-radius:8px;border:1px solid rgba(201,168,76,0.4);background:transparent;color:var(--gold);font-size:14px;cursor:pointer;touch-action:manipulation;";
+    const yes = document.createElement("button");
+    yes.textContent = confirmText;
+    yes.style.cssText = "padding:10px 20px;border-radius:8px;border:none;background:var(--danger);color:white;font-size:14px;cursor:pointer;font-weight:600;touch-action:manipulation;";
+    btns.appendChild(no);
+    btns.appendChild(yes);
+    box.appendChild(p);
+    box.appendChild(btns);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    yes.onclick = () => { overlay.remove(); resolve(true); };
+    no.onclick = () => { overlay.remove(); resolve(false); };
+  });
+}
+
+// ── HULL SCORECARD UPLOAD (fra hull-fanen) ──
+async function analyzeHullScorecard(file, courseId, range) {
+  if (!file) return;
+  const isBack = range === 'back9';
+  const startHole = isBack ? 10 : 1;
+  const endHole = isBack ? 18 : 9;
+  const statusEl = document.getElementById('hullStatus-' + range);
+  if (statusEl) statusEl.innerHTML = '⏳ Analyserer...';
+  const reader = new FileReader();
+  reader.onerror = () => { if (statusEl) statusEl.innerHTML = '<span style="color:var(--danger);">⚠️ Kunne ikke lese filen</span>'; };
+  reader.onload = async (e) => {
+    const fileData = e.target.result.split(',')[1];
+    try {
+      const parsed = await callClaudeProxy(
+        fileData, file.type,
+        `Dette er et scorekort fra en norsk golfbane med hull ${startHole} til ${endHole}. Trekk ut par og stroke index (SI/Index) per hull. Returner KUN JSON: {"holes":[{"hole":${startHole},"par":4,"si":1}]}. Kun JSON.`,
+        2000
+      );
+      const holes = parsed.holes || [];
+      if (!holes.length) throw new Error('Fant ingen hull');
+      holes.forEach(h => {
+        if (h.hole < startHole || h.hole > endHole) return;
+        const parEl = document.getElementById('hpar-' + h.hole);
+        const siEl = document.getElementById('hsi-' + h.hole);
+        if (parEl) parEl.value = h.par;
+        if (siEl) siEl.value = h.si;
+      });
+      if (statusEl) statusEl.innerHTML = `<span style="color:var(--green-light);">✅ ${holes.length} hull lest inn – sjekk og lagre</span>`;
+    } catch(err) {
+      if (statusEl) statusEl.innerHTML = `<span style="color:var(--danger);">⚠️ ${err.message}</span>`;
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+
+// ── START ──
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
+init();
+
+
+async function _resumeScoring() {
+  if (!currentRound?.id) return;
+  // Re-fetch scores in case other players scored while phone was asleep
+  const { data: scores } = await db.from('scores').select('*').eq('round_id', currentRound.id);
+  if (scores) {
+    roundScores = {};
+    scores.forEach(s => {
+      if (!roundScores[s.player_id]) roundScores[s.player_id] = {};
+      roundScores[s.player_id][s.hole_number] = s.strokes;
+    });
+  }
+  renderScoringHole();
+}
+
+let _visibilityDebounce = null;
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && currentProfile) {
+    clearTimeout(_visibilityDebounce);
+    _visibilityDebounce = setTimeout(async () => {
+      // Scoring screen open: restore full state instead of touching other pages
+      if (document.getElementById('scoringScreen')?.style.display !== 'none') {
+        await _resumeScoring();
+        return;
+      }
+      const activePage = document.querySelector('.page.active')?.id?.replace('page-', '');
+      if (activePage === 'dashboard') loadDashboard();
+      else if (activePage === 'rounds') loadRounds();
+      else if (activePage === 'live') loadLivePage();
+      else if (activePage === 'profile') {
+        if (document.getElementById('statsKpis')) loadAndRenderDifferentials();
+        else loadProfilePage();
+      }
+    }, 500);
+  }
+});
