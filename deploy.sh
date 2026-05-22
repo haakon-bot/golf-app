@@ -8,7 +8,7 @@ cd "$(dirname "$0")"
 VERSION=$(grep -oE 'v[0-9]+\.[0-9]+' index.html | head -1)
 TIMESTAMP=$(date '+%Y-%m-%d %H:%M')
 
-git add index.html sw.js manifest.json icon.svg update-version.sh deploy.sh .gitignore
+git add index.html styles.css sw.js manifest.json icon.svg update-version.sh deploy.sh .gitignore
 git commit -m "deploy $VERSION – $TIMESTAMP"
 git push origin main
 
