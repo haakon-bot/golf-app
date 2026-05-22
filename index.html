@@ -94,7 +94,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.78</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.79</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -586,10 +586,8 @@ async function init() {
       // or loadProfile(); it competes with visibilitychange calls and hangs.
       if (document.getElementById('appShell')?.style.display !== 'none') return;
       await loadProfile(session.user.id);
-      if (currentProfile) {
-        if (currentProfile.is_approved === false) { await db.auth.signOut(); showPending(currentProfile.display_name); }
-        else showApp();
-      }
+      if (currentProfile?.is_approved === false) { await db.auth.signOut(); showPending(currentProfile.display_name); return; }
+      showApp();
     }
   });
 }
@@ -761,16 +759,12 @@ async function handleLogin() {
   const { data: fullProfile } = await db.from('profiles').select('email').eq('username', username).single();
   const email = fullProfile?.email;
   if (!email) { showAlert('loginAlert', 'Ingen e-post koblet til brukeren. Kontakt Hawk.', 'error'); return; }
-  const { error } = await db.auth.signInWithPassword({ email, password });
+  const { data: authData, error } = await db.auth.signInWithPassword({ email, password });
   if (error) { showAlert('loginAlert', 'Feil brukernavn eller passord', 'error'); return; }
-  const { data: { session } } = await db.auth.getSession();
-  if (session) {
-    await loadProfile(session.user.id);
-    if (currentProfile) {
-      if (currentProfile.is_approved === false) { await db.auth.signOut(); showPending(currentProfile.display_name); }
-      else showApp();
-    }
-  }
+  const userId = authData?.user?.id;
+  if (userId) await loadProfile(userId);
+  if (currentProfile?.is_approved === false) { await db.auth.signOut(); showPending(currentProfile.display_name); return; }
+  showApp();
 }
 async function handleRegister() {
   const username = document.getElementById('regUsername').value.trim().toLowerCase();

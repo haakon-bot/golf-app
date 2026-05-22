@@ -1,4 +1,4 @@
-const CACHE = 'fore-v57';
+const CACHE = 'fore-v58';
 const PRECACHE = ['./', './styles.css'];
 
 self.addEventListener('install', e => {
