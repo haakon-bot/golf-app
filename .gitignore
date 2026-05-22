@@ -12,5 +12,8 @@
 !styles.css
 !app.js
 !courses.js
+!players.js
+!rounds.js
+!live.js
 !profile.js
 !scoring.js
