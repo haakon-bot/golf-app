@@ -6,7 +6,8 @@
 <title>The Fantastic FORE!</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0d2818">
-<!-- iOS PWA -->
+<!-- PWA -->
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="FORE!">
@@ -18,7 +19,7 @@
 <body>
 <!-- VERSION BANNER REMOVED -->
 <!-- PUBLIC LIVE VIEW (no login required) -->
-<div id="publicLivePage" style="display:none; min-height:100vh; padding:20px; max-width:600px; margin:0 auto;">
+<div id="publicLivePage" style="display:none; min-height:100vh; padding:max(20px, env(safe-area-inset-top)) 20px 20px; max-width:600px; margin:0 auto;">
   <div style="text-align:center; margin-bottom:24px;">
     <div style="font-family:'Playfair Display',serif; font-size:28px; color:var(--gold);">⛳ The Fantastic FORE!</div>
     <div id="publicLiveStatus" style="font-size:12px; color:var(--cream-dim); margin-top:4px; letter-spacing:1px; text-transform:uppercase;"></div>
@@ -30,7 +31,7 @@
   </div>
 </div>
 <!-- LOGIN PAGE -->
-<div id="loginPage" style="display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; padding:20px;">
+<div id="loginPage" style="display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; padding:max(20px, env(safe-area-inset-top)) 20px 20px;">
   <div style="text-align:center; margin-bottom:40px;">
     <div style="font-family:'Playfair Display',serif; font-size:56px; font-weight:900; color:var(--gold); line-height:1;">⛳</div>
     <h1 style="font-family:'Playfair Display',serif; font-size:36px; font-weight:900; color:var(--gold); margin-top:8px; line-height:1.1;">The Fantastic<br><span style="font-size:52px;">FORE!</span></h1>
@@ -81,7 +82,7 @@
   </div>
 </div>
 <!-- PENDING APPROVAL PAGE -->
-<div id="pendingPage" style="display:none; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; padding:20px; text-align:center;">
+<div id="pendingPage" style="display:none; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; padding:max(20px, env(safe-area-inset-top)) 20px 20px; text-align:center;">
   <div style="font-family:'Playfair Display',serif; font-size:48px; color:var(--gold); margin-bottom:8px;">⛳</div>
   <h2 style="font-family:'Playfair Display',serif; font-size:28px; color:var(--gold); margin-bottom:16px;">Venter på godkjenning</h2>
   <div style="background:rgba(26,61,43,0.6); border:1px solid rgba(201,168,76,0.25); border-radius:var(--radius); padding:28px 32px; max-width:360px; width:100%; margin-bottom:24px;">
@@ -94,7 +95,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.84</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.85</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -229,7 +230,7 @@
   </div>
   <!-- SCREEN: Scoring -->
   <div id="scoringScreen" style="display:none; position:fixed; inset:0; background:var(--green-deep); z-index:500; overflow-y:auto; flex-direction:column;">
-    <div style="background:var(--green-dark); padding:14px 16px; border-bottom:1px solid rgba(201,168,76,0.2); display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; z-index:10;">
+    <div style="background:var(--green-dark); padding:max(14px, env(safe-area-inset-top)) 16px 14px; border-bottom:1px solid rgba(201,168,76,0.2); display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; z-index:10;">
       <button onclick="closeScoringScreen()" style="background:none; border:none; color:var(--gold); font-size:22px; cursor:pointer; -webkit-tap-highlight-color:transparent;">←</button>
       <div style="text-align:center;">
         <div id="scCourseName" style="font-family:'Playfair Display',serif; font-size:16px; color:var(--cream);"></div>
