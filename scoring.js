@@ -354,24 +354,38 @@ function renderSkinsTracker() {
   const el = document.getElementById('scSkins');
   if (!strip || !el || !currentRound?.skins_amount) { if (strip) strip.style.display = 'none'; return; }
   strip.style.display = 'block';
-  const allFP = roundFlights.flatMap(f => f.flight_players || []);
-  const { skinsByPlayer, holeResults, remainingPot } = _computeSkins(roundHoles, roundScores, allFP, currentRound);
   const kr = currentRound.skins_amount;
-  const cards = allFP.map(fp => {
-    const n = skinsByPlayer[fp.player_id] || 0;
-    const isLeader = n > 0 && n === Math.max(...allFP.map(f => skinsByPlayer[f.player_id] || 0));
-    return `<div style="flex-shrink:0;text-align:center;padding:7px 12px;border-radius:8px;border:1px solid ${isLeader ? 'rgba(201,168,76,0.4)' : 'rgba(255,255,255,0.07)'};background:${isLeader ? 'rgba(201,168,76,0.15)' : 'rgba(0,0,0,0.2)'};">
-      <div style="font-size:10px;color:var(--cream-dim);">${fp.profiles?.display_name?.split(' ')[0] || '?'}</div>
-      <div style="font-family:'Playfair Display',serif;font-size:18px;color:${isLeader ? 'var(--gold)' : 'var(--cream)'};">${n}</div>
-      <div style="font-size:9px;color:var(--cream-dim);">${n * kr} kr</div>
-    </div>`;
-  });
-  if (remainingPot > 1) cards.push(`<div style="flex-shrink:0;text-align:center;padding:7px 12px;border-radius:8px;border:1px solid rgba(82,183,136,0.3);background:rgba(82,183,136,0.1);">
-    <div style="font-size:10px;color:var(--green-light);">Pott</div>
-    <div style="font-family:'Playfair Display',serif;font-size:18px;color:var(--green-light);">×${remainingPot}</div>
-    <div style="font-size:9px;color:var(--cream-dim);">${remainingPot * kr} kr</div>
-  </div>`);
-  el.innerHTML = cards.join('');
+  const multiFlights = roundFlights.length > 1;
+  const parts = [];
+  for (const flight of roundFlights) {
+    const fp = flight.flight_players || [];
+    if (fp.length < 2) continue;
+    const { skinsByPlayer, remainingPot } = _computeSkins(roundHoles, roundScores, fp, currentRound);
+    const maxSkins = Math.max(...fp.map(f => skinsByPlayer[f.player_id] || 0));
+    const cards = fp.map(p => {
+      const n = skinsByPlayer[p.player_id] || 0;
+      const isLeader = n > 0 && n === maxSkins;
+      return `<div style="flex-shrink:0;text-align:center;padding:7px 12px;border-radius:8px;border:1px solid ${isLeader ? 'rgba(201,168,76,0.4)' : 'rgba(255,255,255,0.07)'};background:${isLeader ? 'rgba(201,168,76,0.15)' : 'rgba(0,0,0,0.2)'};">
+        <div style="font-size:10px;color:var(--cream-dim);">${p.profiles?.display_name?.split(' ')[0] || '?'}</div>
+        <div style="font-family:'Playfair Display',serif;font-size:18px;color:${isLeader ? 'var(--gold)' : 'var(--cream)'};">${n}</div>
+        <div style="font-size:9px;color:var(--cream-dim);">${n * kr} kr</div>
+      </div>`;
+    });
+    if (remainingPot > 1) cards.push(`<div style="flex-shrink:0;text-align:center;padding:7px 12px;border-radius:8px;border:1px solid rgba(82,183,136,0.3);background:rgba(82,183,136,0.1);">
+      <div style="font-size:10px;color:var(--green-light);">Pott</div>
+      <div style="font-family:'Playfair Display',serif;font-size:18px;color:var(--green-light);">×${remainingPot}</div>
+      <div style="font-size:9px;color:var(--cream-dim);">${remainingPot * kr} kr</div>
+    </div>`);
+    if (multiFlights) {
+      parts.push(`<div style="flex-shrink:0;">
+        <div style="font-size:9px;color:var(--cream-dim);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;">${flight.name}</div>
+        <div style="display:flex;gap:6px;">${cards.join('')}</div>
+      </div>`);
+    } else {
+      parts.push(...cards);
+    }
+  }
+  el.innerHTML = parts.join('');
 }
 
 function showLeaderboard() {
@@ -481,64 +495,71 @@ async function showRoundSummary(roundId) {
   if (skinsSummaryEl) {
     if (round.skins_amount && allFP.length > 1) {
       skinsSummaryEl.style.display = 'block';
-      _renderSkinsSummary(round, filteredHoles, sc, allFP, fullCoursePar);
+      _renderSkinsSummary(round, filteredHoles, sc, round.flights || [], fullCoursePar);
     } else {
       skinsSummaryEl.style.display = 'none';
     }
   }
 }
 
-function _renderSkinsSummary(round, holes, sc, allFP, fullCoursePar) {
+function _renderSkinsSummary(round, holes, sc, flights, fullCoursePar) {
   const el = document.getElementById('skinsSummary');
   if (!el) return;
   const savedFcp = _fullCoursePar;
   _fullCoursePar = fullCoursePar;
-  const { skinsByPlayer, holeResults, remainingPot } = _computeSkins(holes, sc, allFP, round);
-  _fullCoursePar = savedFcp;
   const kr = round.skins_amount;
-  const nameOf = id => allFP.find(fp => fp.player_id === id)?.profiles?.display_name?.split(' ')[0] || '?';
-  const holeRows = holeResults.filter(r => !r.noData).map(r => {
-    const sfCells = allFP.map(fp => {
-      const sf = r.sfByPlayer?.[fp.player_id];
-      const isWinner = r.winnerId === fp.player_id;
-      return `<td style="padding:5px 8px;text-align:center;font-family:'Playfair Display',serif;font-size:14px;color:${isWinner ? 'var(--gold)' : sf != null ? 'var(--cream)' : 'var(--cream-dim)'};">${sf != null ? sf + 'p' : '–'}</td>`;
+  const multiFlights = flights.length > 1;
+  const sections = flights.map(flight => {
+    const allFP = flight.flight_players || [];
+    if (allFP.length < 2) return '';
+    const { skinsByPlayer, holeResults, remainingPot } = _computeSkins(holes, sc, allFP, round);
+    const holeRows = holeResults.filter(r => !r.noData).map(r => {
+      const sfCells = allFP.map(fp => {
+        const sf = r.sfByPlayer?.[fp.player_id];
+        const isWinner = r.winnerId === fp.player_id;
+        return `<td style="padding:5px 8px;text-align:center;font-family:'Playfair Display',serif;font-size:14px;color:${isWinner ? 'var(--gold)' : sf != null ? 'var(--cream)' : 'var(--cream-dim)'};">${sf != null ? sf + 'p' : '–'}</td>`;
+      }).join('');
+      const winnerCell = r.noScore ? '<td style="padding:5px 8px;text-align:center;font-size:11px;color:var(--cream-dim);">–</td>'
+        : r.tied ? `<td style="padding:5px 8px;text-align:center;font-size:11px;color:var(--green-light);">↩ Rull</td>`
+        : `<td style="padding:5px 8px;text-align:center;font-size:12px;color:var(--gold);font-weight:600;">${r.winnerName} ×${r.pot}</td>`;
+      return `<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+        <td style="padding:5px 8px;color:var(--cream-dim);font-size:12px;">${r.holeNumber}</td>
+        <td style="padding:5px 8px;text-align:center;color:var(--cream-dim);font-size:12px;">${r.par}</td>
+        ${sfCells}${winnerCell}
+      </tr>`;
     }).join('');
-    const winnerCell = r.noScore ? '<td style="padding:5px 8px;text-align:center;font-size:11px;color:var(--cream-dim);">–</td>'
-      : r.tied ? `<td style="padding:5px 8px;text-align:center;font-size:11px;color:var(--green-light);">↩ Rull</td>`
-      : `<td style="padding:5px 8px;text-align:center;font-size:12px;color:var(--gold);font-weight:600;">${r.winnerName} ×${r.pot}</td>`;
-    return `<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
-      <td style="padding:5px 8px;color:var(--cream-dim);font-size:12px;">${r.holeNumber}</td>
-      <td style="padding:5px 8px;text-align:center;color:var(--cream-dim);font-size:12px;">${r.par}</td>
-      ${sfCells}${winnerCell}
-    </tr>`;
-  }).join('');
-  const headerCells = allFP.map(fp => `<th style="padding:5px 8px;text-align:center;color:var(--cream-dim);font-size:10px;font-weight:400;text-transform:uppercase;letter-spacing:1px;">${fp.profiles?.display_name?.split(' ')[0] || '?'}</th>`).join('');
-  const totals = allFP.map(fp => {
-    const n = skinsByPlayer[fp.player_id] || 0;
-    return { name: fp.profiles?.display_name?.split(' ')[0] || '?', skins: n, kr: n * kr };
-  }).sort((a, b) => b.skins - a.skins);
-  el.innerHTML = `<div style="background:rgba(201,168,76,0.06);border:1px solid rgba(201,168,76,0.25);border-radius:12px;padding:16px;">
-    <div style="font-size:11px;color:var(--gold);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:14px;">🎰 Skins · ${kr} kr per skin</div>
-    <div style="overflow-x:auto;margin-bottom:14px;">
-      <table style="width:100%;border-collapse:collapse;font-size:13px;">
-        <thead><tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
-          <th style="padding:5px 8px;text-align:left;color:var(--cream-dim);font-size:10px;font-weight:400;text-transform:uppercase;letter-spacing:1px;">Hull</th>
-          <th style="padding:5px 8px;text-align:center;color:var(--cream-dim);font-size:10px;font-weight:400;text-transform:uppercase;letter-spacing:1px;">Par</th>
-          ${headerCells}
-          <th style="padding:5px 8px;text-align:center;color:var(--cream-dim);font-size:10px;font-weight:400;text-transform:uppercase;letter-spacing:1px;">Vinner</th>
-        </tr></thead>
-        <tbody>${holeRows}</tbody>
-      </table>
-    </div>
-    ${remainingPot > 0 ? `<div style="font-size:12px;color:var(--green-light);margin-bottom:12px;">⚠️ ${remainingPot} skin(s) uten vinner (siste hull uavgjort)</div>` : ''}
-    <div style="display:flex;gap:10px;flex-wrap:wrap;">
-      ${totals.map((t, i) => `<div style="flex:1;min-width:80px;text-align:center;padding:10px;background:${i === 0 && t.skins > 0 ? 'rgba(201,168,76,0.15)' : 'rgba(0,0,0,0.2)'};border-radius:8px;border:1px solid ${i === 0 && t.skins > 0 ? 'rgba(201,168,76,0.3)' : 'rgba(255,255,255,0.07)'};">
-        <div style="font-size:11px;color:var(--cream-dim);">${t.name}</div>
-        <div style="font-family:'Playfair Display',serif;font-size:22px;color:${i === 0 && t.skins > 0 ? 'var(--gold)' : 'var(--cream)'};">${t.skins}</div>
-        <div style="font-size:12px;color:${t.kr > 0 ? 'var(--green-light)' : 'var(--cream-dim)'};">${t.kr} kr</div>
-      </div>`).join('')}
-    </div>
-  </div>`;
+    const headerCells = allFP.map(fp => `<th style="padding:5px 8px;text-align:center;color:var(--cream-dim);font-size:10px;font-weight:400;text-transform:uppercase;letter-spacing:1px;">${fp.profiles?.display_name?.split(' ')[0] || '?'}</th>`).join('');
+    const totals = allFP.map(fp => {
+      const n = skinsByPlayer[fp.player_id] || 0;
+      return { name: fp.profiles?.display_name?.split(' ')[0] || '?', skins: n, kr: n * kr };
+    }).sort((a, b) => b.skins - a.skins);
+    const flightHeader = multiFlights ? `<div style="font-size:11px;color:var(--cream-dim);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;">${flight.name}</div>` : '';
+    return `<div style="background:rgba(201,168,76,0.06);border:1px solid rgba(201,168,76,0.25);border-radius:12px;padding:16px;${multiFlights ? 'margin-bottom:12px;' : ''}">
+      ${flightHeader}
+      <div style="font-size:11px;color:var(--gold);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:14px;">🎰 Skins · ${kr} kr per skin</div>
+      <div style="overflow-x:auto;margin-bottom:14px;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead><tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
+            <th style="padding:5px 8px;text-align:left;color:var(--cream-dim);font-size:10px;font-weight:400;text-transform:uppercase;letter-spacing:1px;">Hull</th>
+            <th style="padding:5px 8px;text-align:center;color:var(--cream-dim);font-size:10px;font-weight:400;text-transform:uppercase;letter-spacing:1px;">Par</th>
+            ${headerCells}
+            <th style="padding:5px 8px;text-align:center;color:var(--cream-dim);font-size:10px;font-weight:400;text-transform:uppercase;letter-spacing:1px;">Vinner</th>
+          </tr></thead>
+          <tbody>${holeRows}</tbody>
+        </table>
+      </div>
+      ${remainingPot > 0 ? `<div style="font-size:12px;color:var(--green-light);margin-bottom:12px;">⚠️ ${remainingPot} skin(s) uten vinner (siste hull uavgjort)</div>` : ''}
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        ${totals.map((t, i) => `<div style="flex:1;min-width:80px;text-align:center;padding:10px;background:${i === 0 && t.skins > 0 ? 'rgba(201,168,76,0.15)' : 'rgba(0,0,0,0.2)'};border-radius:8px;border:1px solid ${i === 0 && t.skins > 0 ? 'rgba(201,168,76,0.3)' : 'rgba(255,255,255,0.07)'};">
+          <div style="font-size:11px;color:var(--cream-dim);">${t.name}</div>
+          <div style="font-family:'Playfair Display',serif;font-size:22px;color:${i === 0 && t.skins > 0 ? 'var(--gold)' : 'var(--cream)'};">${t.skins}</div>
+          <div style="font-size:12px;color:${t.kr > 0 ? 'var(--green-light)' : 'var(--cream-dim)'};">${t.kr} kr</div>
+        </div>`).join('')}
+      </div>
+    </div>`;
+  }).filter(Boolean);
+  _fullCoursePar = savedFcp;
+  el.innerHTML = sections.join('');
 }
 function showSummaryPlayer(playerId, btn) {
   if (btn) {
