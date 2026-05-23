@@ -158,6 +158,7 @@ async function renderPublicLive() {
 function showApp() {
   document.getElementById('loginPage').style.display = 'none';
   document.getElementById('appShell').style.display = 'block';
+  initUpdateButton();
   document.getElementById('topbarUsername').textContent = currentProfile?.username || '–';
   document.getElementById('dashGreeting').textContent = `Hei, ${currentProfile?.display_name || currentProfile?.username}!`;
   const _golfQuotes = [
@@ -274,6 +275,39 @@ function closeModalOnOverlay(event, id) { if (event.target.id === id) closeModal
 function showAlert(containerId, msg, type) {
   const el = document.getElementById(containerId);
   if (el) el.innerHTML = `<div class="alert alert-${type}">${msg}</div>`;
+}
+
+// ── SW UPDATE ──
+let _updateBtnReady = false;
+function initUpdateButton() {
+  if (_updateBtnReady || !('serviceWorker' in navigator)) return;
+  _updateBtnReady = true;
+  navigator.serviceWorker.getRegistration().then(reg => {
+    if (!reg) return;
+    const markReady = () => {
+      const btn = document.getElementById('navUpdateBtn');
+      if (!btn) return;
+      btn.style.color = 'var(--gold-light)';
+      btn.style.opacity = '1';
+      document.getElementById('updateReadyDot')?.style.setProperty('display', 'block');
+    };
+    if (reg.waiting) markReady();
+    reg.addEventListener('updatefound', () => {
+      reg.installing?.addEventListener('statechange', function() {
+        if (this.state === 'installed' && navigator.serviceWorker.controller) markReady();
+      });
+    });
+  });
+}
+async function forceUpdate() {
+  if (!('serviceWorker' in navigator)) { location.reload(); return; }
+  const reg = await navigator.serviceWorker.getRegistration();
+  if (reg?.waiting) {
+    navigator.serviceWorker.addEventListener('controllerchange', () => location.reload());
+    reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+  } else {
+    location.reload();
+  }
 }
 
 

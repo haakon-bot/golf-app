@@ -1,9 +1,13 @@
-const CACHE = 'fore-v72';
+const CACHE = 'fore-v73';
 const PRECACHE = ['./', './styles.css', './app.js', './courses.js', './players.js', './rounds.js', './live.js', './profile.js', './scoring.js'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(PRECACHE)));
   self.skipWaiting();
+});
+
+self.addEventListener('message', e => {
+  if (e.data?.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('activate', e => {
