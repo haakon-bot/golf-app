@@ -88,6 +88,37 @@ async function renderLiveView(round) {
 
   const maxHole = standings.reduce((max, s) => Math.max(max, s.holesPlayed), 0);
 
+  // Compute skins per flight
+  const skinsMap = {};
+  if (round.skins_amount) {
+    (round.flights || []).forEach(f => {
+      const flightFP = f.flight_players || [];
+      if (flightFP.length < 2) return;
+      const phcpMap = {};
+      flightFP.forEach(fp => { phcpMap[fp.player_id] = _playingHcp(fp.handicap, round.tee_sets?.slope, round.tee_sets?.course_rating, _livePar); });
+      flightFP.forEach(fp => { skinsMap[fp.player_id] = 0; });
+      let pot = 0;
+      for (const h of _liveActiveHoles) {
+        pot++;
+        if (!h.par || !h.stroke_index) continue;
+        let maxSf = -1;
+        const sfByPid = {};
+        let anyScore = false;
+        for (const fp of flightFP) {
+          const s = scoreMap[fp.player_id]?.[h.hole_number];
+          if (!s || s <= 0) continue;
+          anyScore = true;
+          const sf = calcStablefordLive(s, h.par, phcpMap[fp.player_id], h.stroke_index, holeCount);
+          sfByPid[fp.player_id] = sf;
+          if (sf > maxSf) maxSf = sf;
+        }
+        if (!anyScore) continue;
+        const winners = flightFP.filter(fp => sfByPid[fp.player_id] === maxSf && maxSf >= 0);
+        if (winners.length === 1) { skinsMap[winners[0].player_id] += pot; pot = 0; }
+      }
+    });
+  }
+
   // Build feed events
   const feedEvents = [];
   (scores || []).sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')).slice(0, 12).forEach(s => {
@@ -153,7 +184,7 @@ async function renderLiveView(round) {
             <div style="font-size:13px;color:${isLead ? 'var(--gold)' : 'var(--cream-dim)'};text-align:center;">${i+1}</div>
             <div>
               <div style="font-size:14px;color:var(--cream);font-weight:${isLead ? '600' : '400'};">${firstName}</div>
-              <div style="font-size:11px;color:var(--cream-dim);">thru ${s.holesPlayed} · HCP ${s.fp.handicap ?? '–'}</div>
+              <div style="font-size:11px;color:var(--cream-dim);">thru ${s.holesPlayed} · HCP ${s.fp.handicap ?? '–'}${round.skins_amount ? ` · ${skinsMap[s.fp.player_id] ?? 0} skins` : ''}</div>
             </div>
             <div style="text-align:center;min-width:38px;">
               <div style="font-size:10px;color:var(--cream-dim);margin-bottom:2px;">Brutto</div>

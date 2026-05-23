@@ -249,11 +249,6 @@ async function handleLogout() {
 
 // ── NAVIGATION ──
 function showPage(pageId) {
-  // Stop live polling when navigating away
-  if (pageId !== 'live' && _liveRefreshInterval) {
-    clearInterval(_liveRefreshInterval);
-    _liveRefreshInterval = null;
-  }
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   const page = document.getElementById('page-' + pageId);
