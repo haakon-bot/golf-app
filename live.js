@@ -119,10 +119,10 @@ async function renderLiveView(round) {
       const pts = h.stroke_index ? calcStablefordLive(strokes, h.par, hcp, h.stroke_index, 18) : 0;
       let bs = 'width:28px;height:28px;margin:0 auto;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;';
       let col = 'var(--cream)';
-      if (diff <= -2)      { col='#fac775'; bs+='border-radius:50%;border:2px solid #fac775;box-shadow:0 0 0 2px #0d2818,0 0 0 4px #fac775;'; }
-      else if (diff === -1){ col='#85b7eb'; bs+='border-radius:50%;border:2px solid #85b7eb;'; }
-      else if (diff === 1) { col='#f09595'; bs+='border-radius:2px;border:2px solid #f09595;'; }
-      else if (diff >= 2)  { col='#e24b4a'; bs+='border-radius:2px;border:2px solid #e24b4a;box-shadow:0 0 0 2px #0d2818,0 0 0 4px #e24b4a;'; }
+      if (diff <= -2)      { col='#c8c0b0'; bs+='border-radius:50%;border:2px solid #c8c0b0;box-shadow:0 0 0 2px #0d2818,0 0 0 4px #c8c0b0;'; }
+      else if (diff === -1){ col='#c8c0b0'; bs+='border-radius:50%;border:2px solid #c8c0b0;'; }
+      else if (diff === 1) { col='#c8c0b0'; bs+='border-radius:2px;border:2px solid #c8c0b0;'; }
+      else if (diff >= 2)  { col='#c8c0b0'; bs+='border-radius:2px;border:2px solid #c8c0b0;box-shadow:0 0 0 2px #0d2818,0 0 0 4px #c8c0b0;'; }
       return `<div style="text-align:center;padding:4px 1px;"><div style="color:${col};${bs}">${strokes}</div><div style="font-size:9px;color:${pts>=3?'#fac775':pts===2?'rgba(255,255,255,0.5)':'#f09595'};margin-top:3px;font-weight:500;">${pts}p</div></div>`;
     }).join('');
   }
@@ -152,29 +152,33 @@ async function renderLiveView(round) {
       <button onclick="shareLiveLink('${roundId}', '${round.courses?.name || ''}')" style="background:rgba(201,168,76,0.15); border:1px solid rgba(201,168,76,0.3); color:var(--gold); padding:10px 14px; border-radius:10px; cursor:pointer; font-size:13px; font-family:'DM Sans',sans-serif; white-space:nowrap;">📤 Del</button>
     </div>
 
-    <div style="font-size:11px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px;">Leaderboard</div>
+    <div style="font-size:11px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px;">Leaderboard <span style="text-transform:none;letter-spacing:0;font-size:10px;opacity:0.7;">(trykk på spiller for fullt scorecard)</span></div>
     <div style="background:rgba(0,0,0,0.2); border-radius:12px; overflow:hidden; margin-bottom:16px; border:1px solid rgba(255,255,255,0.06);">
       ${standings.map((s, i) => {
         const isLead = i === 0;
         const firstName = s.name.split(' ')[0];
-        return `<div onclick="showLivePlayerScorecard('${s.fp.player_id}')" style="display:grid;grid-template-columns:24px 1fr auto auto auto;align-items:center;gap:8px;padding:12px 16px;${i < standings.length-1 ? 'border-bottom:1px solid rgba(255,255,255,0.05);' : ''}${isLead ? 'background:rgba(201,168,76,0.07);' : ''}cursor:pointer;-webkit-tap-highlight-color:transparent;">
-          <div style="font-size:13px;color:${isLead ? 'var(--gold)' : 'var(--cream-dim)'};text-align:center;">${i+1}</div>
-          <div>
-            <div style="font-size:14px;color:var(--cream);font-weight:${isLead ? '600' : '400'};">${firstName}</div>
-            <div style="font-size:11px;color:var(--cream-dim);">thru ${s.holesPlayed} · HCP ${s.fp.handicap ?? '–'}</div>
+        const scHtml = _scorecardInlineHtml(s.fp, s.scores, _liveActiveHoles, round, _livePar);
+        return `<div style="border-bottom:1px solid rgba(255,255,255,0.05);">
+          <div onclick="toggleLiveScorecardRow('${s.fp.player_id}')" style="display:grid;grid-template-columns:24px 1fr auto auto auto;align-items:center;gap:8px;padding:12px 16px;${isLead ? 'background:rgba(201,168,76,0.07);' : ''}cursor:pointer;-webkit-tap-highlight-color:transparent;">
+            <div style="font-size:13px;color:${isLead ? 'var(--gold)' : 'var(--cream-dim)'};text-align:center;">${i+1}</div>
+            <div>
+              <div style="font-size:14px;color:var(--cream);font-weight:${isLead ? '600' : '400'};">${firstName}</div>
+              <div style="font-size:11px;color:var(--cream-dim);">thru ${s.holesPlayed} · HCP ${s.fp.handicap ?? '–'}</div>
+            </div>
+            <div style="text-align:center;min-width:38px;">
+              <div style="font-size:10px;color:var(--cream-dim);margin-bottom:2px;">Brutto</div>
+              <div style="font-size:14px;font-weight:600;color:${_vsParColor(s.bruttoVsPar)};">${_fmtVsPar(s.bruttoVsPar)}</div>
+            </div>
+            <div style="text-align:center;min-width:38px;">
+              <div style="font-size:10px;color:var(--cream-dim);margin-bottom:2px;">Netto</div>
+              <div style="font-size:14px;font-weight:600;color:${_vsParColor(s.nettoVsPar)};">${_fmtVsPar(s.nettoVsPar)}</div>
+            </div>
+            <div style="text-align:center;min-width:38px;">
+              <div style="font-size:10px;color:var(--cream-dim);margin-bottom:2px;">Stab</div>
+              <div style="font-size:16px;font-weight:600;color:var(--gold);">${s.stableford}p</div>
+            </div>
           </div>
-          <div style="text-align:center;min-width:38px;">
-            <div style="font-size:10px;color:var(--cream-dim);margin-bottom:2px;">Brutto</div>
-            <div style="font-size:14px;font-weight:600;color:${_vsParColor(s.bruttoVsPar)};">${_fmtVsPar(s.bruttoVsPar)}</div>
-          </div>
-          <div style="text-align:center;min-width:38px;">
-            <div style="font-size:10px;color:var(--cream-dim);margin-bottom:2px;">Netto</div>
-            <div style="font-size:14px;font-weight:600;color:${_vsParColor(s.nettoVsPar)};">${_fmtVsPar(s.nettoVsPar)}</div>
-          </div>
-          <div style="text-align:center;min-width:38px;">
-            <div style="font-size:10px;color:var(--cream-dim);margin-bottom:2px;">Stab</div>
-            <div style="font-size:16px;font-weight:600;color:var(--gold);">${s.stableford}p</div>
-          </div>
+          <div id="lvsc-${s.fp.player_id}" style="display:none;padding:0 16px 14px;background:rgba(0,0,0,0.15);">${scHtml}</div>
         </div>`;
       }).join('')}
     </div>
@@ -230,10 +234,10 @@ function shareLiveLink(roundId, courseName) {
     });
   }
 }
-function showLivePlayerScorecard(playerId) {
-  const ctx = window._liveContext;
-  if (!ctx) return;
-  const s = ctx.standings.find(s => s.fp.player_id === playerId);
-  if (!s) return;
-  showPlayerScorecard(s.fp, s.scores, ctx.holes, ctx.round, ctx._livePar);
+function toggleLiveScorecardRow(playerId) {
+  const target = document.getElementById('lvsc-' + playerId);
+  if (!target) return;
+  const isOpen = target.style.display !== 'none';
+  document.querySelectorAll('[id^="lvsc-"]').forEach(e => { e.style.display = 'none'; });
+  if (!isOpen) target.style.display = 'block';
 }
