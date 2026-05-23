@@ -108,6 +108,40 @@ async function renderLiveView(round) {
 
   window._liveContext = { standings, holes: _liveActiveHoles, holeMap, round, _livePar };
 
+  const holeNums = _liveActiveHoles.map(h => h.hole_number);
+  const gridCols = Math.min(holeNums.length, 9);
+  function buildScorecard(playerScores, hcp) {
+    return holeNums.map(hn => {
+      const h = holeMap[hn];
+      const strokes = playerScores[hn];
+      if (!strokes || !h?.par) return `<div style="text-align:center;padding:3px 1px;"><div style="width:28px;height:28px;margin:0 auto;display:flex;align-items:center;justify-content:center;font-size:13px;color:rgba(255,255,255,0.2);">–</div><div style="font-size:9px;color:rgba(255,255,255,0.15);margin-top:2px;">–</div></div>`;
+      const diff = strokes - h.par;
+      const pts = h.stroke_index ? calcStablefordLive(strokes, h.par, hcp, h.stroke_index, 18) : 0;
+      let bs = 'width:28px;height:28px;margin:0 auto;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;';
+      let col = 'var(--cream)';
+      if (diff <= -2)      { col='#fac775'; bs+='border-radius:50%;border:2px solid #fac775;box-shadow:0 0 0 2px #0d2818,0 0 0 4px #fac775;'; }
+      else if (diff === -1){ col='#85b7eb'; bs+='border-radius:50%;border:2px solid #85b7eb;'; }
+      else if (diff === 1) { col='#f09595'; bs+='border-radius:2px;border:2px solid #f09595;'; }
+      else if (diff >= 2)  { col='#e24b4a'; bs+='border-radius:2px;border:2px solid #e24b4a;box-shadow:0 0 0 2px #0d2818,0 0 0 4px #e24b4a;'; }
+      return `<div style="text-align:center;padding:4px 1px;"><div style="color:${col};${bs}">${strokes}</div><div style="font-size:9px;color:${pts>=3?'#fac775':pts===2?'rgba(255,255,255,0.5)':'#f09595'};margin-top:3px;font-weight:500;">${pts}p</div></div>`;
+    }).join('');
+  }
+  const allScorecardsHtml = standings.map(s => `
+    <div style="margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;padding-left:2px;">
+        <div style="font-size:13px;color:var(--cream);font-weight:500;">${s.name}</div>
+        <div style="font-size:12px;color:var(--gold);">${s.stableford}p · thru ${s.holesPlayed}</div>
+      </div>
+      <div style="background:rgba(0,0,0,0.2);border-radius:10px;padding:10px 12px;border:1px solid rgba(255,255,255,0.06);">
+        <div style="display:grid;grid-template-columns:repeat(${gridCols},1fr);gap:2px;margin-bottom:4px;">
+          ${holeNums.map(hn => { const h=holeMap[hn]; return `<div style="text-align:center;font-size:10px;color:var(--cream-dim);padding:1px;">${hn}${h?.par?`<span style="color:rgba(255,255,255,0.25);font-size:8px;"> p${h.par}</span>`:''}</div>`; }).join('')}
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(${gridCols},1fr);gap:2px;">
+          ${buildScorecard(s.scores, s.phcp)}
+        </div>
+      </div>
+    </div>`).join('');
+
   el.innerHTML = `
     <div style="background:rgba(201,168,76,0.08); border:1px solid rgba(201,168,76,0.25); border-radius:12px; padding:14px 16px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center;">
       <div>
@@ -157,6 +191,9 @@ async function renderLiveView(round) {
           </div>
         </div>`).join('')}
     </div>` : ''}
+
+    <div style="font-size:11px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px;">Scorecards</div>
+    ${allScorecardsHtml}
 
     <div style="font-size:11px; color:var(--cream-dim); text-align:center; margin-top:8px;">Oppdateres automatisk hvert 20 sek · Trykk spiller for scorecard</div>
   `;
