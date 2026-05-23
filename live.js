@@ -127,21 +127,6 @@ async function renderLiveView(round) {
       return `<div style="text-align:center;padding:4px 1px;"><div style="color:${col};${bs}">${strokes}</div><div style="font-size:9px;color:${pts>=3?'#fac775':pts===2?'rgba(255,255,255,0.5)':'#f09595'};margin-top:3px;font-weight:500;">${pts}p</div></div>`;
     }).join('');
   }
-  const allScorecardsHtml = standings.map(s => `
-    <div style="margin-bottom:14px;">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;padding-left:2px;">
-        <div style="font-size:13px;color:var(--cream);font-weight:500;">${s.name}</div>
-        <div style="font-size:12px;color:var(--gold);">${s.stableford}p · thru ${s.holesPlayed}</div>
-      </div>
-      <div style="background:rgba(0,0,0,0.2);border-radius:10px;padding:10px 12px;border:1px solid rgba(255,255,255,0.06);">
-        <div style="display:grid;grid-template-columns:repeat(${gridCols},1fr);gap:2px;margin-bottom:4px;">
-          ${holeNums.map(hn => { const h=holeMap[hn]; return `<div style="text-align:center;font-size:10px;color:var(--cream-dim);padding:1px;">${hn}${h?.par?`<span style="color:rgba(255,255,255,0.25);font-size:8px;"> p${h.par}</span>`:''}</div>`; }).join('')}
-        </div>
-        <div style="display:grid;grid-template-columns:repeat(${gridCols},1fr);gap:2px;">
-          ${buildScorecard(s.scores, s.phcp)}
-        </div>
-      </div>
-    </div>`).join('');
 
   el.innerHTML = `
     <div style="background:rgba(201,168,76,0.08); border:1px solid rgba(201,168,76,0.25); border-radius:12px; padding:14px 16px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center;">
@@ -158,7 +143,11 @@ async function renderLiveView(round) {
       ${standings.map((s, i) => {
         const isLead = i === 0;
         const firstName = s.name.split(' ')[0];
-        const scHtml = _scorecardInlineHtml(s.fp, s.scores, _liveActiveHoles, round, _livePar);
+        const scHtml = (() => {
+          const hdr = holeNums.map(hn => { const h=holeMap[hn]; return `<div style="text-align:center;font-size:10px;color:var(--cream-dim);padding:1px;">${hn}${h?.par?`<span style="color:rgba(255,255,255,0.25);font-size:8px;"> p${h.par}</span>`:''}</div>`; }).join('');
+          const cells = buildScorecard(s.scores, s.phcp);
+          return `<div style="background:rgba(0,0,0,0.2);border-radius:10px;padding:10px 12px;border:1px solid rgba(255,255,255,0.06);"><div style="display:grid;grid-template-columns:repeat(${gridCols},1fr);gap:2px;margin-bottom:4px;">${hdr}</div><div style="display:grid;grid-template-columns:repeat(${gridCols},1fr);gap:2px;">${cells}</div></div>`;
+        })();
         return `<div style="border-bottom:1px solid rgba(255,255,255,0.05);">
           <div onclick="toggleLiveScorecardRow('${s.fp.player_id}')" style="display:grid;grid-template-columns:24px 1fr auto auto auto;align-items:center;gap:8px;padding:12px 16px;${isLead ? 'background:rgba(201,168,76,0.07);' : ''}cursor:pointer;-webkit-tap-highlight-color:transparent;">
             <div style="font-size:13px;color:${isLead ? 'var(--gold)' : 'var(--cream-dim)'};text-align:center;">${i+1}</div>
@@ -196,9 +185,6 @@ async function renderLiveView(round) {
           </div>
         </div>`).join('')}
     </div>` : ''}
-
-    <div style="font-size:11px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px;">Scorecards</div>
-    ${allScorecardsHtml}
 
     <div style="font-size:11px; color:var(--cream-dim); text-align:center; margin-top:8px;">Sist oppdatert: ${new Date().toLocaleTimeString('no-NO', {hour:'2-digit',minute:'2-digit',second:'2-digit'})}</div>
   `;
