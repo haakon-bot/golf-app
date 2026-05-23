@@ -95,7 +95,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.90</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.91</span></div>
     <div class="topbar-user">
       <span>Innlogget som <strong id="topbarUsername">–</strong></span>
       <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
@@ -151,7 +151,7 @@
   <div class="page" id="page-live">
     <div class="page-header">
       <div><h1>🟢 Live</h1><p id="liveSubtitle">Sjekker aktive runder...</p></div>
-      <button id="liveRefreshBtn" class="btn btn-auto" onclick="loadLivePage()" style="font-size:12px; padding:8px 16px;">↻ Oppdater</button>
+      <button id="liveRefreshBtn" onclick="loadLivePage()" style="background:var(--gold);color:var(--green-deep);border:none;border-radius:8px;padding:9px 16px;font-size:13px;font-weight:600;font-family:'DM Sans',sans-serif;cursor:pointer;-webkit-tap-highlight-color:transparent;">↻ Oppdater</button>
     </div>
     <div id="liveContent"></div>
   </div>

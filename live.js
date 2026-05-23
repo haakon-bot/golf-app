@@ -150,10 +150,7 @@ async function renderLiveView(round) {
         <div style="font-size:16px; color:var(--cream); font-weight:500;">${round.courses?.name}</div>
         <div style="font-size:12px; color:var(--cream-dim); margin-top:2px;">${round.date} · ${round.tee_sets?.name || ''}</div>
       </div>
-      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
-        <button onclick="loadLivePage()" style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15);color:var(--cream);padding:8px 14px;border-radius:10px;cursor:pointer;font-size:13px;font-family:'DM Sans',sans-serif;white-space:nowrap;-webkit-tap-highlight-color:transparent;">↻ Oppdater</button>
-        <button onclick="shareLiveLink('${roundId}', '${round.courses?.name || ''}')" style="background:rgba(201,168,76,0.15);border:1px solid rgba(201,168,76,0.3);color:var(--gold);padding:8px 14px;border-radius:10px;cursor:pointer;font-size:13px;font-family:'DM Sans',sans-serif;white-space:nowrap;">📤 Del</button>
-      </div>
+      <button onclick="shareLiveLink('${roundId}', '${round.courses?.name || ''}')" style="background:rgba(201,168,76,0.15); border:1px solid rgba(201,168,76,0.3); color:var(--gold); padding:10px 14px; border-radius:10px; cursor:pointer; font-size:13px; font-family:'DM Sans',sans-serif; white-space:nowrap;">📤 Del</button>
     </div>
 
     <div style="font-size:11px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px;">Leaderboard <span style="text-transform:none;letter-spacing:0;font-size:10px;opacity:0.7;">(trykk på spiller for fullt scorecard)</span></div>
