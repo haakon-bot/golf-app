@@ -9,6 +9,7 @@ let currentProfile = null;
 
 // ── AUTH ──
 async function init() {
+  initUpdateButton();
   const { data: { session } } = await db.auth.getSession();
   if (session) {
     await loadProfile(session.user.id);
@@ -286,10 +287,10 @@ function initUpdateButton() {
     if (!reg) return;
     const markReady = () => {
       const btn = document.getElementById('navUpdateBtn');
-      if (!btn) return;
-      btn.style.color = 'var(--gold-light)';
-      btn.style.opacity = '1';
+      if (btn) { btn.style.color = 'var(--gold-light)'; btn.style.opacity = '1'; }
       document.getElementById('updateReadyDot')?.style.setProperty('display', 'block');
+      const pub = document.getElementById('publicUpdateBtn');
+      if (pub) { pub.style.color = 'var(--gold)'; pub.style.opacity = '1'; }
     };
     if (reg.waiting) markReady();
     reg.addEventListener('updatefound', () => {
