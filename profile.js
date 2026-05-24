@@ -660,25 +660,22 @@ async function calculateEstimatedHCP(playerId) {
   const lastImportDate = gimmieDiffs?.length ? gimmieDiffs[0].date : null;
   console.log('Gimmie differentials:', gimmieDiffs?.length ?? 0, '| cutoff:', lastImportDate ?? '(ingen – alle runder teller)');
 
-  // Get all strokes rows for this player so we can sum per round
+  // Get round IDs where this player has scores (used only to narrow the rounds query)
   const { data: scoreRows } = await db.from('scores')
-    .select('round_id, strokes')
+    .select('round_id')
     .eq('player_id', playerId)
     .gt('strokes', 0);
 
   if (!scoreRows?.length) { console.log('→ null: ingen slag i scores-tabellen'); console.groupEnd(); return null; }
 
-  const strokesByRound = {};
-  scoreRows.forEach(s => {
-    strokesByRound[s.round_id] = (strokesByRound[s.round_id] || 0) + s.strokes;
-  });
-  console.log('Runder med slag:', Object.keys(strokesByRound).length, '| slag per runde:', strokesByRound);
+  const roundIdsWithScores = [...new Set(scoreRows.map(s => s.round_id))];
+  console.log('Runder med slag:', roundIdsWithScores.length);
 
   // Fetch completed rounds after the cutoff with tee set data
   let roundsQuery = db.from('rounds')
     .select('id, date, tee_sets(course_rating, slope)')
     .eq('status', 'completed')
-    .in('id', Object.keys(strokesByRound));
+    .in('id', roundIdsWithScores);
 
   if (lastImportDate) roundsQuery = roundsQuery.gt('date', lastImportDate);
 
@@ -687,21 +684,27 @@ async function calculateEstimatedHCP(playerId) {
 
   if (!rounds?.length) { console.log('→ null: ingen nye runder'); console.groupEnd(); return null; }
 
-  // Calculate differential for each new round: (totalStrokes - CR) * 113 / slope
-  const newDifferentials = rounds
-    .filter(r => r.tee_sets?.course_rating && r.tee_sets?.slope)
-    .map(r => {
-      const totalStrokes = strokesByRound[r.id];
-      const holeCount = scoreRows.filter(s => s.round_id === r.id).length;
-      const differential = (totalStrokes - r.tee_sets.course_rating) * 113 / r.tee_sets.slope;
-      console.log(`Runde ${r.date}: totalStrokes=${totalStrokes}, hull=${holeCount}, CR=${r.tee_sets.course_rating}, slope=${r.tee_sets.slope}, diff=${differential.toFixed(2)}`);
-      if (totalStrokes < 50 || differential < 0) {
-        console.log(`  → Hoppet over (ugyldig data)`);
-        return null;
-      }
-      return { date: r.date, differential };
-    })
-    .filter(Boolean);
+  // For each round fetch strokes filtered by BOTH round_id AND player_id to avoid summing other players
+  const newDifferentials = (await Promise.all(
+    rounds
+      .filter(r => r.tee_sets?.course_rating && r.tee_sets?.slope)
+      .map(async r => {
+        const { data: roundScores } = await db.from('scores')
+          .select('strokes')
+          .eq('round_id', r.id)
+          .eq('player_id', playerId)
+          .gt('strokes', 0);
+        const totalStrokes = (roundScores || []).reduce((s, row) => s + row.strokes, 0);
+        const holeCount = (roundScores || []).length;
+        const differential = (totalStrokes - r.tee_sets.course_rating) * 113 / r.tee_sets.slope;
+        console.log(`Runde ${r.date}: totalStrokes=${totalStrokes}, hull=${holeCount}, CR=${r.tee_sets.course_rating}, slope=${r.tee_sets.slope}, diff=${differential.toFixed(2)}`);
+        if (totalStrokes < 50 || differential < 0) {
+          console.log(`  → Hoppet over (ugyldig data)`);
+          return null;
+        }
+        return { date: r.date, differential };
+      })
+  )).filter(Boolean);
 
   console.log('Nye differensialer (etter filtrering):', newDifferentials);
   if (!newDifferentials.length) { console.log('→ null: ingen runder med gyldig tee-data'); console.groupEnd(); return null; }
