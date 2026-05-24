@@ -626,6 +626,70 @@ function _renderHcpGraph(diffs) {
   </svg>`;
 }
 
+async function calculateEstimatedHCP(playerId) {
+  // Fetch gimmie differentials, newest first — newest date is the import cutoff
+  const { data: gimmieDiffs } = await db.from('score_differentials')
+    .select('date, differential')
+    .eq('player_id', playerId)
+    .eq('source', 'gimmie')
+    .order('date', { ascending: false });
+
+  const lastImportDate = gimmieDiffs?.length ? gimmieDiffs[0].date : null;
+
+  // Get all strokes rows for this player so we can sum per round
+  const { data: scoreRows } = await db.from('scores')
+    .select('round_id, strokes')
+    .eq('player_id', playerId)
+    .gt('strokes', 0);
+
+  if (!scoreRows?.length) return null;
+
+  const strokesByRound = {};
+  scoreRows.forEach(s => {
+    strokesByRound[s.round_id] = (strokesByRound[s.round_id] || 0) + s.strokes;
+  });
+
+  // Fetch completed rounds after the cutoff with tee set data
+  let roundsQuery = db.from('rounds')
+    .select('id, date, tee_sets(course_rating, slope)')
+    .eq('status', 'completed')
+    .in('id', Object.keys(strokesByRound));
+
+  if (lastImportDate) roundsQuery = roundsQuery.gt('date', lastImportDate);
+
+  const { data: rounds } = await roundsQuery;
+
+  if (!rounds?.length) return null;
+
+  // Calculate differential for each new round: (totalStrokes - CR) * 113 / slope
+  const newDifferentials = rounds
+    .filter(r => r.tee_sets?.course_rating && r.tee_sets?.slope)
+    .map(r => ({
+      date: r.date,
+      differential: (strokesByRound[r.id] - r.tee_sets.course_rating) * 113 / r.tee_sets.slope
+    }));
+
+  if (!newDifferentials.length) return null;
+
+  // Merge with gimmie differentials, sort by date descending, take 20 most recent
+  const allDiffs = [
+    ...newDifferentials,
+    ...(gimmieDiffs || [])
+      .filter(d => d.differential != null)
+      .map(d => ({ date: d.date, differential: parseFloat(d.differential) }))
+  ].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 20);
+
+  // Take best 8 (lowest differentials), average × 0.96
+  const best8 = [...allDiffs].sort((a, b) => a.differential - b.differential).slice(0, 8);
+  const avg = best8.reduce((s, d) => s + d.differential, 0) / best8.length;
+
+  return {
+    estimatedHCP: +(avg * 0.96).toFixed(1),
+    newRoundsCount: newDifferentials.length,
+    lastImportDate
+  };
+}
+
 function _renderHcpHistoryList(diffs) {
   const el = document.getElementById('hcpHistoryList');
   if (!el) return;
