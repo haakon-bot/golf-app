@@ -2,6 +2,7 @@
 let _profileLoading = false;
 let _profileScoreCache = null;
 let _profileDiffsCache = null;
+let _estimatedHCP = null;
 
 function _makeCollapsibleHTML(id, title, contentHTML) {
   return `<div style="border-radius:12px;overflow:hidden;background:rgba(0,0,0,0.2);border:1px solid rgba(255,255,255,0.07);margin-bottom:2px;">
@@ -74,7 +75,7 @@ async function loadProfilePage() {
       ${_makeCollapsibleHTML('secEditProfile', '✏️ Rediger profil', `
         <div id="profileAlert"></div>
         <div class="form-group"><label>Visningsnavn</label><input type="text" id="editDisplayName" value="${p.display_name || ''}"></div>
-        <div class="form-group"><label>Handicap (følg Golfbox)</label><input type="number" id="editHcp" value="${p.handicap ?? ''}" step="0.1" min="-10" max="54"></div>
+        <div class="form-group"><label>Handicap (følg Golfbox)</label><input type="number" id="editHcp" value="${p.handicap ?? ''}" step="0.1" min="-10" max="54" onfocus="handleHcpInputFocus()"></div>
         <button class="btn btn-auto" onclick="saveProfile()">Lagre endringer</button>
       `)}
       ${_makeCollapsibleHTML('secPassword', '🔐 Bytt passord', `
@@ -239,6 +240,17 @@ async function _lazyLoadAlleRunder() {
     <div style="font-family:${r.source === 'fore' ? "'Playfair Display',serif" : "'DM Sans',sans-serif"};font-size:${r.source === 'fore' ? '16' : '11'}px;color:${r.source === 'fore' ? 'var(--gold)' : 'var(--cream-dim)'};flex-shrink:0;${r.source !== 'fore' ? 'background:rgba(201,168,76,0.12);padding:2px 7px;border-radius:4px;' : ''}">${r.right}</div>
   </div>`).join('');
 }
+function handleHcpInputFocus() {
+  if (!_estimatedHCP) return;
+  const ok = confirm(
+    `Estimert HCP: ${_estimatedHCP.estimatedHCP}\nBasert på ${_estimatedHCP.newRoundsCount} runder siden siste Golfbox-import.\n\nVil du overskrive Golfbox-data med manuell HCP?`
+  );
+  if (!ok) {
+    document.getElementById('editHcp')?.blur();
+    return;
+  }
+}
+
 async function changePassword() {
   const p1 = document.getElementById('newPassword1').value;
   const p2 = document.getElementById('newPassword2').value;
@@ -518,8 +530,12 @@ async function loadAndRenderDifferentials() {
     const diffs = data || [];
     _profileDiffsCache = diffs;
     _renderGolfboxImportList(diffs);
-    const sfStats = await _fetchStablefordStats(currentProfile.id, diffs, currentProfile?.handicap ?? null);
-    _renderStatCards(diffs, sfStats);
+    const [sfStats, estimate] = await Promise.all([
+      _fetchStablefordStats(currentProfile.id, diffs, currentProfile?.handicap ?? null),
+      calculateEstimatedHCP(currentProfile.id)
+    ]);
+    _estimatedHCP = estimate;
+    _renderStatCards(diffs, sfStats, estimate);
     const smEl = document.getElementById('statsMotivation');
     if (smEl) {
       const motiv = _calcHcpMotivation(diffs, 113, 72, 72, currentProfile?.handicap ?? null);
@@ -534,7 +550,7 @@ async function loadAndRenderDifferentials() {
   }
 }
 
-function _renderStatCards(diffs, sfStats) {
+function _renderStatCards(diffs, sfStats, estimate) {
   const el = document.getElementById('statsKpis');
   if (!el) return;
   if (!diffs.length) {
@@ -570,6 +586,11 @@ function _renderStatCards(diffs, sfStats) {
         <div style="${labelStyle}">HCP nå</div>
         <div style="${bigStyle}color:var(--cream);">${hcpNow != null ? hcpNow.toFixed(1) : '–'}</div>
         <div style="font-size:13px;color:${trendColor};margin-top:6px;font-weight:600;min-height:18px;">${trendArrow !== '–' ? trendArrow + ' ' + trendLabel : (hcpNow != null ? '<span style="color:var(--cream-dim);font-size:11px;">stabil</span>' : '')}</div>
+        ${estimate ? `<div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.07);">
+          <div style="font-size:9px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">Estimert HCP</div>
+          <div style="font-family:'Playfair Display',serif;font-size:20px;color:var(--gold-light);line-height:1;">${estimate.estimatedHCP}</div>
+          <div style="font-size:9px;color:rgba(255,255,255,0.3);margin-top:3px;">basert på ${estimate.newRoundsCount} runder siden siste Golfbox-import</div>
+        </div>` : ''}
       </div>
       <div style="flex:1;${cardStyle}">
         <div style="${labelStyle}">Beste 18h runde</div>
