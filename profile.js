@@ -690,12 +690,20 @@ async function calculateEstimatedHCP(playerId) {
   // Calculate differential for each new round: (totalStrokes - CR) * 113 / slope
   const newDifferentials = rounds
     .filter(r => r.tee_sets?.course_rating && r.tee_sets?.slope)
-    .map(r => ({
-      date: r.date,
-      differential: (strokesByRound[r.id] - r.tee_sets.course_rating) * 113 / r.tee_sets.slope
-    }));
+    .map(r => {
+      const totalStrokes = strokesByRound[r.id];
+      const holeCount = scoreRows.filter(s => s.round_id === r.id).length;
+      const differential = (totalStrokes - r.tee_sets.course_rating) * 113 / r.tee_sets.slope;
+      console.log(`Runde ${r.date}: totalStrokes=${totalStrokes}, hull=${holeCount}, CR=${r.tee_sets.course_rating}, slope=${r.tee_sets.slope}, diff=${differential.toFixed(2)}`);
+      if (totalStrokes < 50 || differential < 0) {
+        console.log(`  → Hoppet over (ugyldig data)`);
+        return null;
+      }
+      return { date: r.date, differential };
+    })
+    .filter(Boolean);
 
-  console.log('Nye differensialer:', newDifferentials);
+  console.log('Nye differensialer (etter filtrering):', newDifferentials);
   if (!newDifferentials.length) { console.log('→ null: ingen runder med gyldig tee-data'); console.groupEnd(); return null; }
 
   // Merge with gimmie differentials, sort by date descending, take 20 most recent
@@ -709,8 +717,8 @@ async function calculateEstimatedHCP(playerId) {
   console.log('Samlet (maks 20 nyeste):', allDiffs.length, allDiffs);
 
   // Take best 8 (lowest differentials), average × 0.96
-  const best8 = [...allDiffs].sort((a, b) => a.differential - b.differential).slice(0, 8);
-  const avg = best8.reduce((s, d) => s + d.differential, 0) / best8.length;
+  const best8 = [...allDiffs].sort((a, b) => parseFloat(a.differential) - parseFloat(b.differential)).slice(0, 8);
+  const avg = best8.reduce((s, d) => s + parseFloat(d.differential), 0) / best8.length;
   const estimatedHCP = +(avg * 0.96).toFixed(1);
 
   console.log('Beste 8:', best8.map(d => d.differential.toFixed(2)));
