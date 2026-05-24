@@ -648,6 +648,8 @@ function _renderHcpGraph(diffs) {
 }
 
 async function calculateEstimatedHCP(playerId) {
+  console.group('calculateEstimatedHCP');
+
   // Fetch gimmie differentials, newest first — newest date is the import cutoff
   const { data: gimmieDiffs } = await db.from('score_differentials')
     .select('date, differential')
@@ -656,6 +658,7 @@ async function calculateEstimatedHCP(playerId) {
     .order('date', { ascending: false });
 
   const lastImportDate = gimmieDiffs?.length ? gimmieDiffs[0].date : null;
+  console.log('Gimmie differentials:', gimmieDiffs?.length ?? 0, '| cutoff:', lastImportDate ?? '(ingen – alle runder teller)');
 
   // Get all strokes rows for this player so we can sum per round
   const { data: scoreRows } = await db.from('scores')
@@ -663,12 +666,13 @@ async function calculateEstimatedHCP(playerId) {
     .eq('player_id', playerId)
     .gt('strokes', 0);
 
-  if (!scoreRows?.length) return null;
+  if (!scoreRows?.length) { console.log('→ null: ingen slag i scores-tabellen'); console.groupEnd(); return null; }
 
   const strokesByRound = {};
   scoreRows.forEach(s => {
     strokesByRound[s.round_id] = (strokesByRound[s.round_id] || 0) + s.strokes;
   });
+  console.log('Runder med slag:', Object.keys(strokesByRound).length, '| slag per runde:', strokesByRound);
 
   // Fetch completed rounds after the cutoff with tee set data
   let roundsQuery = db.from('rounds')
@@ -679,8 +683,9 @@ async function calculateEstimatedHCP(playerId) {
   if (lastImportDate) roundsQuery = roundsQuery.gt('date', lastImportDate);
 
   const { data: rounds } = await roundsQuery;
+  console.log('Fullførte runder etter cutoff:', rounds?.length ?? 0, rounds?.map(r => ({ date: r.date, cr: r.tee_sets?.course_rating, slope: r.tee_sets?.slope })));
 
-  if (!rounds?.length) return null;
+  if (!rounds?.length) { console.log('→ null: ingen nye runder'); console.groupEnd(); return null; }
 
   // Calculate differential for each new round: (totalStrokes - CR) * 113 / slope
   const newDifferentials = rounds
@@ -690,7 +695,8 @@ async function calculateEstimatedHCP(playerId) {
       differential: (strokesByRound[r.id] - r.tee_sets.course_rating) * 113 / r.tee_sets.slope
     }));
 
-  if (!newDifferentials.length) return null;
+  console.log('Nye differensialer:', newDifferentials);
+  if (!newDifferentials.length) { console.log('→ null: ingen runder med gyldig tee-data'); console.groupEnd(); return null; }
 
   // Merge with gimmie differentials, sort by date descending, take 20 most recent
   const allDiffs = [
@@ -700,15 +706,20 @@ async function calculateEstimatedHCP(playerId) {
       .map(d => ({ date: d.date, differential: parseFloat(d.differential) }))
   ].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 20);
 
+  console.log('Samlet (maks 20 nyeste):', allDiffs.length, allDiffs);
+
   // Take best 8 (lowest differentials), average × 0.96
   const best8 = [...allDiffs].sort((a, b) => a.differential - b.differential).slice(0, 8);
   const avg = best8.reduce((s, d) => s + d.differential, 0) / best8.length;
+  const estimatedHCP = +(avg * 0.96).toFixed(1);
 
-  return {
-    estimatedHCP: +(avg * 0.96).toFixed(1),
-    newRoundsCount: newDifferentials.length,
-    lastImportDate
-  };
+  console.log('Beste 8:', best8.map(d => d.differential.toFixed(2)));
+  console.log('Snitt:', avg.toFixed(4), '× 0.96 =', estimatedHCP);
+
+  const result = { estimatedHCP, newRoundsCount: newDifferentials.length, lastImportDate };
+  console.log('→ Resultat:', result);
+  console.groupEnd();
+  return result;
 }
 
 function _renderHcpHistoryList(diffs) {
