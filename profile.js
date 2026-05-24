@@ -673,7 +673,7 @@ async function calculateEstimatedHCP(playerId) {
 
   // Fetch completed rounds after the cutoff with tee set data
   let roundsQuery = db.from('rounds')
-    .select('id, date, tee_sets(course_rating, slope)')
+    .select('id, date, hole_range, tee_sets(course_rating, slope)')
     .eq('status', 'completed')
     .in('id', roundIdsWithScores);
 
@@ -696,9 +696,12 @@ async function calculateEstimatedHCP(playerId) {
           .gt('strokes', 0);
         const totalStrokes = (roundScores || []).reduce((s, row) => s + row.strokes, 0);
         const holeCount = (roundScores || []).length;
-        const differential = (totalStrokes - r.tee_sets.course_rating) * 113 / r.tee_sets.slope;
-        console.log(`Runde ${r.date}: totalStrokes=${totalStrokes}, hull=${holeCount}, CR=${r.tee_sets.course_rating}, slope=${r.tee_sets.slope}, diff=${differential.toFixed(2)}`);
-        if (totalStrokes < 50 || differential < 0) {
+        const is9Hole = holeCount <= 9 || r.hole_range === 'front9' || r.hole_range === 'back9';
+        const effectiveCR = is9Hole ? r.tee_sets.course_rating * 2 : r.tee_sets.course_rating;
+        const minStrokes = is9Hole ? 25 : 50;
+        const differential = (totalStrokes - effectiveCR) * 113 / r.tee_sets.slope;
+        console.log(`Runde ${r.date}: totalStrokes=${totalStrokes}, hull=${holeCount}, 9h=${is9Hole}, CR=${effectiveCR}, slope=${r.tee_sets.slope}, diff=${differential.toFixed(2)}`);
+        if (totalStrokes < minStrokes || differential < 0) {
           console.log(`  → Hoppet over (ugyldig data)`);
           return null;
         }
