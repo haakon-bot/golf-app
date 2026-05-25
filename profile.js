@@ -789,7 +789,7 @@ async function calculateEstimatedHCP(playerId) {
 
   // Merge with gimmie differentials, sort by date descending, take 20 most recent
   const allDiffs = [
-    ...newDifferentials,
+    ...newDifferentials.map(d => ({ date: d.date, differential: parseFloat(d.differential) })),
     ...(gimmieDiffs || [])
       .filter(d => d.differential != null)
       .map(d => ({ date: d.date, differential: parseFloat(d.differential) }))
@@ -799,7 +799,6 @@ async function calculateEstimatedHCP(playerId) {
 
   // Take best 8 (lowest differentials), straight average — no WHS multiplier
   const best8 = [...allDiffs]
-    .map(d => ({ ...d, differential: parseFloat(d.differential) }))
     .sort((a, b) => a.differential - b.differential)
     .slice(0, 8);
   const avg = best8.reduce((s, d) => s + d.differential, 0) / best8.length;
