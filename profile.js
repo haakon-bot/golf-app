@@ -812,7 +812,7 @@ async function calculateEstimatedHCP(playerId) {
 
   const finalBest8 = [...rollingWindow].sort((a, b) => a.differential - b.differential).slice(0, 8);
   const finalAvg = finalBest8.reduce((s, d) => s + d.differential, 0) / finalBest8.length;
-  const estimatedHCP = +finalAvg.toFixed(1);
+  const estimatedHCP = finalAvg.toFixed(1);
 
   console.log('Endelig beste 8:', finalBest8.map(d => `${d.date}: ${d.differential.toFixed(2)}`));
   console.log(`Snitt: ${finalAvg.toFixed(4)} = ${estimatedHCP} (offisiell HCP: ${currentProfile.handicap})`);
