@@ -613,7 +613,7 @@ function _renderStatCards(diffs, sfStats, estimate) {
         ${estimate ? `<div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.07);">
           <div style="font-size:9px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">Estimert HCP</div>
           <div style="font-family:'Playfair Display',serif;font-size:20px;color:var(--gold-light);line-height:1;">${estimate.estimatedHCP}</div>
-          <div style="font-size:9px;color:rgba(255,255,255,0.3);margin-top:3px;">basert på ${estimate.newRoundsCount} runder siden siste Golfbox-import</div>
+          <div style="font-size:9px;color:rgba(255,255,255,0.3);margin-top:3px;">${estimate.newRoundsCount > 0 ? `basert på ${estimate.newRoundsCount} runder siden siste Golfbox-import` : 'basert på Golfbox-historikk'}</div>
         </div>` : ''}
       </div>
       <div style="flex:1;${cardStyle}">
@@ -695,78 +695,78 @@ async function calculateEstimatedHCP(playerId) {
     .eq('player_id', playerId)
     .gt('strokes', 0);
 
-  if (!scoreRows?.length) return null;
+  let newDifferentials = [];
 
-  const roundIdsWithScores = [...new Set(scoreRows.map(s => s.round_id))];
+  if (scoreRows?.length) {
+    const roundIdsWithScores = [...new Set(scoreRows.map(s => s.round_id))];
 
-  // Fetch completed rounds after the cutoff with tee set data
-  let roundsQuery = db.from('rounds')
-    .select('id, date, hole_range, course_id, tee_sets(course_rating, slope)')
-    .eq('status', 'completed')
-    .in('id', roundIdsWithScores);
+    // Fetch completed rounds after the cutoff with tee set data
+    let roundsQuery = db.from('rounds')
+      .select('id, date, hole_range, course_id, tee_sets(course_rating, slope)')
+      .eq('status', 'completed')
+      .in('id', roundIdsWithScores);
 
-  if (lastImportDate) roundsQuery = roundsQuery.gt('date', lastImportDate);
+    if (lastImportDate) roundsQuery = roundsQuery.gt('date', lastImportDate);
 
-  const { data: rounds } = await roundsQuery;
+    const { data: rounds } = await roundsQuery;
 
-  if (!rounds?.length) return null;
+    if (rounds?.length) {
+      // For each round fetch strokes filtered by BOTH round_id AND player_id to avoid summing other players
+      newDifferentials = (await Promise.all(
+        rounds
+          .filter(r => r.tee_sets?.course_rating && r.tee_sets?.slope)
+          .map(async r => {
+            const { data: roundScores } = await db.from('scores')
+              .select('hole_number, strokes')
+              .eq('round_id', r.id)
+              .eq('player_id', playerId)
+              .gt('strokes', 0);
+            const holeCount = (roundScores || []).length;
+            const is9Hole = holeCount <= 9 || r.hole_range === 'front9' || r.hole_range === 'back9';
 
-  // For each round fetch strokes filtered by BOTH round_id AND player_id to avoid summing other players
-  const newDifferentials = (await Promise.all(
-    rounds
-      .filter(r => r.tee_sets?.course_rating && r.tee_sets?.slope)
-      .map(async r => {
-        const { data: roundScores } = await db.from('scores')
-          .select('hole_number, strokes')
-          .eq('round_id', r.id)
-          .eq('player_id', playerId)
-          .gt('strokes', 0);
-        const holeCount = (roundScores || []).length;
-        const is9Hole = holeCount <= 9 || r.hole_range === 'front9' || r.hole_range === 'back9';
+            if (is9Hole) {
+              // Fetch ALL 18 holes for the course to compute netto par for unplayed holes
+              const { data: allHoles } = await db.from('holes')
+                .select('hole_number, par, stroke_index')
+                .eq('course_id', r.course_id)
+                .order('hole_number');
 
-        if (is9Hole) {
-          // Fetch ALL 18 holes for the course to compute netto par for unplayed holes
-          const { data: allHoles } = await db.from('holes')
-            .select('hole_number, par, stroke_index')
-            .eq('course_id', r.course_id)
-            .order('hole_number');
+              const cr = r.tee_sets.course_rating;
+              const slope = r.tee_sets.slope;
+              const coursePar18 = (allHoles || []).reduce((s, h) => s + (h.par || 0), 0) || 72;
+              const phcp = _playingHcp(currentProfile.handicap, slope, cr, coursePar18);
 
-          const cr = r.tee_sets.course_rating;
-          const slope = r.tee_sets.slope;
-          const coursePar18 = (allHoles || []).reduce((s, h) => s + (h.par || 0), 0) || 72;
-          const phcp = _playingHcp(currentProfile.handicap, slope, cr, coursePar18);
+              const strokeMap = {};
+              (roundScores || []).forEach(s => { strokeMap[s.hole_number] = s.strokes; });
 
-          const strokeMap = {};
-          (roundScores || []).forEach(s => { strokeMap[s.hole_number] = s.strokes; });
+              const totalStrokesPlayed = (roundScores || []).reduce((s, row) => s + row.strokes, 0);
+              const playedHoleNums = new Set(Object.keys(strokeMap).map(Number));
 
-          const totalStrokesPlayed = (roundScores || []).reduce((s, row) => s + row.strokes, 0);
-          const playedHoleNums = new Set(Object.keys(strokeMap).map(Number));
+              // For each unplayed hole, compute netto par = par + tildelte
+              let unplayedNettoParSum = 0;
+              for (const h of (allHoles || [])) {
+                if (playedHoleNums.has(h.hole_number) || !h.par || !h.stroke_index) continue;
+                let tildelte = Math.floor(phcp / 18);
+                if (h.stroke_index <= (phcp % 18)) tildelte++;
+                unplayedNettoParSum += h.par + tildelte;
+              }
 
-          // For each unplayed hole, compute netto par = par + tildelte
-          let unplayedNettoParSum = 0;
-          for (const h of (allHoles || [])) {
-            if (playedHoleNums.has(h.hole_number) || !h.par || !h.stroke_index) continue;
-            let tildelte = Math.floor(phcp / 18);
-            if (h.stroke_index <= (phcp % 18)) tildelte++;
-            unplayedNettoParSum += h.par + tildelte;
-          }
+              const adjustedGross = totalStrokesPlayed + unplayedNettoParSum;
+              const differential = (adjustedGross - cr) * 113 / slope;
 
-          const adjustedGross = totalStrokesPlayed + unplayedNettoParSum;
-          const differential = (adjustedGross - cr) * 113 / slope;
+              if (differential < 0) return null;
+              return { date: r.date, differential };
+            }
 
-          if (differential < 0) return null;
-          return { date: r.date, differential };
-        }
-
-        // 18-hole: simple stroke differential
-        const totalStrokes = (roundScores || []).reduce((s, row) => s + row.strokes, 0);
-        const differential = (totalStrokes - r.tee_sets.course_rating) * 113 / r.tee_sets.slope;
-        if (totalStrokes < 50 || differential < 0) return null;
-        return { date: r.date, differential };
-      })
-  )).filter(Boolean);
-
-  if (!newDifferentials.length) return null;
+            // 18-hole: simple stroke differential
+            const totalStrokes = (roundScores || []).reduce((s, row) => s + row.strokes, 0);
+            const differential = (totalStrokes - r.tee_sets.course_rating) * 113 / r.tee_sets.slope;
+            if (totalStrokes < 50 || differential < 0) return null;
+            return { date: r.date, differential };
+          })
+      )).filter(Boolean);
+    }
+  }
 
   // Simulate Gimmie's rolling window starting from existing gimmie history as baseline
   const gimmieBaseline = (gimmieDiffs || [])
@@ -784,6 +784,8 @@ async function calculateEstimatedHCP(playerId) {
     rollingWindow.unshift(d);
     if (rollingWindow.length > 20) rollingWindow.pop();
   }
+
+  if (!rollingWindow.length) return null;
 
   const finalBest8 = [...rollingWindow].sort((a, b) => a.differential - b.differential).slice(0, 8);
   const finalAvg = finalBest8.reduce((s, d) => s + d.differential, 0) / finalBest8.length;
