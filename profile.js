@@ -470,11 +470,19 @@ async function saveGolfboxHistory() {
     .delete()
     .eq('player_id', currentProfile.id)
     .eq('source', 'gimmie');
+
+  // Build set of existing date+differential keys (any source) to skip true duplicates
+  const { data: existingRows } = await db.from('score_differentials')
+    .select('date, differential')
+    .eq('player_id', currentProfile.id);
+  const existingKeys = new Set((existingRows || []).map(r => `${r.date}|${r.differential}`));
+
   let saved = 0, skipped = 0;
   for (let i = 0; i < _golfboxParsed.length; i++) {
     btn.textContent = `⏳ Lagrer ${i + 1} av ${_golfboxParsed.length}…`;
     const r = _golfboxParsed[i];
-    const { error } = await db.from('score_differentials').upsert({
+    if (existingKeys.has(`${r.date}|${r.differential}`)) { skipped++; continue; }
+    const { error } = await db.from('score_differentials').insert({
       player_id: currentProfile.id,
       date: r.date,
       differential: r.differential,
@@ -482,7 +490,7 @@ async function saveGolfboxHistory() {
       course_name: r.course_name || null,
       hcp_before: r.hcp_before ?? null,
       hcp_after: r.hcp_after ?? null,
-    }, { onConflict: 'player_id,date,source,differential' });
+    });
     if (error) { skipped++; } else { saved++; }
   }
   btn.disabled = false; btn.textContent = 'Lagre historikk';
