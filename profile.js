@@ -800,7 +800,7 @@ async function calculateEstimatedHCP(playerId) {
     .map(d => ({ date: d.date, differential: parseFloat(d.differential) }))
     .sort((a, b) => new Date(a.date) - new Date(b.date));
 
-  let rollingWindow = [...gimmieBaseline]; // newest first
+  let rollingWindow = gimmieBaseline.slice(0, 20); // cap baseline at 20 before simulation
 
   for (const d of newSorted) {
     rollingWindow.unshift(d);
