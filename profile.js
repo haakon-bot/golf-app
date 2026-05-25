@@ -241,10 +241,9 @@ async function _lazyLoadAlleRunder() {
   </div>`).join('');
 }
 function handleHcpInputFocus() {
-  if (!_estimatedHCP) return;
-  const ok = confirm(
-    `Estimert HCP: ${_estimatedHCP.estimatedHCP}\nBasert på ${_estimatedHCP.newRoundsCount} runder siden siste Golfbox-import.\n\nVil du overskrive Golfbox-data med manuell HCP?`
-  );
+  const hasImported = (_profileDiffsCache || []).some(d => d.source === 'gimmie' || d.source === 'golfbox');
+  if (!hasImported) return;
+  const ok = confirm('Du har Golfbox-historikk lastet inn. Er du sikker på at du vil overskrive HCP manuelt?');
   if (!ok) {
     document.getElementById('editHcp')?.blur();
     return;
