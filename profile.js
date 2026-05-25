@@ -3,6 +3,7 @@ let _profileLoading = false;
 let _profileScoreCache = null;
 let _profileDiffsCache = null;
 let _estimatedHCP = null;
+let _hcpFocusConfirmed = false;
 
 function _makeCollapsibleHTML(id, title, contentHTML) {
   return `<div style="border-radius:12px;overflow:hidden;background:rgba(0,0,0,0.2);border:1px solid rgba(255,255,255,0.07);margin-bottom:2px;">
@@ -243,16 +244,17 @@ async function _lazyLoadAlleRunder() {
 function handleHcpInputFocus() {
   const hasImported = (_profileDiffsCache || []).some(d => d.source === 'gimmie' || d.source === 'golfbox');
   if (!hasImported) return;
+  if (_hcpFocusConfirmed) { _hcpFocusConfirmed = false; return; }
   const el = document.getElementById('editHcp');
   if (!el) return;
   el.readOnly = true;
   setTimeout(() => {
     const ok = confirm('Du har Golfbox-historikk lastet inn. Er du sikker på at du vil overskrive HCP manuelt?');
+    el.readOnly = false;
     if (ok) {
-      el.readOnly = false;
+      _hcpFocusConfirmed = true;
       el.focus();
     } else {
-      el.readOnly = false;
       el.blur();
     }
   }, 0);
