@@ -3,7 +3,6 @@ let _profileLoading = false;
 let _profileScoreCache = null;
 let _profileDiffsCache = null;
 let _estimatedHCP = null;
-let _hcpFocusConfirmed = false;
 
 function _makeCollapsibleHTML(id, title, contentHTML) {
   return `<div style="border-radius:12px;overflow:hidden;background:rgba(0,0,0,0.2);border:1px solid rgba(255,255,255,0.07);margin-bottom:2px;">
@@ -76,7 +75,7 @@ async function loadProfilePage() {
       ${_makeCollapsibleHTML('secEditProfile', '✏️ Rediger profil', `
         <div id="profileAlert"></div>
         <div class="form-group"><label>Visningsnavn</label><input type="text" id="editDisplayName" value="${p.display_name || ''}"></div>
-        <div class="form-group"><label>Handicap (følg Golfbox)</label><input type="number" id="editHcp" value="${p.handicap ?? ''}" step="0.1" min="-10" max="54" onfocus="handleHcpInputFocus()"></div>
+        <div class="form-group"><label>Handicap (følg Golfbox)</label><input type="number" id="editHcp" value="${p.handicap ?? ''}" step="0.1" min="-10" max="54"></div>
         <button class="btn btn-auto" onclick="saveProfile()">Lagre endringer</button>
       `)}
       ${_makeCollapsibleHTML('secPassword', '🔐 Bytt passord', `
@@ -241,38 +240,6 @@ async function _lazyLoadAlleRunder() {
     <div style="font-family:${r.source === 'fore' ? "'Playfair Display',serif" : "'DM Sans',sans-serif"};font-size:${r.source === 'fore' ? '16' : '11'}px;color:${r.source === 'fore' ? 'var(--gold)' : 'var(--cream-dim)'};flex-shrink:0;${r.source !== 'fore' ? 'background:rgba(201,168,76,0.12);padding:2px 7px;border-radius:4px;' : ''}">${r.right}</div>
   </div>`).join('');
 }
-function handleHcpInputFocus() {
-  const hasImported = (_profileDiffsCache || []).some(d => d.source === 'gimmie' || d.source === 'golfbox');
-  if (!hasImported) return;
-  if (_hcpFocusConfirmed) { _hcpFocusConfirmed = false; return; }
-  const el = document.getElementById('editHcp');
-  if (!el) return;
-  el.readOnly = true;
-
-  const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px;';
-  overlay.innerHTML = `
-    <div style="background:#1e1e1e;border-radius:14px;padding:24px;max-width:300px;width:100%;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,0.6);">
-      <p style="color:#f0e6c8;font-size:15px;line-height:1.5;margin:0 0 20px;">Du har Golfbox-historikk lastet inn. Er du sikker på at du vil overskrive HCP manuelt?</p>
-      <div style="display:flex;gap:10px;">
-        <button id="_hcpCancelBtn" style="flex:1;padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.2);background:transparent;color:#f0e6c8;font-size:15px;">Avbryt</button>
-        <button id="_hcpOkBtn" style="flex:1;padding:12px;border-radius:8px;border:none;background:#c9a84c;color:#000;font-size:15px;font-weight:700;">OK</button>
-      </div>
-    </div>`;
-  document.body.appendChild(overlay);
-
-  document.getElementById('_hcpOkBtn').addEventListener('click', () => {
-    overlay.remove();
-    el.readOnly = false;
-    _hcpFocusConfirmed = true;
-    el.focus();
-  });
-  document.getElementById('_hcpCancelBtn').addEventListener('click', () => {
-    overlay.remove();
-    el.readOnly = false;
-    el.blur();
-  });
-}
 
 async function changePassword() {
   const p1 = document.getElementById('newPassword1').value;
@@ -288,6 +255,11 @@ async function changePassword() {
 async function saveProfile() {
   const displayName = document.getElementById('editDisplayName').value.trim();
   const hcp = parseFloat(document.getElementById('editHcp').value);
+  const hasImported = (_profileDiffsCache || []).some(d => d.source === 'gimmie' || d.source === 'golfbox');
+  if (hasImported && hcp !== currentProfile.handicap) {
+    const ok = confirm('Du har Golfbox-historikk lastet inn. Er du sikker på at du vil overskrive HCP manuelt?');
+    if (!ok) return;
+  }
   const { error } = await db.from('profiles').update({ display_name: displayName, handicap: hcp }).eq('id', currentProfile.id);
   if (error) { showAlert('profileAlert', 'Feil: ' + error.message, 'error'); return; }
   currentProfile.display_name = displayName;
