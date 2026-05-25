@@ -698,44 +698,43 @@ async function calculateEstimatedHCP(playerId) {
         const is9Hole = holeCount <= 9 || r.hole_range === 'front9' || r.hole_range === 'back9';
 
         if (is9Hole) {
-          // Fetch hole data (par + stroke_index) for this course
-          const { data: holes } = await db.from('holes')
+          // Fetch ALL 18 holes for the course to compute netto par for unplayed holes
+          const { data: allHoles } = await db.from('holes')
             .select('hole_number, par, stroke_index')
-            .eq('course_id', r.course_id);
+            .eq('course_id', r.course_id)
+            .order('hole_number');
 
-          const relevantHoles = (holes || []).filter(h =>
-            r.hole_range === 'front9' ? h.hole_number <= 9
-            : r.hole_range === 'back9' ? h.hole_number >= 10
-            : true
-          );
+          const cr = r.tee_sets.course_rating;
+          const slope = r.tee_sets.slope;
+          const coursePar18 = (allHoles || []).reduce((s, h) => s + (h.par || 0), 0) || 72;
+          const phcp = _playingHcp(currentProfile.handicap, slope, cr, coursePar18);
 
           const strokeMap = {};
           (roundScores || []).forEach(s => { strokeMap[s.hole_number] = s.strokes; });
 
-          const par9 = relevantHoles.reduce((s, h) => s + (h.par || 0), 0);
-          const phcp = _playingHcp(currentProfile.handicap, r.tee_sets.slope, r.tee_sets.course_rating, par9 * 2);
+          const totalStrokesPlayed = (roundScores || []).reduce((s, row) => s + row.strokes, 0);
+          const playedHoleNums = new Set(Object.keys(strokeMap).map(Number));
 
-          let sfSum = 0;
-          const holeDetails = [];
-          for (const h of relevantHoles) {
-            const strokes = strokeMap[h.hole_number];
-            if (!strokes || !h.par || !h.stroke_index) continue;
+          // For each unplayed hole, compute netto par = par + tildelte
+          let unplayedNettoParSum = 0;
+          const unplayedDetails = [];
+          for (const h of (allHoles || [])) {
+            if (playedHoleNums.has(h.hole_number) || !h.par || !h.stroke_index) continue;
             let tildelte = Math.floor(phcp / 18);
             if (h.stroke_index <= (phcp % 18)) tildelte++;
-            const sf = Math.max(0, 2 + h.par + tildelte - strokes);
-            sfSum += sf;
-            holeDetails.push({ hull: h.hole_number, par: h.par, si: h.stroke_index, slag: strokes, tildelte, sf });
+            const nettoPar = h.par + tildelte;
+            unplayedNettoParSum += nettoPar;
+            unplayedDetails.push({ hull: h.hole_number, par: h.par, si: h.stroke_index, tildelte, nettoPar });
           }
 
-          const adjustedSF = sfSum + 18;
-          const cr = r.tee_sets.course_rating;
-          const slope = r.tee_sets.slope;
-          const differential = (36 - adjustedSF) * 113 / slope + cr * 2 - par9 * 2;
+          const adjustedGross = totalStrokesPlayed + unplayedNettoParSum;
+          const differential = (adjustedGross - cr) * 113 / slope;
 
-          console.log(`Runde ${r.date} (9h): par9=${par9}, phcp=${phcp}, hcp=${currentProfile.handicap}`);
-          console.log(`  Hull:`, holeDetails);
-          console.log(`  sfSum=${sfSum}, adjustedSF=${adjustedSF}, CR=${cr}, slope=${slope}, par9=${par9}`);
-          console.log(`  diff = (36 - ${adjustedSF}) * 113 / ${slope} + ${cr * 2} - ${par9 * 2} = ${differential.toFixed(2)}`);
+          console.log(`Runde ${r.date} (9h): coursePar18=${coursePar18}, phcp=${phcp}, hcp=${currentProfile.handicap}`);
+          console.log(`  Spilte hull (${playedHoleNums.size}):`, Object.entries(strokeMap).map(([h, s]) => `Hull ${h}: ${s} slag`));
+          console.log(`  Uspilte hull netto par:`, unplayedDetails);
+          console.log(`  totalStrokesPlayed=${totalStrokesPlayed}, unplayedNettoParSum=${unplayedNettoParSum}, adjustedGross=${adjustedGross}`);
+          console.log(`  diff = (${adjustedGross} - ${cr}) * 113 / ${slope} = ${differential.toFixed(2)}`);
 
           if (differential < 0) { console.log('  → Hoppet over (diff < 0)'); return null; }
           return { date: r.date, differential };
