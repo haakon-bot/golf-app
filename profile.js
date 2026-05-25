@@ -248,16 +248,30 @@ function handleHcpInputFocus() {
   const el = document.getElementById('editHcp');
   if (!el) return;
   el.readOnly = true;
-  setTimeout(() => {
-    const ok = confirm('Du har Golfbox-historikk lastet inn. Er du sikker på at du vil overskrive HCP manuelt?');
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px;';
+  overlay.innerHTML = `
+    <div style="background:#1e1e1e;border-radius:14px;padding:24px;max-width:300px;width:100%;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,0.6);">
+      <p style="color:#f0e6c8;font-size:15px;line-height:1.5;margin:0 0 20px;">Du har Golfbox-historikk lastet inn. Er du sikker på at du vil overskrive HCP manuelt?</p>
+      <div style="display:flex;gap:10px;">
+        <button id="_hcpCancelBtn" style="flex:1;padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.2);background:transparent;color:#f0e6c8;font-size:15px;">Avbryt</button>
+        <button id="_hcpOkBtn" style="flex:1;padding:12px;border-radius:8px;border:none;background:#c9a84c;color:#000;font-size:15px;font-weight:700;">OK</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  document.getElementById('_hcpOkBtn').addEventListener('click', () => {
+    overlay.remove();
     el.readOnly = false;
-    if (ok) {
-      _hcpFocusConfirmed = true;
-      el.focus();
-    } else {
-      el.blur();
-    }
-  }, 0);
+    _hcpFocusConfirmed = true;
+    el.focus();
+  });
+  document.getElementById('_hcpCancelBtn').addEventListener('click', () => {
+    overlay.remove();
+    el.readOnly = false;
+    el.blur();
+  });
 }
 
 async function changePassword() {
