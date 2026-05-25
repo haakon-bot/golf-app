@@ -797,13 +797,16 @@ async function calculateEstimatedHCP(playerId) {
 
   console.log('Samlet (maks 20 nyeste):', allDiffs.length, allDiffs);
 
-  // Take best 8 (lowest differentials), average × 0.96
-  const best8 = [...allDiffs].sort((a, b) => parseFloat(a.differential) - parseFloat(b.differential)).slice(0, 8);
-  const avg = best8.reduce((s, d) => s + parseFloat(d.differential), 0) / best8.length;
-  const estimatedHCP = +(avg * 0.96).toFixed(1);
+  // Take best 8 (lowest differentials), straight average — no WHS multiplier
+  const best8 = [...allDiffs]
+    .map(d => ({ ...d, differential: parseFloat(d.differential) }))
+    .sort((a, b) => a.differential - b.differential)
+    .slice(0, 8);
+  const avg = best8.reduce((s, d) => s + d.differential, 0) / best8.length;
+  const estimatedHCP = +avg.toFixed(1);
 
   console.log('Beste 8:', best8.map(d => d.differential.toFixed(2)));
-  console.log('Snitt:', avg.toFixed(4), '× 0.96 =', estimatedHCP);
+  console.log('Snitt (ingen multiplier):', avg.toFixed(4), '=', estimatedHCP);
 
   const result = { estimatedHCP, newRoundsCount: newDifferentials.length, lastImportDate };
   console.log('→ Resultat:', result);
