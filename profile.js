@@ -243,11 +243,19 @@ async function _lazyLoadAlleRunder() {
 function handleHcpInputFocus() {
   const hasImported = (_profileDiffsCache || []).some(d => d.source === 'gimmie' || d.source === 'golfbox');
   if (!hasImported) return;
-  const ok = confirm('Du har Golfbox-historikk lastet inn. Er du sikker på at du vil overskrive HCP manuelt?');
-  if (!ok) {
-    document.getElementById('editHcp')?.blur();
-    return;
-  }
+  const el = document.getElementById('editHcp');
+  if (!el) return;
+  el.readOnly = true;
+  setTimeout(() => {
+    const ok = confirm('Du har Golfbox-historikk lastet inn. Er du sikker på at du vil overskrive HCP manuelt?');
+    if (ok) {
+      el.readOnly = false;
+      el.focus();
+    } else {
+      el.readOnly = false;
+      el.blur();
+    }
+  }, 0);
 }
 
 async function changePassword() {
