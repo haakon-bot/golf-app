@@ -613,7 +613,7 @@ function _renderStatCards(diffs, sfStats, estimate) {
         ${estimate ? `<div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.07);">
           <div style="font-size:9px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">Estimert HCP</div>
           <div style="font-family:'Playfair Display',serif;font-size:20px;color:var(--gold-light);line-height:1;">${estimate.estimatedHCP}</div>
-          <div style="font-size:9px;color:rgba(255,255,255,0.3);margin-top:3px;">${estimate.newRoundsCount > 0 ? `basert på ${estimate.newRoundsCount} runder siden siste Golfbox-import` : 'basert på Golfbox-historikk'}</div>
+          <div style="font-size:9px;color:rgba(255,255,255,0.3);margin-top:3px;">basert på ${estimate.newRoundsCount} runder siden siste Golfbox-import</div>
         </div>` : ''}
       </div>
       <div style="flex:1;${cardStyle}">
@@ -785,7 +785,7 @@ async function calculateEstimatedHCP(playerId) {
     if (rollingWindow.length > 20) rollingWindow.pop();
   }
 
-  if (!rollingWindow.length) return null;
+  if (!rollingWindow.length || !newDifferentials.length) return null;
 
   const finalBest8 = [...rollingWindow].sort((a, b) => a.differential - b.differential).slice(0, 8);
   const finalAvg = finalBest8.reduce((s, d) => s + d.differential, 0) / finalBest8.length;
