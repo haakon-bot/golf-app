@@ -672,8 +672,6 @@ function _renderHcpGraph(diffs) {
 }
 
 async function calculateEstimatedHCP(playerId) {
-  console.group('calculateEstimatedHCP');
-
   // Fetch gimmie + golfbox differentials, deduplicate by date+differential, newest first
   const { data: rawImportedDiffs } = await db.from('score_differentials')
     .select('date, differential')
@@ -690,7 +688,6 @@ async function calculateEstimatedHCP(playerId) {
   });
 
   const lastImportDate = gimmieDiffs.length ? gimmieDiffs[0].date : null;
-  console.log('Importerte differensialer (gimmie+golfbox, deduplisert):', gimmieDiffs.length, '| cutoff:', lastImportDate ?? '(ingen – alle runder teller)');
 
   // Get round IDs where this player has scores (used only to narrow the rounds query)
   const { data: scoreRows } = await db.from('scores')
@@ -698,10 +695,9 @@ async function calculateEstimatedHCP(playerId) {
     .eq('player_id', playerId)
     .gt('strokes', 0);
 
-  if (!scoreRows?.length) { console.log('→ null: ingen slag i scores-tabellen'); console.groupEnd(); return null; }
+  if (!scoreRows?.length) return null;
 
   const roundIdsWithScores = [...new Set(scoreRows.map(s => s.round_id))];
-  console.log('Runder med slag:', roundIdsWithScores.length);
 
   // Fetch completed rounds after the cutoff with tee set data
   let roundsQuery = db.from('rounds')
@@ -712,9 +708,8 @@ async function calculateEstimatedHCP(playerId) {
   if (lastImportDate) roundsQuery = roundsQuery.gt('date', lastImportDate);
 
   const { data: rounds } = await roundsQuery;
-  console.log('Fullførte runder etter cutoff:', rounds?.length ?? 0, rounds?.map(r => ({ date: r.date, cr: r.tee_sets?.course_rating, slope: r.tee_sets?.slope, hole_range: r.hole_range })));
 
-  if (!rounds?.length) { console.log('→ null: ingen nye runder'); console.groupEnd(); return null; }
+  if (!rounds?.length) return null;
 
   // For each round fetch strokes filtered by BOTH round_id AND player_id to avoid summing other players
   const newDifferentials = (await Promise.all(
@@ -749,51 +744,34 @@ async function calculateEstimatedHCP(playerId) {
 
           // For each unplayed hole, compute netto par = par + tildelte
           let unplayedNettoParSum = 0;
-          const unplayedDetails = [];
           for (const h of (allHoles || [])) {
             if (playedHoleNums.has(h.hole_number) || !h.par || !h.stroke_index) continue;
             let tildelte = Math.floor(phcp / 18);
             if (h.stroke_index <= (phcp % 18)) tildelte++;
-            const nettoPar = h.par + tildelte;
-            unplayedNettoParSum += nettoPar;
-            unplayedDetails.push({ hull: h.hole_number, par: h.par, si: h.stroke_index, tildelte, nettoPar });
+            unplayedNettoParSum += h.par + tildelte;
           }
 
           const adjustedGross = totalStrokesPlayed + unplayedNettoParSum;
           const differential = (adjustedGross - cr) * 113 / slope;
 
-          console.log(`Runde ${r.date} (9h): coursePar18=${coursePar18}, phcp=${phcp}, hcp=${currentProfile.handicap}`);
-          console.log(`  Spilte hull (${playedHoleNums.size}):`, Object.entries(strokeMap).map(([h, s]) => `Hull ${h}: ${s} slag`));
-          console.log(`  Uspilte hull netto par:`, unplayedDetails);
-          console.log(`  totalStrokesPlayed=${totalStrokesPlayed}, unplayedNettoParSum=${unplayedNettoParSum}, adjustedGross=${adjustedGross}`);
-          console.log(`  diff = (${adjustedGross} - ${cr}) * 113 / ${slope} = ${differential.toFixed(2)}`);
-
-          if (differential < 0) { console.log('  → Hoppet over (diff < 0)'); return null; }
+          if (differential < 0) return null;
           return { date: r.date, differential };
         }
 
         // 18-hole: simple stroke differential
         const totalStrokes = (roundScores || []).reduce((s, row) => s + row.strokes, 0);
         const differential = (totalStrokes - r.tee_sets.course_rating) * 113 / r.tee_sets.slope;
-        console.log(`Runde ${r.date} (18h): totalStrokes=${totalStrokes}, hull=${holeCount}, CR=${r.tee_sets.course_rating}, slope=${r.tee_sets.slope}, diff=${differential.toFixed(2)}`);
-        if (totalStrokes < 50 || differential < 0) {
-          console.log(`  → Hoppet over (ugyldig data)`);
-          return null;
-        }
+        if (totalStrokes < 50 || differential < 0) return null;
         return { date: r.date, differential };
       })
   )).filter(Boolean);
 
-  console.log('Nye differensialer (etter filtrering):', newDifferentials);
-  if (!newDifferentials.length) { console.log('→ null: ingen runder med gyldig tee-data'); console.groupEnd(); return null; }
+  if (!newDifferentials.length) return null;
 
   // Simulate Gimmie's rolling window starting from existing gimmie history as baseline
   const gimmieBaseline = (gimmieDiffs || [])
     .filter(d => d.differential != null)
     .map(d => ({ date: d.date, differential: parseFloat(d.differential) }));
-
-  console.log('Gimmie baseline (nyeste først):', gimmieBaseline.length,
-    gimmieBaseline.map(d => `${d.date}: ${d.differential.toFixed(2)}`));
 
   // Apply new rounds oldest-first, rolling the window forward one step at a time
   const newSorted = newDifferentials
@@ -805,21 +783,13 @@ async function calculateEstimatedHCP(playerId) {
   for (const d of newSorted) {
     rollingWindow.unshift(d);
     if (rollingWindow.length > 20) rollingWindow.pop();
-    const step8 = [...rollingWindow].sort((a, b) => a.differential - b.differential).slice(0, 8);
-    const stepAvg = step8.reduce((s, x) => s + x.differential, 0) / step8.length;
-    console.log(`  + Runde ${d.date} diff=${d.differential.toFixed(2)}: window=${rollingWindow.length}, beste8 snitt=${stepAvg.toFixed(2)}`);
   }
 
   const finalBest8 = [...rollingWindow].sort((a, b) => a.differential - b.differential).slice(0, 8);
   const finalAvg = finalBest8.reduce((s, d) => s + d.differential, 0) / finalBest8.length;
   const estimatedHCP = finalAvg.toFixed(1);
 
-  console.log('Endelig beste 8:', finalBest8.map(d => `${d.date}: ${d.differential.toFixed(2)}`));
-  console.log(`Snitt: ${finalAvg.toFixed(4)} = ${estimatedHCP} (offisiell HCP: ${currentProfile.handicap})`);
-
   const result = { estimatedHCP, newRoundsCount: newDifferentials.length, lastImportDate };
-  console.log('→ Resultat:', result);
-  console.groupEnd();
   return result;
 }
 
