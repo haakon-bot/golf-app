@@ -787,25 +787,35 @@ async function calculateEstimatedHCP(playerId) {
   console.log('Nye differensialer (etter filtrering):', newDifferentials);
   if (!newDifferentials.length) { console.log('→ null: ingen runder med gyldig tee-data'); console.groupEnd(); return null; }
 
-  // Merge with gimmie differentials, sort by date descending, take 20 most recent
-  const allDiffs = [
-    ...newDifferentials.map(d => ({ date: d.date, differential: parseFloat(d.differential) })),
-    ...(gimmieDiffs || [])
-      .filter(d => d.differential != null)
-      .map(d => ({ date: d.date, differential: parseFloat(d.differential) }))
-  ].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 20);
+  // Simulate Gimmie's rolling window starting from existing gimmie history as baseline
+  const gimmieBaseline = (gimmieDiffs || [])
+    .filter(d => d.differential != null)
+    .map(d => ({ date: d.date, differential: parseFloat(d.differential) }));
 
-  console.log('Samlet (maks 20 nyeste):', allDiffs.length, allDiffs);
+  console.log('Gimmie baseline (nyeste først):', gimmieBaseline.length,
+    gimmieBaseline.map(d => `${d.date}: ${d.differential.toFixed(2)}`));
 
-  // Take best 8 (lowest differentials), straight average — no WHS multiplier
-  const best8 = [...allDiffs]
-    .sort((a, b) => a.differential - b.differential)
-    .slice(0, 8);
-  const avg = best8.reduce((s, d) => s + d.differential, 0) / best8.length;
-  const estimatedHCP = +avg.toFixed(1);
+  // Apply new rounds oldest-first, rolling the window forward one step at a time
+  const newSorted = newDifferentials
+    .map(d => ({ date: d.date, differential: parseFloat(d.differential) }))
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
 
-  console.log('Beste 8:', best8.map(d => d.differential.toFixed(2)));
-  console.log('Snitt (ingen multiplier):', avg.toFixed(4), '=', estimatedHCP);
+  let rollingWindow = [...gimmieBaseline]; // newest first
+
+  for (const d of newSorted) {
+    rollingWindow.unshift(d);
+    if (rollingWindow.length > 20) rollingWindow.pop();
+    const step8 = [...rollingWindow].sort((a, b) => a.differential - b.differential).slice(0, 8);
+    const stepAvg = step8.reduce((s, x) => s + x.differential, 0) / step8.length;
+    console.log(`  + Runde ${d.date} diff=${d.differential.toFixed(2)}: window=${rollingWindow.length}, beste8 snitt=${stepAvg.toFixed(2)}`);
+  }
+
+  const finalBest8 = [...rollingWindow].sort((a, b) => a.differential - b.differential).slice(0, 8);
+  const finalAvg = finalBest8.reduce((s, d) => s + d.differential, 0) / finalBest8.length;
+  const estimatedHCP = +finalAvg.toFixed(1);
+
+  console.log('Endelig beste 8:', finalBest8.map(d => `${d.date}: ${d.differential.toFixed(2)}`));
+  console.log(`Snitt: ${finalAvg.toFixed(4)} = ${estimatedHCP} (offisiell HCP: ${currentProfile.handicap})`);
 
   const result = { estimatedHCP, newRoundsCount: newDifferentials.length, lastImportDate };
   console.log('→ Resultat:', result);
