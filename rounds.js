@@ -63,9 +63,11 @@ async function loadTeeSets(courseId) {
   const { data: tees } = await db.from('tee_sets').select('*').eq('course_id', courseId);
   const sel = document.getElementById('roundTee');
   sel.innerHTML = '<option value="">Velg tee...</option>' +
-    (tees || []).map(t => `<option value="${t.id}">${t.name} — Slope ${t.slope}, CR ${t.course_rating}</option>`).join('');
+    (tees || []).map(t => `<option value="${t.id}" data-slope="${t.slope}" data-cr="${t.course_rating}">${t.name} — Slope ${t.slope}, CR ${t.course_rating}</option>`).join('');
   sel.removeEventListener('change', updateRoundMotivation);
   sel.addEventListener('change', updateRoundMotivation);
+  sel.removeEventListener('change', _updateFlightPlayerGoals);
+  sel.addEventListener('change', _updateFlightPlayerGoals);
   document.getElementById('teeMotivDiv').innerHTML = '';
   const { data: holes } = await db.from('holes').select('hole_number').eq('course_id', courseId);
   const holeNums = (holes || []).map(h => h.hole_number);
@@ -104,17 +106,54 @@ function addFlight() {
       <div style="font-size:13px; font-weight:600; color:var(--gold-light);">Flight ${flightCount}</div>
       ${flightCount > 1 ? `<button onclick="document.getElementById('flight-${flightCount}').remove()" class="remove-btn">×</button>` : ''}
     </div>
-    <div style="display:flex; flex-wrap:wrap; gap:8px;" id="flight-players-${flightCount}">
+    <div style="display:flex;flex-direction:column;gap:4px;" id="flight-players-${flightCount}">
       ${allPlayers.map(p => `
-        <label style="display:flex; align-items:center; gap:6px; padding:6px 12px; background:rgba(255,255,255,0.05); border-radius:20px; cursor:pointer; border:1px solid rgba(255,255,255,0.1); font-size:13px; color:var(--cream-dim);">
-          <input type="checkbox" value="${p.id}" data-name="${p.display_name}" data-hcp="${p.handicap || 36}" style="accent-color:var(--gold);">
-          ${p.display_name} <span style="color:var(--cream-dim); font-size:11px;">(${p.handicap ?? '–'})</span>
+        <label style="display:flex;align-items:flex-start;gap:8px;padding:8px 12px;background:rgba(255,255,255,0.05);border-radius:8px;cursor:pointer;border:1px solid rgba(255,255,255,0.1);">
+          <input type="checkbox" value="${p.id}" data-name="${p.display_name}" data-hcp="${p.handicap || 36}" style="accent-color:var(--gold);flex-shrink:0;margin-top:2px;">
+          <div>
+            <span style="font-size:13px;color:var(--cream-dim);">${p.display_name}</span>
+            <span style="font-size:11px;color:var(--cream-dim);margin-left:4px;">(${p.handicap ?? '–'})</span>
+            <div data-player-goal="${p.id}"></div>
+          </div>
         </label>
       `).join('')}
     </div>
   `;
   document.getElementById('flightList').appendChild(div);
+  _updateFlightPlayerGoals();
 }
+async function _updateFlightPlayerGoals() {
+  const sel = document.getElementById('roundTee');
+  const opt = sel?.options[sel.selectedIndex];
+  const slope = parseFloat(opt?.dataset.slope);
+  const cr = parseFloat(opt?.dataset.cr);
+  if (!slope || !cr || !allPlayers.length) return;
+
+  const { data: diffs } = await db.from('score_differentials')
+    .select('player_id, date, differential, source')
+    .in('player_id', allPlayers.map(p => p.id))
+    .in('source', ['gimmie', 'golfbox'])
+    .order('date', { ascending: false });
+
+  const byPlayer = {};
+  (diffs || []).forEach(d => { (byPlayer[d.player_id] = byPlayer[d.player_id] || []).push(d); });
+
+  for (const p of allPlayers) {
+    const playerDiffs = byPlayer[p.id] || [];
+    const goals = document.querySelectorAll(`[data-player-goal="${p.id}"]`);
+    if (!goals.length) continue;
+    if (!playerDiffs.length) { goals.forEach(el => { el.innerHTML = ''; }); continue; }
+
+    const lastImport = playerDiffs[0].date;
+    const motiv = _calcHcpMotivation(playerDiffs, slope, cr, 72, p.handicap ?? null);
+    if (!motiv) { goals.forEach(el => { el.innerHTML = ''; }); continue; }
+
+    const { stablefordImprove: X, stablefordDecline: Y } = motiv;
+    const html = `<div style="font-size:11px;color:rgba(82,183,136,0.9);margin-top:3px;">Mål: ${X}p for HCP ned${Y != null ? `, under ${Y}p for HCP opp` : ''}</div><div style="font-size:10px;color:rgba(255,255,255,0.3);margin-top:1px;">Basert på Golfbox-historikk per ${lastImport}</div>`;
+    goals.forEach(el => { el.innerHTML = html; });
+  }
+}
+
 async function saveRound() {
   const courseId = document.getElementById('roundCourse').value;
   const teeId = document.getElementById('roundTee').value;
