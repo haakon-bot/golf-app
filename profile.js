@@ -673,14 +673,14 @@ async function calculateEstimatedHCP(playerId) {
 
   // Fetch completed rounds after the cutoff with tee set data
   let roundsQuery = db.from('rounds')
-    .select('id, date, hole_range, tee_sets(course_rating, slope)')
+    .select('id, date, hole_range, course_id, tee_sets(course_rating, slope)')
     .eq('status', 'completed')
     .in('id', roundIdsWithScores);
 
   if (lastImportDate) roundsQuery = roundsQuery.gt('date', lastImportDate);
 
   const { data: rounds } = await roundsQuery;
-  console.log('Fullførte runder etter cutoff:', rounds?.length ?? 0, rounds?.map(r => ({ date: r.date, cr: r.tee_sets?.course_rating, slope: r.tee_sets?.slope })));
+  console.log('Fullførte runder etter cutoff:', rounds?.length ?? 0, rounds?.map(r => ({ date: r.date, cr: r.tee_sets?.course_rating, slope: r.tee_sets?.slope, hole_range: r.hole_range })));
 
   if (!rounds?.length) { console.log('→ null: ingen nye runder'); console.groupEnd(); return null; }
 
@@ -690,18 +690,62 @@ async function calculateEstimatedHCP(playerId) {
       .filter(r => r.tee_sets?.course_rating && r.tee_sets?.slope)
       .map(async r => {
         const { data: roundScores } = await db.from('scores')
-          .select('strokes')
+          .select('hole_number, strokes')
           .eq('round_id', r.id)
           .eq('player_id', playerId)
           .gt('strokes', 0);
-        const totalStrokes = (roundScores || []).reduce((s, row) => s + row.strokes, 0);
         const holeCount = (roundScores || []).length;
         const is9Hole = holeCount <= 9 || r.hole_range === 'front9' || r.hole_range === 'back9';
-        const effectiveCR = is9Hole ? r.tee_sets.course_rating * 2 : r.tee_sets.course_rating;
-        const minStrokes = is9Hole ? 25 : 50;
-        const differential = (totalStrokes - effectiveCR) * 113 / r.tee_sets.slope;
-        console.log(`Runde ${r.date}: totalStrokes=${totalStrokes}, hull=${holeCount}, 9h=${is9Hole}, CR=${effectiveCR}, slope=${r.tee_sets.slope}, diff=${differential.toFixed(2)}`);
-        if (totalStrokes < minStrokes || differential < 0) {
+
+        if (is9Hole) {
+          // Fetch hole data (par + stroke_index) for this course
+          const { data: holes } = await db.from('holes')
+            .select('hole_number, par, stroke_index')
+            .eq('course_id', r.course_id);
+
+          const relevantHoles = (holes || []).filter(h =>
+            r.hole_range === 'front9' ? h.hole_number <= 9
+            : r.hole_range === 'back9' ? h.hole_number >= 10
+            : true
+          );
+
+          const strokeMap = {};
+          (roundScores || []).forEach(s => { strokeMap[s.hole_number] = s.strokes; });
+
+          const par9 = relevantHoles.reduce((s, h) => s + (h.par || 0), 0);
+          const phcp = _playingHcp(currentProfile.handicap, r.tee_sets.slope, r.tee_sets.course_rating, par9 * 2);
+
+          let sfSum = 0;
+          const holeDetails = [];
+          for (const h of relevantHoles) {
+            const strokes = strokeMap[h.hole_number];
+            if (!strokes || !h.par || !h.stroke_index) continue;
+            let tildelte = Math.floor(phcp / 18);
+            if (h.stroke_index <= (phcp % 18)) tildelte++;
+            const sf = Math.max(0, 2 + h.par + tildelte - strokes);
+            sfSum += sf;
+            holeDetails.push({ hull: h.hole_number, par: h.par, si: h.stroke_index, slag: strokes, tildelte, sf });
+          }
+
+          const adjustedSF = sfSum + 18;
+          const cr = r.tee_sets.course_rating;
+          const slope = r.tee_sets.slope;
+          const differential = (36 - adjustedSF) * 113 / slope + cr * 2 - par9 * 2;
+
+          console.log(`Runde ${r.date} (9h): par9=${par9}, phcp=${phcp}, hcp=${currentProfile.handicap}`);
+          console.log(`  Hull:`, holeDetails);
+          console.log(`  sfSum=${sfSum}, adjustedSF=${adjustedSF}, CR=${cr}, slope=${slope}, par9=${par9}`);
+          console.log(`  diff = (36 - ${adjustedSF}) * 113 / ${slope} + ${cr * 2} - ${par9 * 2} = ${differential.toFixed(2)}`);
+
+          if (differential < 0) { console.log('  → Hoppet over (diff < 0)'); return null; }
+          return { date: r.date, differential };
+        }
+
+        // 18-hole: simple stroke differential
+        const totalStrokes = (roundScores || []).reduce((s, row) => s + row.strokes, 0);
+        const differential = (totalStrokes - r.tee_sets.course_rating) * 113 / r.tee_sets.slope;
+        console.log(`Runde ${r.date} (18h): totalStrokes=${totalStrokes}, hull=${holeCount}, CR=${r.tee_sets.course_rating}, slope=${r.tee_sets.slope}, diff=${differential.toFixed(2)}`);
+        if (totalStrokes < 50 || differential < 0) {
           console.log(`  → Hoppet over (ugyldig data)`);
           return null;
         }
