@@ -465,6 +465,11 @@ async function saveGolfboxHistory() {
   if (!_golfboxParsed.length) return;
   const btn = document.getElementById('gbSaveBtn');
   btn.disabled = true;
+  btn.textContent = '⏳ Sletter gamle Gimmie-rader…';
+  await db.from('score_differentials')
+    .delete()
+    .eq('player_id', currentProfile.id)
+    .eq('source', 'gimmie');
   let saved = 0, skipped = 0;
   for (let i = 0; i < _golfboxParsed.length; i++) {
     btn.textContent = `⏳ Lagrer ${i + 1} av ${_golfboxParsed.length}…`;
@@ -650,15 +655,23 @@ function _renderHcpGraph(diffs) {
 async function calculateEstimatedHCP(playerId) {
   console.group('calculateEstimatedHCP');
 
-  // Fetch gimmie differentials, newest first — newest date is the import cutoff
-  const { data: gimmieDiffs } = await db.from('score_differentials')
+  // Fetch gimmie + golfbox differentials, deduplicate by date+differential, newest first
+  const { data: rawImportedDiffs } = await db.from('score_differentials')
     .select('date, differential')
     .eq('player_id', playerId)
-    .eq('source', 'gimmie')
+    .in('source', ['gimmie', 'golfbox'])
     .order('date', { ascending: false });
 
-  const lastImportDate = gimmieDiffs?.length ? gimmieDiffs[0].date : null;
-  console.log('Gimmie differentials:', gimmieDiffs?.length ?? 0, '| cutoff:', lastImportDate ?? '(ingen – alle runder teller)');
+  const seen = new Set();
+  const gimmieDiffs = (rawImportedDiffs || []).filter(d => {
+    const key = `${d.date}|${d.differential}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  const lastImportDate = gimmieDiffs.length ? gimmieDiffs[0].date : null;
+  console.log('Importerte differensialer (gimmie+golfbox, deduplisert):', gimmieDiffs.length, '| cutoff:', lastImportDate ?? '(ingen – alle runder teller)');
 
   // Get round IDs where this player has scores (used only to narrow the rounds query)
   const { data: scoreRows } = await db.from('scores')
