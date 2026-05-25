@@ -494,6 +494,17 @@ async function saveGolfboxHistory() {
     });
     if (error) { skipped++; } else { saved++; }
   }
+  // Update profile handicap to hcp_after from the most recent imported differential
+  const withHcp = _golfboxParsed.filter(r => r.hcp_after != null);
+  if (withHcp.length) {
+    const newest = withHcp.reduce((a, b) => (a.date >= b.date ? a : b));
+    const newHcp = parseFloat(newest.hcp_after);
+    if (!isNaN(newHcp)) {
+      await db.from('profiles').update({ handicap: newHcp }).eq('id', currentProfile.id);
+      currentProfile.handicap = newHcp;
+    }
+  }
+
   btn.disabled = false; btn.textContent = 'Lagre historikk';
   if (saved === 0 && skipped > 0) {
     document.getElementById('gbImportAlert').innerHTML = `<div class="alert alert-error">Ingen runder ble lagret (${skipped} feilet).</div>`;
