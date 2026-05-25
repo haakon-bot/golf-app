@@ -471,10 +471,11 @@ async function saveGolfboxHistory() {
     .eq('player_id', currentProfile.id)
     .eq('source', 'gimmie');
 
-  // Build set of existing date+differential keys (any source) to skip true duplicates
+  // Build set of existing gimmie date+differential keys to skip duplicates within same source
   const { data: existingRows } = await db.from('score_differentials')
     .select('date, differential')
-    .eq('player_id', currentProfile.id);
+    .eq('player_id', currentProfile.id)
+    .eq('source', 'gimmie');
   const existingKeys = new Set((existingRows || []).map(r => `${r.date}|${r.differential}`));
 
   let saved = 0, skipped = 0;
