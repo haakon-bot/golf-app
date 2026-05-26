@@ -83,9 +83,7 @@ async function loadTeeSets(courseId) {
         <option value="front9">Hull 1–9</option>
         <option value="back9">Hull 10–18</option>
       </select>`;
-    const rangeSelect = document.getElementById('roundHoleRange');
-    if (rangeSelect) {
-    }
+
   } else {
     rangeDiv.style.display = 'none';
     rangeDiv.innerHTML = '';
@@ -281,20 +279,6 @@ async function loadDashboard() {
       badge.style.display = 'none';
     }
 
-    // HCP-motivasjon – hentes separat (samme mønster som statistikk-seksjonen)
-    const motivEl = document.getElementById('dashMotivation');
-    if (motivEl && currentProfile) {
-      motivEl.innerHTML = '<div style="font-size:12px;color:var(--cream-dim);padding:6px 0;">⏳ Laster HCP-mål…</div>';
-      try {
-        const { data: myDiffs } = await db.from('score_differentials')
-          .select('*').eq('player_id', currentProfile.id)
-          .order('date', { ascending: true });
-        const motiv = _calcHcpMotivation(myDiffs || [], 113, 72, 72, currentProfile?.handicap ?? null);
-        motivEl.innerHTML = motiv ? _renderMotivBanner(motiv) : '';
-      } catch(e) {
-        motivEl.innerHTML = `<div style="font-size:11px;color:var(--danger);">Feil: ${e.message}</div>`;
-      }
-    }
   } finally {
     _dashboardLoading = false;
   }
