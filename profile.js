@@ -307,9 +307,9 @@ function _calcHcpMotivation(diffs, slope = 113, courseRating = 72, coursePar = 7
 function _renderMotivBanner(motiv) {
   if (!motiv?.droppedContext) return '';
   if (motiv.droppedContext === 'good_drop') {
-    return `<div style="background:rgba(255,140,50,0.08);border:1px solid rgba(255,140,50,0.3);border-radius:10px;padding:12px 16px;font-size:13px;color:rgba(255,180,100,0.9);">God runde faller ut (${motiv.droppedDate}) — vær obs!</div>`;
+    return `<div style="background:rgba(255,140,50,0.08);border:1px solid rgba(255,140,50,0.3);border-radius:10px;padding:12px 16px;font-size:13px;color:rgba(255,180,100,0.9);">En god runde faller ut — vær obs på HCP!</div>`;
   }
-  return `<div style="background:rgba(82,183,136,0.08);border:1px solid rgba(82,183,136,0.3);border-radius:10px;padding:12px 16px;font-size:13px;color:rgba(82,183,136,0.9);">Dårlig runde faller ut (${motiv.droppedDate}) — godt utgangspunkt!</div>`;
+  return `<div style="background:rgba(82,183,136,0.08);border:1px solid rgba(82,183,136,0.3);border-radius:10px;padding:12px 16px;font-size:13px;color:rgba(82,183,136,0.9);">En dårlig runde faller ut — godt utgangspunkt!</div>`;
 }
 
 async function updateRoundMotivation() {

@@ -125,7 +125,6 @@ async function _updateFlightPlayerGoals() {
   const opt = sel?.options[sel.selectedIndex];
   const slope = parseFloat(opt?.dataset.slope);
   const cr = parseFloat(opt?.dataset.cr);
-  const teeName = opt?.dataset.teeName || '';
 
   if (!slope || !cr || !allPlayers.length) {
     document.querySelectorAll('[data-player-goal]').forEach(el => { el.innerHTML = ''; });
@@ -137,41 +136,15 @@ async function _updateFlightPlayerGoals() {
     : holeRange === 'back9' ? _roundCourseHoles.filter(h => h.hole_number >= 10)
     : _roundCourseHoles;
 
-  console.log(`_updateFlightPlayerGoals: slope=${slope}, CR=${cr}, tee="${teeName}", range=${holeRange}, holes=${activeHoles.length}, coursePar=${_roundCoursePar}`);
-
-  const { data: diffs } = await db.from('score_differentials')
-    .select('player_id, date, differential, source')
-    .in('player_id', allPlayers.map(p => p.id))
-    .in('source', ['gimmie', 'golfbox'])
-    .order('date', { ascending: false });
-
-  const byPlayer = {};
-  (diffs || []).forEach(d => { (byPlayer[d.player_id] = byPlayer[d.player_id] || []).push(d); });
-
-  const courseEl = document.getElementById('roundCourse');
-  const courseName = courseEl?.options[courseEl.selectedIndex]?.text || '';
-
   for (const p of allPlayers) {
     const goals = document.querySelectorAll(`[data-player-goal="${p.id}"]`);
     if (!goals.length) continue;
-
     const hi = parseFloat(p.handicap);
     if (isNaN(hi)) { goals.forEach(el => { el.innerHTML = ''; }); continue; }
-
-    const playingHCP = _playingHcp(hi, slope, cr, _roundCoursePar);
-    const tildelte = _activeStrokes(playingHCP, activeHoles);
-
-    const playerDiffs = byPlayer[p.id] || [];
-    const motiv = playerDiffs.length ? _calcHcpMotivation(playerDiffs, slope, cr, _roundCoursePar, hi) : null;
-
-    let html;
-    if (motiv) {
-      const { stablefordImprove: X, stablefordDecline: Y } = motiv;
-      html = `<div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:3px;">Tildelte slag: ${tildelte} · Mål: ${X}p for HCP ned${Y != null ? `, under ${Y}p for HCP opp` : ''} (${courseName} ${teeName} slope ${slope})</div>`;
-    } else {
-      html = `<div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:3px;">Tildelte slag: ${tildelte} (${courseName} ${teeName} slope ${slope})</div>`;
-    }
-    goals.forEach(el => { el.innerHTML = html; });
+    const tildelte = _activeStrokes(_playingHcp(hi, slope, cr, _roundCoursePar), activeHoles);
+    goals.forEach(el => {
+      el.innerHTML = `<div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:3px;">Tildelte slag: ${tildelte}</div>`;
+    });
   }
 }
 
@@ -305,6 +278,16 @@ async function loadDashboard() {
       badge.textContent = notifs.length;
     } else {
       badge.style.display = 'none';
+    }
+
+    // HCP-motivasjon
+    const motivEl = document.getElementById('dashMotivation');
+    if (motivEl && currentProfile) {
+      const { data: myDiffs } = await db.from('score_differentials')
+        .select('date, differential, source').eq('player_id', currentProfile.id)
+        .order('date', { ascending: false });
+      const motiv = _calcHcpMotivation(myDiffs || [], 113, 72, 72, currentProfile?.handicap ?? null);
+      motivEl.innerHTML = _renderMotivBanner(motiv);
     }
 
   } finally {
