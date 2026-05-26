@@ -1,6 +1,8 @@
 // ── ROUNDS ──
 let allPlayers = [];
 let flightCount = 0;
+let _roundCourseHoles = [];
+let _roundCoursePar = 72;
 async function loadRounds() {
   const { data: rounds } = await db.from('rounds')
     .select('*, courses(name), tee_sets(name, slope, course_rating), flights(id, name, flight_players(id, handicap, profiles(display_name, username)))')
@@ -63,10 +65,12 @@ async function loadTeeSets(courseId) {
   const { data: tees } = await db.from('tee_sets').select('*').eq('course_id', courseId);
   const sel = document.getElementById('roundTee');
   sel.innerHTML = '<option value="">Velg tee...</option>' +
-    (tees || []).map(t => `<option value="${t.id}" data-slope="${t.slope}" data-cr="${t.course_rating}">${t.name} — Slope ${t.slope}, CR ${t.course_rating}</option>`).join('');
+    (tees || []).map(t => `<option value="${t.id}" data-slope="${t.slope}" data-cr="${t.course_rating}" data-tee-name="${t.name}">${t.name} — Slope ${t.slope}, CR ${t.course_rating}</option>`).join('');
   sel.removeEventListener('change', _updateFlightPlayerGoals);
   sel.addEventListener('change', _updateFlightPlayerGoals);
-  const { data: holes } = await db.from('holes').select('hole_number').eq('course_id', courseId);
+  const { data: holes } = await db.from('holes').select('hole_number, par, stroke_index').eq('course_id', courseId);
+  _roundCourseHoles = holes || [];
+  _roundCoursePar = _roundCourseHoles.reduce((s, h) => s + (h.par || 0), 0) || 72;
   const holeNums = (holes || []).map(h => h.hole_number);
   const hasFront9 = holeNums.some(n => n <= 9);
   const hasBack9 = holeNums.some(n => n >= 10);
@@ -83,6 +87,7 @@ async function loadTeeSets(courseId) {
         <option value="front9">Hull 1–9</option>
         <option value="back9">Hull 10–18</option>
       </select>`;
+    document.getElementById('roundHoleRange').addEventListener('change', _updateFlightPlayerGoals);
 
   } else {
     rangeDiv.style.display = 'none';
@@ -120,7 +125,19 @@ async function _updateFlightPlayerGoals() {
   const opt = sel?.options[sel.selectedIndex];
   const slope = parseFloat(opt?.dataset.slope);
   const cr = parseFloat(opt?.dataset.cr);
-  if (!slope || !cr || !allPlayers.length) return;
+  const teeName = opt?.dataset.teeName || '';
+
+  if (!slope || !cr || !allPlayers.length) {
+    document.querySelectorAll('[data-player-goal]').forEach(el => { el.innerHTML = ''; });
+    return;
+  }
+
+  const holeRange = document.getElementById('roundHoleRange')?.value || 'all';
+  const activeHoles = holeRange === 'front9' ? _roundCourseHoles.filter(h => h.hole_number <= 9)
+    : holeRange === 'back9' ? _roundCourseHoles.filter(h => h.hole_number >= 10)
+    : _roundCourseHoles;
+
+  console.log(`_updateFlightPlayerGoals: slope=${slope}, CR=${cr}, tee="${teeName}", range=${holeRange}, holes=${activeHoles.length}, coursePar=${_roundCoursePar}`);
 
   const { data: diffs } = await db.from('score_differentials')
     .select('player_id, date, differential, source')
@@ -131,18 +148,29 @@ async function _updateFlightPlayerGoals() {
   const byPlayer = {};
   (diffs || []).forEach(d => { (byPlayer[d.player_id] = byPlayer[d.player_id] || []).push(d); });
 
+  const courseEl = document.getElementById('roundCourse');
+  const courseName = courseEl?.options[courseEl.selectedIndex]?.text || '';
+
   for (const p of allPlayers) {
-    const playerDiffs = byPlayer[p.id] || [];
     const goals = document.querySelectorAll(`[data-player-goal="${p.id}"]`);
     if (!goals.length) continue;
-    if (!playerDiffs.length) { goals.forEach(el => { el.innerHTML = ''; }); continue; }
 
-    const lastImport = playerDiffs[0].date;
-    const motiv = _calcHcpMotivation(playerDiffs, slope, cr, 72, p.handicap ?? null);
-    if (!motiv) { goals.forEach(el => { el.innerHTML = ''; }); continue; }
+    const hi = parseFloat(p.handicap);
+    if (isNaN(hi)) { goals.forEach(el => { el.innerHTML = ''; }); continue; }
 
-    const { stablefordImprove: X, stablefordDecline: Y } = motiv;
-    const html = `<div style="font-size:11px;color:rgba(82,183,136,0.9);margin-top:3px;">Mål: ${X}p for HCP ned${Y != null ? `, under ${Y}p for HCP opp` : ''}</div><div style="font-size:10px;color:rgba(255,255,255,0.3);margin-top:1px;">Basert på Golfbox-historikk per ${lastImport}</div>`;
+    const playingHCP = _playingHcp(hi, slope, cr, _roundCoursePar);
+    const tildelte = _activeStrokes(playingHCP, activeHoles);
+
+    const playerDiffs = byPlayer[p.id] || [];
+    const motiv = playerDiffs.length ? _calcHcpMotivation(playerDiffs, slope, cr, _roundCoursePar, hi) : null;
+
+    let html;
+    if (motiv) {
+      const { stablefordImprove: X, stablefordDecline: Y } = motiv;
+      html = `<div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:3px;">Tildelte slag: ${tildelte} · Mål: ${X}p for HCP ned${Y != null ? `, under ${Y}p for HCP opp` : ''} (${courseName} ${teeName} slope ${slope})</div>`;
+    } else {
+      html = `<div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:3px;">Tildelte slag: ${tildelte} (${courseName} ${teeName} slope ${slope})</div>`;
+    }
     goals.forEach(el => { el.innerHTML = html; });
   }
 }
