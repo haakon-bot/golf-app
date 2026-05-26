@@ -298,26 +298,18 @@ function _calcHcpMotivation(diffs, slope = 113, courseRating = 72, coursePar = 7
   const stablefordImprove = toNorm(sortedAsc[7]) + 1;
   const droppedRound = last20.length >= 20 ? last20[19] : null;
   const stablefordDecline = droppedRound ? toNorm(parseFloat(droppedRound.differential)) : null;
-  const last20Avg = sortedAsc.reduce((s, d) => s + d, 0) / sortedAsc.length;
   const droppedDiff = droppedRound ? parseFloat(droppedRound.differential) : null;
-  const droppedContext = droppedDiff != null ? (droppedDiff > last20Avg ? 'good_drop' : 'bad_drop') : null;
-  return { currentHI, playingHCP, stablefordImprove, stablefordDecline, droppedContext, count: last20.length };
+  const droppedContext = droppedDiff != null ? (droppedDiff < currentHI ? 'good_drop' : 'bad_drop') : null;
+  const droppedDate = droppedRound?.date ?? null;
+  return { currentHI, playingHCP, stablefordImprove, stablefordDecline, droppedContext, droppedDate, count: last20.length };
 }
 
-function _renderMotivBanner(motiv, detailed = false, isEstimate = false) {
-  if (!motiv) return '';
-  const { stablefordImprove: X, stablefordDecline: Y } = motiv;
-  const estimateNote = isEstimate
-    ? `<div style="font-size:10px;color:rgba(255,255,255,0.3);margin-top:8px;">Beregnet for normalbane (slope 113)</div>`
-    : '';
-  return `<div style="background:rgba(82,183,136,0.08);border:1px solid rgba(82,183,136,0.3);border-radius:10px;padding:14px 16px;">
-    <div style="font-size:10px;color:rgba(82,183,136,0.9);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;">🎯 HCP-mål for neste runde</div>
-    <div style="padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.06);font-size:14px;color:#4caf7d;">Spill <strong>${X}</strong> poeng eller mer → HCP kan gå ned</div>
-    ${Y != null ? `<div style="padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.06);font-size:14px;color:rgba(255,120,100,0.9);">Spill under <strong>${Y}</strong> poeng → HCP kan gå opp</div>` : ''}
-    <div style="padding:5px 0;font-size:13px;color:var(--cream-dim);">${Y != null ? `Mellom ${Y} og ${X - 1} poeng` : `Under ${X} poeng`} → ingen endring</div>
-    ${motiv.droppedContext === 'good_drop' ? `<div style="padding:5px 0;font-size:12px;color:rgba(82,183,136,0.8);font-style:italic;">En dårlig runde faller ut — godt utgangspunkt!</div>` : motiv.droppedContext === 'bad_drop' ? `<div style="padding:5px 0;font-size:12px;color:rgba(255,180,100,0.85);font-style:italic;">En god runde faller ut — vær obs!</div>` : ''}
-    ${estimateNote}
-  </div>`;
+function _renderMotivBanner(motiv) {
+  if (!motiv?.droppedContext) return '';
+  if (motiv.droppedContext === 'good_drop') {
+    return `<div style="background:rgba(255,140,50,0.08);border:1px solid rgba(255,140,50,0.3);border-radius:10px;padding:12px 16px;font-size:13px;color:rgba(255,180,100,0.9);">God runde faller ut (${motiv.droppedDate}) — vær obs!</div>`;
+  }
+  return `<div style="background:rgba(82,183,136,0.08);border:1px solid rgba(82,183,136,0.3);border-radius:10px;padding:12px 16px;font-size:13px;color:rgba(82,183,136,0.9);">Dårlig runde faller ut (${motiv.droppedDate}) — godt utgangspunkt!</div>`;
 }
 
 async function updateRoundMotivation() {
@@ -559,7 +551,7 @@ async function loadAndRenderDifferentials() {
     const smEl = document.getElementById('statsMotivation');
     if (smEl) {
       const motiv = _calcHcpMotivation(diffs, 113, 72, 72, currentProfile?.handicap ?? null);
-      smEl.innerHTML = motiv ? _renderMotivBanner(motiv, true, true) : '';
+      smEl.innerHTML = motiv ? _renderMotivBanner(motiv) : '';
     }
     _renderHcpGraph(diffs);
     _renderHcpHistoryList(diffs);

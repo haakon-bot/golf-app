@@ -295,7 +295,7 @@ async function loadDashboard() {
           .select('*').eq('player_id', currentProfile.id)
           .order('date', { ascending: true });
         const motiv = _calcHcpMotivation(myDiffs || [], 113, 72, 72, currentProfile?.handicap ?? null);
-        motivEl.innerHTML = motiv ? _renderMotivBanner(motiv, false, true) : '';
+        motivEl.innerHTML = motiv ? _renderMotivBanner(motiv) : '';
       } catch(e) {
         motivEl.innerHTML = `<div style="font-size:11px;color:var(--danger);">Feil: ${e.message}</div>`;
       }
