@@ -64,11 +64,8 @@ async function loadTeeSets(courseId) {
   const sel = document.getElementById('roundTee');
   sel.innerHTML = '<option value="">Velg tee...</option>' +
     (tees || []).map(t => `<option value="${t.id}" data-slope="${t.slope}" data-cr="${t.course_rating}">${t.name} — Slope ${t.slope}, CR ${t.course_rating}</option>`).join('');
-  sel.removeEventListener('change', updateRoundMotivation);
-  sel.addEventListener('change', updateRoundMotivation);
   sel.removeEventListener('change', _updateFlightPlayerGoals);
   sel.addEventListener('change', _updateFlightPlayerGoals);
-  document.getElementById('teeMotivDiv').innerHTML = '';
   const { data: holes } = await db.from('holes').select('hole_number').eq('course_id', courseId);
   const holeNums = (holes || []).map(h => h.hole_number);
   const hasFront9 = holeNums.some(n => n <= 9);
@@ -88,8 +85,6 @@ async function loadTeeSets(courseId) {
       </select>`;
     const rangeSelect = document.getElementById('roundHoleRange');
     if (rangeSelect) {
-      rangeSelect.removeEventListener('change', updateRoundMotivation);
-      rangeSelect.addEventListener('change', updateRoundMotivation);
     }
   } else {
     rangeDiv.style.display = 'none';
