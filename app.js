@@ -255,7 +255,7 @@ function showPage(pageId) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   const page = document.getElementById('page-' + pageId);
   if (page) page.classList.add('active');
-  const navMap = { dashboard: 'navDashboard', rounds: 'navRounds', live: 'navLive', courses: 'navCourses', profile: 'navProfile', players: 'navProfile' };
+  const navMap = { dashboard: 'navDashboard', rounds: 'navRounds', stats: 'navStats', profile: 'navProfile', players: 'navProfile' };
   const navBtn = document.getElementById(navMap[pageId]);
   if (navBtn) navBtn.classList.add('active');
   if (pageId === 'players') loadPlayers();
@@ -279,6 +279,15 @@ function showAlert(containerId, msg, type) {
 }
 
 // ── SW UPDATE ──
+function openDrawer() {
+  document.getElementById('drawerOverlay').style.display = 'block';
+  document.getElementById('hamburgerDrawer').style.transform = 'translateX(0)';
+}
+function closeDrawer() {
+  document.getElementById('drawerOverlay').style.display = 'none';
+  document.getElementById('hamburgerDrawer').style.transform = 'translateX(100%)';
+}
+
 let _updateBtnReady = false;
 function initUpdateButton() {
   if (_updateBtnReady || !('serviceWorker' in navigator)) return;
@@ -286,9 +295,9 @@ function initUpdateButton() {
   navigator.serviceWorker.getRegistration().then(reg => {
     if (!reg) return;
     const markReady = () => {
-      const btn = document.getElementById('navUpdateBtn');
-      if (btn) { btn.style.color = 'var(--gold-light)'; btn.style.opacity = '1'; }
-      document.getElementById('updateReadyDot')?.style.setProperty('display', 'block');
+      const refresh = document.getElementById('topbarRefreshBtn');
+      if (refresh) { refresh.style.color = 'var(--gold-light)'; refresh.style.opacity = '1'; }
+      document.getElementById('updateReadyDot')?.style.setProperty('display', 'flex');
       const pub = document.getElementById('publicUpdateBtn');
       if (pub) { pub.style.color = 'var(--gold)'; pub.style.opacity = '1'; }
     };

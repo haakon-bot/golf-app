@@ -95,8 +95,54 @@
     position: relative;
   }
   .nav-btn svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  .nav-btn i { font-size: 22px; line-height: 1; }
   .nav-btn .live-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--green-light); margin-bottom: 1px; }
   .nav-btn.active { color: var(--gold-light); opacity: 1; }
+  .drawer-section {
+    padding: 12px 20px 4px;
+    font-size: 10px;
+    color: rgba(255,255,255,0.35);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .drawer-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 11px 20px;
+    background: none;
+    border: none;
+    color: var(--cream);
+    font-size: 15px;
+    font-family: 'DM Sans', sans-serif;
+    cursor: pointer;
+    text-align: left;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.15s;
+  }
+  .drawer-item:active { background: rgba(255,255,255,0.06); }
+  .drawer-item i { font-size: 20px; color: var(--cream-dim); flex-shrink: 0; }
+  .shortcut-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 16px 8px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    color: var(--cream-dim);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: border-color 0.2s, background 0.2s;
+  }
+  .shortcut-card:active { background: rgba(201,168,76,0.08); border-color: rgba(201,168,76,0.3); }
+  .shortcut-card i { font-size: 24px; color: var(--gold-dim, var(--cream-dim)); }
   .page { display: none; padding: 24px 20px 88px; max-width: 900px; margin: 0 auto; }
   .page.active { display: block; }
   .login-card {

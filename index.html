@@ -14,6 +14,7 @@
 <link rel="apple-touch-icon" href="icon.svg">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -100,40 +101,56 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.114</span></div>
-    <div class="topbar-user">
-      <span>Innlogget som <strong id="topbarUsername">–</strong></span>
-      <button class="btn-sm" onclick="handleLogout()">Logg ut</button>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.115</span></div>
+    <div style="display:flex; align-items:center; gap:4px;">
+      <button id="topbarRefreshBtn" onclick="forceUpdate()" title="Oppdater app" style="background:none;border:none;color:var(--cream-dim);cursor:pointer;padding:8px;font-size:22px;opacity:0.45;-webkit-tap-highlight-color:transparent;line-height:1;"><i class="ti ti-refresh"></i></button>
+      <button onclick="openDrawer()" title="Meny" style="background:none;border:none;color:var(--cream-dim);cursor:pointer;padding:8px;font-size:24px;-webkit-tap-highlight-color:transparent;line-height:1;"><i class="ti ti-menu-2"></i></button>
     </div>
   </div>
   <nav class="bottom-nav" id="bottomNav">
     <button class="nav-btn active" id="navDashboard" onclick="showPage('dashboard')">
-      <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-      Hjem
+      <i class="ti ti-home"></i>Hjem
     </button>
     <button class="nav-btn" id="navRounds" onclick="showPage('rounds')">
-      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-      Runder
+      <i class="ti ti-golf"></i>Runder
     </button>
-    <button class="nav-btn" id="navLive" onclick="showPage('live')">
-      <div class="live-dot"></div>
-      Live
-    </button>
-    <button class="nav-btn" id="navCourses" onclick="showPage('courses')">
-      <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-      Baner
+    <button class="nav-btn" id="navStats" onclick="showPage('stats')">
+      <i class="ti ti-chart-bar"></i>Stats
     </button>
     <button class="nav-btn" id="navProfile" onclick="showPage('profile')">
-      <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-      Meg
+      <i class="ti ti-user-circle"></i>Meg
       <span id="notifBadge" style="display:none; position:absolute; top:4px; right:calc(50% - 18px); background:var(--gold); color:var(--green-deep); border-radius:50%; width:14px; height:14px; font-size:9px; font-weight:700; align-items:center; justify-content:center;"></span>
     </button>
-    <button class="nav-btn" id="navUpdateBtn" onclick="forceUpdate()" style="opacity:0.35;">
-      <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-      Oppdater
-      <span id="updateReadyDot" style="display:none; position:absolute; top:4px; right:calc(50% - 12px); width:7px; height:7px; border-radius:50%; background:var(--gold);"></span>
-    </button>
   </nav>
+  <!-- Hamburger Drawer -->
+  <div id="drawerOverlay" onclick="closeDrawer()" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:400;"></div>
+  <div id="hamburgerDrawer" style="position:fixed; top:0; right:0; bottom:0; width:270px; background:#111f17; border-left:1px solid rgba(201,168,76,0.15); transform:translateX(100%); transition:transform 0.28s cubic-bezier(0.4,0,0.2,1); z-index:401; display:flex; flex-direction:column; padding-top:max(16px, env(safe-area-inset-top)); padding-bottom:max(16px, env(safe-area-inset-bottom));">
+    <div style="display:flex; justify-content:space-between; align-items:center; padding:0 20px 20px; border-bottom:1px solid rgba(255,255,255,0.07);">
+      <div style="font-family:'Playfair Display',serif; font-size:17px; color:var(--gold);">Meny</div>
+      <button onclick="closeDrawer()" style="background:none;border:none;color:var(--cream-dim);cursor:pointer;font-size:22px;padding:4px;-webkit-tap-highlight-color:transparent;line-height:1;"><i class="ti ti-x"></i></button>
+    </div>
+    <div style="flex:1; overflow-y:auto; padding:8px 0;">
+      <div class="drawer-section">Spill</div>
+      <button class="drawer-item" onclick="showPage('dashboard'); closeDrawer()"><i class="ti ti-home"></i>Hjem</button>
+      <button class="drawer-item" onclick="showPage('rounds'); closeDrawer()"><i class="ti ti-golf"></i>Runder</button>
+      <button class="drawer-item" onclick="showPage('live'); closeDrawer()"><i class="ti ti-broadcast"></i>Live</button>
+      <div class="drawer-section" style="margin-top:8px;">Analyse</div>
+      <button class="drawer-item" onclick="showPage('stats'); closeDrawer()"><i class="ti ti-chart-bar"></i>Statistikk</button>
+      <button class="drawer-item" onclick="showPage('season'); closeDrawer()"><i class="ti ti-trophy"></i>Sesong-leaderboard</button>
+      <button class="drawer-item" onclick="showPage('h2h'); closeDrawer()"><i class="ti ti-users-group"></i>Head-to-head</button>
+      <button class="drawer-item" onclick="showPage('training'); closeDrawer()"><i class="ti ti-dumbbell"></i>Trening</button>
+      <div class="drawer-section" style="margin-top:8px;">Admin</div>
+      <button class="drawer-item" onclick="showPage('courses'); closeDrawer()"><i class="ti ti-map"></i>Baner</button>
+      <button class="drawer-item" onclick="showPage('players'); closeDrawer()"><i class="ti ti-users"></i>Spillere</button>
+      <button class="drawer-item" onclick="showPage('profile'); closeDrawer()"><i class="ti ti-user-circle"></i>Min profil</button>
+    </div>
+    <div style="padding:12px 20px 0; border-top:1px solid rgba(255,255,255,0.07);">
+      <button id="drawerUpdateBtn" onclick="forceUpdate()" class="drawer-item" style="width:100%; color:var(--cream-dim);">
+        <i class="ti ti-refresh"></i>Oppdater app
+        <span id="updateReadyDot" style="display:none; margin-left:auto; width:8px; height:8px; border-radius:50%; background:var(--gold); flex-shrink:0;"></span>
+      </button>
+    </div>
+  </div>
   <!-- Dashboard -->
   <div class="page active" id="page-dashboard">
     <div style="margin-bottom: 28px;">
@@ -142,8 +159,14 @@
     </div>
     <div id="dashPendingBanner" style="margin-bottom:16px;"></div>
     <div id="dashActiveRound" style="display:none; margin-bottom:16px;"></div>
-    <div style="display:flex; gap:12px; margin-bottom:16px;">
-      <button class="btn" style="flex:1;" onclick="showPage('rounds'); document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active')); document.querySelectorAll('.nav-btn')[1].classList.add('active'); openNewRound();">⛳ Start runde</button>
+    <div style="display:flex; gap:12px; margin-bottom:12px;">
+      <button class="btn" style="flex:1;" onclick="showPage('rounds'); openNewRound();">⛳ Start runde</button>
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px;">
+      <button onclick="showPage('stats')" class="shortcut-card"><i class="ti ti-chart-bar"></i><span>Statistikk</span></button>
+      <button onclick="showPage('training')" class="shortcut-card"><i class="ti ti-dumbbell"></i><span>Trening</span></button>
+      <button onclick="showPage('live')" class="shortcut-card"><i class="ti ti-broadcast"></i><span>Live</span></button>
+      <button onclick="showPage('season')" class="shortcut-card"><i class="ti ti-trophy"></i><span>Sesong</span></button>
     </div>
     <div id="dashMotivation" style="margin-bottom:16px;"></div>
     <div style="font-size:11px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:12px;">Sist spilt</div>
@@ -184,6 +207,22 @@
   <!-- Profile -->
   <div class="page" id="page-profile">
     <div id="profileContent"><div class="loading"><div class="spinner"></div></div></div>
+  </div>
+  <!-- Stats -->
+  <div class="page" id="page-stats">
+    <div class="page-header"><div><h1>Statistikk</h1><p>Kommer snart</p></div></div>
+  </div>
+  <!-- Season Leaderboard -->
+  <div class="page" id="page-season">
+    <div class="page-header"><div><h1>Sesong-leaderboard</h1><p>Kommer snart</p></div></div>
+  </div>
+  <!-- Head-to-head -->
+  <div class="page" id="page-h2h">
+    <div class="page-header"><div><h1>Head-to-head</h1><p>Kommer snart</p></div></div>
+  </div>
+  <!-- Training -->
+  <div class="page" id="page-training">
+    <div class="page-header"><div><h1>Trening</h1><p>Kommer snart</p></div></div>
   </div>
   <!-- MODAL: New Round -->
   <div class="modal-overlay" id="modalNewRound" style="display:none;" onclick="closeModalOnOverlay(event,'modalNewRound')">
