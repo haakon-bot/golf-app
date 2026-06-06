@@ -258,6 +258,14 @@ function _renderSesong(el, data) {
 
 // ── HEAD-TO-HEAD ──
 
+function _h2hHcpChange(diffs, cutoffStr) {
+  if (!diffs?.length) return null;
+  const current = diffs[0]?.hcp_after;
+  const old = diffs.find(d => d.date <= cutoffStr)?.hcp_after;
+  if (current == null || old == null) return null;
+  return parseFloat((current - old).toFixed(1));
+}
+
 async function initH2hTab() {
   if (_h2hInitialized) return;
   _h2hInitialized = true;
@@ -428,9 +436,13 @@ async function _loadAndRenderH2h() {
     const sharedIds = sharedRounds.map(r => r.id);
     const courseIds = [...new Set(sharedRounds.map(r => r.course_id).filter(Boolean))];
 
-    const [{ data: scores }, { data: holes }] = await Promise.all([
+    const cutoff12mStr = (() => { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return d.toISOString().split('T')[0]; })();
+
+    const [{ data: scores }, { data: holes }, { data: p1Diffs }, { data: p2Diffs }] = await Promise.all([
       db.from('scores').select('round_id, player_id, hole_number, strokes').in('round_id', sharedIds),
       courseIds.length ? db.from('holes').select('course_id, hole_number, par, stroke_index').in('course_id', courseIds) : { data: [] },
+      db.from('score_differentials').select('date, hcp_after').eq('player_id', p1Id).order('date', { ascending: false }),
+      db.from('score_differentials').select('date, hcp_after').eq('player_id', p2Id).order('date', { ascending: false }),
     ]);
 
     const scoreMap = {};
@@ -444,8 +456,13 @@ async function _loadAndRenderH2h() {
       (holesByCourse[h.course_id] = holesByCourse[h.course_id] || {})[h.hole_number] = h;
     }
 
-    // Compute per-round results
+    // Compute per-round results — process both players per hole simultaneously
     const roundResults = [];
+    let p1BirdiesTotal = 0, p2BirdiesTotal = 0;
+    let p1StrokesTotal = 0, p2StrokesTotal = 0;
+    let p1HolesTotal = 0, p2HolesTotal = 0;
+    const parWins = { p1: { 3: 0, 4: 0, 5: 0 }, p2: { 3: 0, 4: 0, 5: 0 } };
+
     for (const round of sharedRounds) {
       const courseHoles = holesByCourse[round.course_id] || {};
       const coursePar = Object.values(courseHoles).reduce((s, h) => s + (h.par || 0), 0) || 72;
@@ -454,35 +471,55 @@ async function _loadAndRenderH2h() {
         .filter(h => hr === 'front9' ? h.hole_number <= 9 : hr === 'back9' ? h.hole_number >= 10 : true)
         .sort((a, b) => a.hole_number - b.hole_number);
 
-      const computeSF = (playerId) => {
-        const phcp = _playingHcp(roundInfo[round.id]?.hcpMap[playerId], round.tee_sets?.slope, round.tee_sets?.course_rating, coursePar);
-        const pScores = scoreMap[`${round.id}_${playerId}`] || {};
-        let total = 0, holesPlayed = 0;
-        for (const hole of activeHoles) {
-          const strokes = pScores[hole.hole_number];
-          if (!strokes || strokes <= 0) continue;
-          total += calcStableford(strokes, hole.par, phcp, hole.stroke_index);
-          holesPlayed++;
-        }
-        let normalized = total;
-        if ((round.hole_range === 'front9' || round.hole_range === 'back9') && holesPlayed >= 9) {
-          const playedNums = new Set(activeHoles.map(h => h.hole_number));
-          for (const h of Object.values(courseHoles)) {
-            if (playedNums.has(h.hole_number) || !h.par || !h.stroke_index) continue;
-            let tildelte = Math.floor(phcp / 18);
-            if (h.stroke_index <= (phcp % 18)) tildelte++;
-            normalized += calcStableford(h.par + tildelte, h.par, phcp, h.stroke_index);
-          }
-        }
-        return { total, normalized, holesPlayed };
-      };
+      const phcp1 = _playingHcp(roundInfo[round.id]?.hcpMap[p1Id], round.tee_sets?.slope, round.tee_sets?.course_rating, coursePar);
+      const phcp2 = _playingHcp(roundInfo[round.id]?.hcpMap[p2Id], round.tee_sets?.slope, round.tee_sets?.course_rating, coursePar);
+      const pScores1 = scoreMap[`${round.id}_${p1Id}`] || {};
+      const pScores2 = scoreMap[`${round.id}_${p2Id}`] || {};
 
-      const p1r = computeSF(p1Id);
-      const p2r = computeSF(p2Id);
-      if (p1r.holesPlayed < 9 || p2r.holesPlayed < 9) continue;
+      let p1Total = 0, p1Strokes = 0, p1Played = 0, roundP1Birdies = 0;
+      let p2Total = 0, p2Strokes = 0, p2Played = 0, roundP2Birdies = 0;
 
-      const winner = p1r.total > p2r.total ? 'p1' : p2r.total > p1r.total ? 'p2' : 'draw';
-      roundResults.push({ round, p1: p1r, p2: p2r, winner });
+      for (const hole of activeHoles) {
+        const s1 = pScores1[hole.hole_number];
+        const s2 = pScores2[hole.hole_number];
+        const sf1 = s1 > 0 ? calcStableford(s1, hole.par, phcp1, hole.stroke_index) : null;
+        const sf2 = s2 > 0 ? calcStableford(s2, hole.par, phcp2, hole.stroke_index) : null;
+
+        if (s1 > 0) { p1Total += sf1; p1Strokes += s1; p1Played++; if (s1 === hole.par - 1) roundP1Birdies++; }
+        if (s2 > 0) { p2Total += sf2; p2Strokes += s2; p2Played++; if (s2 === hole.par - 1) roundP2Birdies++; }
+
+        // Par-type hole wins: only when both players scored
+        if (sf1 !== null && sf2 !== null && hole.par >= 3 && hole.par <= 5) {
+          if (sf1 > sf2) parWins.p1[hole.par]++;
+          else if (sf2 > sf1) parWins.p2[hole.par]++;
+        }
+      }
+
+      if (p1Played < 9 || p2Played < 9) continue;
+
+      // Normalize 9-hole rounds
+      let p1Norm = p1Total, p2Norm = p2Total;
+      const is9Hole = round.hole_range === 'front9' || round.hole_range === 'back9';
+      if (is9Hole) {
+        const playedNums = new Set(activeHoles.map(h => h.hole_number));
+        for (const h of Object.values(courseHoles)) {
+          if (playedNums.has(h.hole_number) || !h.par || !h.stroke_index) continue;
+          let t1 = Math.floor(phcp1 / 18); if (h.stroke_index <= (phcp1 % 18)) t1++;
+          let t2 = Math.floor(phcp2 / 18); if (h.stroke_index <= (phcp2 % 18)) t2++;
+          p1Norm += calcStableford(h.par + t1, h.par, phcp1, h.stroke_index);
+          p2Norm += calcStableford(h.par + t2, h.par, phcp2, h.stroke_index);
+        }
+      }
+
+      p1BirdiesTotal += roundP1Birdies;
+      p2BirdiesTotal += roundP2Birdies;
+      p1StrokesTotal += p1Strokes;
+      p2StrokesTotal += p2Strokes;
+      p1HolesTotal += p1Played;
+      p2HolesTotal += p2Played;
+
+      const winner = p1Total > p2Total ? 'p1' : p2Total > p1Total ? 'p2' : 'draw';
+      roundResults.push({ round, p1: { total: p1Total, normalized: p1Norm, holesPlayed: p1Played }, p2: { total: p2Total, normalized: p2Norm, holesPlayed: p2Played }, winner });
     }
 
     if (!roundResults.length) {
@@ -511,7 +548,14 @@ async function _loadAndRenderH2h() {
     const n = roundResults.length;
     const p1Avg = p1SFSum / n;
     const p2Avg = p2SFSum / n;
+    const p1AvgStrokes = p1HolesTotal > 0 ? Math.round(p1StrokesTotal / p1HolesTotal * 18) : null;
+    const p2AvgStrokes = p2HolesTotal > 0 ? Math.round(p2StrokesTotal / p2HolesTotal * 18) : null;
     const favCourse = Object.entries(courseCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '–';
+
+    const p1HcpChange = _h2hHcpChange(p1Diffs, cutoff12mStr);
+    const p2HcpChange = _h2hHcpChange(p2Diffs, cutoff12mStr);
+    const hcpChangeDefined = p1HcpChange !== null && p2HcpChange !== null;
+    const fmtHcpChange = v => v === null ? '–' : (v > 0 ? `+${v.toFixed(1)}` : v.toFixed(1));
 
     const p1Info = players.find(p => p.id === p1Id);
     const p2Info = players.find(p => p.id === p2Id);
@@ -535,12 +579,19 @@ async function _loadAndRenderH2h() {
       </div>`;
 
     // Stats grid
+    const strokesDefined = p1AvgStrokes !== null && p2AvgStrokes !== null;
     const statsGridHtml = `
       <div style="margin-bottom:24px;">
         <div style="font-size:11px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px;">Statistikk</div>
         <div style="background:rgba(0,0,0,0.2);border:1px solid rgba(255,255,255,0.07);border-radius:12px;overflow:hidden;">
           ${_h2hStatRow(p1Avg.toFixed(1), 'Snitt Stableford', p2Avg.toFixed(1), p1Avg > p2Avg, p2Avg > p1Avg)}
-          ${_h2hStatRow(p1Best.toFixed(1), 'Beste runde', p2Best.toFixed(1), p1Best > p2Best, p2Best > p1Best)}
+          ${_h2hStatRow(p1Best, 'Beste runde', p2Best, p1Best > p2Best, p2Best > p1Best)}
+          ${_h2hStatRow(p1AvgStrokes ?? '–', 'Snitt slag/18', p2AvgStrokes ?? '–', strokesDefined && p1AvgStrokes < p2AvgStrokes, strokesDefined && p2AvgStrokes < p1AvgStrokes)}
+          ${_h2hStatRow(p1BirdiesTotal, 'Birdies', p2BirdiesTotal, p1BirdiesTotal > p2BirdiesTotal, p2BirdiesTotal > p1BirdiesTotal)}
+          ${_h2hStatRow(parWins.p1[3], 'Vinner par 3', parWins.p2[3], parWins.p1[3] > parWins.p2[3], parWins.p2[3] > parWins.p1[3])}
+          ${_h2hStatRow(parWins.p1[4], 'Vinner par 4', parWins.p2[4], parWins.p1[4] > parWins.p2[4], parWins.p2[4] > parWins.p1[4])}
+          ${_h2hStatRow(parWins.p1[5], 'Vinner par 5', parWins.p2[5], parWins.p1[5] > parWins.p2[5], parWins.p2[5] > parWins.p1[5])}
+          ${_h2hStatRow(fmtHcpChange(p1HcpChange), 'HCP ± 12 mnd', fmtHcpChange(p2HcpChange), hcpChangeDefined && p1HcpChange < p2HcpChange, hcpChangeDefined && p2HcpChange < p1HcpChange)}
           ${_h2hStatRow(p1Info?.handicap ?? '–', 'Nåværende HCP', p2Info?.handicap ?? '–', false, false)}
           <div style="padding:13px 16px;border-top:1px solid rgba(255,255,255,0.05);display:flex;align-items:center;gap:8px;">
             <div style="font-size:12px;color:var(--cream-dim);flex-shrink:0;white-space:nowrap;">Favorittbane</div>
@@ -589,10 +640,12 @@ async function _loadAndRenderH2h() {
 }
 
 function _h2hStatRow(v1, label, v2, p1Better, p2Better) {
+  const p1Style = p1Better ? 'color:var(--gold);' : (p2Better ? 'color:var(--cream);opacity:0.4;' : 'color:var(--cream);');
+  const p2Style = p2Better ? 'color:var(--gold);' : (p1Better ? 'color:var(--cream);opacity:0.4;' : 'color:var(--cream);');
   return `
     <div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;padding:13px 16px;border-bottom:1px solid rgba(255,255,255,0.05);">
-      <div style="font-size:18px;font-weight:700;color:${p1Better ? 'var(--gold)' : 'var(--cream)'};">${v1}</div>
+      <div style="font-size:18px;font-weight:700;${p1Style}">${v1}</div>
       <div style="font-size:11px;color:var(--cream-dim);text-align:center;white-space:nowrap;">${label}</div>
-      <div style="font-size:18px;font-weight:700;color:${p2Better ? 'var(--gold)' : 'var(--cream)'};text-align:right;">${v2}</div>
+      <div style="font-size:18px;font-weight:700;${p2Style}text-align:right;">${v2}</div>
     </div>`;
 }
