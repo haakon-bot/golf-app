@@ -190,8 +190,6 @@ function showApp() {
   if (currentProfile?.is_admin) {
     // admin-rettigheter aktive
   }
-  // players vises via Meg-siden
-  loadCourses();
   loadDashboard();
 }
 function switchAuthTab(tab) {
@@ -259,6 +257,7 @@ function showPage(pageId) {
   const navBtn = document.getElementById(navMap[pageId]);
   if (navBtn) navBtn.classList.add('active');
   if (pageId === 'players') loadPlayers();
+  if (pageId === 'courses') loadCourses();
   if (pageId === 'profile') loadProfilePage();
   if (pageId === 'rounds') loadRounds();
   if (pageId === 'dashboard') loadDashboard();

@@ -266,7 +266,7 @@ async function initH2hTab() {
   try {
     const { data: players, error } = await db.from('profiles')
       .select('id, display_name, handicap')
-      .eq('approved', true)
+      .eq('is_approved', true)
       .order('display_name');
     if (error) throw new Error(error.message);
     _h2hState.players = players || [];
