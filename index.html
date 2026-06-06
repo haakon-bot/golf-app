@@ -101,7 +101,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.132</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.133</span></div>
     <div style="display:flex; align-items:center; gap:4px;">
       <button id="topbarRefreshBtn" onclick="forceUpdate()" title="Oppdater app" style="background:none;border:none;color:var(--cream-dim);cursor:pointer;padding:8px;font-size:22px;opacity:0.45;-webkit-tap-highlight-color:transparent;line-height:1;"><i class="ti ti-refresh"></i></button>
       <button onclick="openDrawer()" title="Meny" style="background:none;border:none;color:var(--cream-dim);cursor:pointer;padding:8px;font-size:24px;-webkit-tap-highlight-color:transparent;line-height:1;"><i class="ti ti-menu-2"></i></button>
@@ -137,7 +137,7 @@
       <div class="drawer-section" style="margin-top:8px;">Analyse</div>
       <button class="drawer-item" onclick="showPage('stats'); closeDrawer()"><i class="ti ti-chart-bar"></i>Statistikk</button>
       <button class="drawer-item" onclick="showPage('h2h'); closeDrawer()"><i class="ti ti-users-group"></i>Head-to-head</button>
-      <button class="drawer-item" onclick="showPage('training'); closeDrawer()"><i class="ti ti-dumbbell"></i>Trening</button>
+      <div class="drawer-item" style="opacity:0.6;cursor:default;"><i class="ti ti-dumbbell"></i>Trening<span style="margin-left:auto;font-size:9px;font-weight:600;color:var(--gold);border:1px solid rgba(201,168,76,0.4);border-radius:4px;padding:2px 5px;letter-spacing:0.5px;text-transform:uppercase;">Snart</span></div>
       <div class="drawer-section" style="margin-top:8px;">Admin</div>
       <button class="drawer-item" onclick="showPage('courses'); closeDrawer()"><i class="ti ti-map"></i>Baner</button>
       <button class="drawer-item" onclick="showPage('players'); closeDrawer()"><i class="ti ti-users"></i>Spillere</button>
@@ -162,8 +162,6 @@
       <button class="btn" style="flex:1;" onclick="showPage('rounds'); openNewRound();">⛳ Start runde</button>
     </div>
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px;">
-      <button onclick="showPage('stats')" class="shortcut-card"><i class="ti ti-chart-bar"></i><span>Statistikk</span></button>
-      <button onclick="showPage('training')" class="shortcut-card"><i class="ti ti-dumbbell"></i><span>Trening</span></button>
       <button onclick="showPage('live')" class="shortcut-card"><i class="ti ti-broadcast"></i><span>Live</span></button>
     </div>
     <div id="dashMotivation" style="margin-bottom:16px;"></div>
