@@ -3,6 +3,7 @@ let _profileLoading = false;
 let _profileScoreCache = null;
 let _profileDiffsCache = null;
 let _estimatedHCP = null;
+let _profileStatTabLoaded = false;
 
 function _makeCollapsibleHTML(id, title, contentHTML) {
   return `<div style="border-radius:12px;overflow:hidden;background:rgba(0,0,0,0.2);border:1px solid rgba(255,255,255,0.07);margin-bottom:2px;">
@@ -32,8 +33,7 @@ function _toggleSection(id) {
     if (arrow) arrow.style.transform = 'rotate(180deg)';
     if (section.getAttribute('data-loaded') === '0') {
       section.setAttribute('data-loaded', '1');
-      if (id === 'secHull') _lazyLoadHullStats();
-      else if (id === 'secRunder') _lazyLoadAlleRunder();
+      if (id === 'secRunder') _lazyLoadAlleRunder();
     }
   }
 }
@@ -43,10 +43,11 @@ async function loadProfilePage() {
   _profileLoading = true;
   _profileScoreCache = null;
   _profileDiffsCache = null;
+  _profileStatTabLoaded = false;
   const p = currentProfile;
   if (!p) { _profileLoading = false; return; }
   document.getElementById('profileContent').innerHTML = `
-    <div class="page-header"><div><h1>Min Profil</h1></div></div>
+    <div class="page-header"><div><h1>Meg</h1></div></div>
     <div class="profile-header">
       <div class="profile-avatar">${p.display_name?.[0] || '?'}</div>
       <div>
@@ -54,44 +55,208 @@ async function loadProfilePage() {
         <p style="color:var(--cream-dim);">@${p.username}${p.is_admin ? ' · <span class="badge badge-gold">Admin</span>' : ''}</p>
       </div>
     </div>
-    <div id="statsKpis" style="margin-bottom:20px;"><div class="loading"><div class="spinner"></div></div></div>
-    <div style="display:flex;flex-direction:column;gap:2px;">
-      ${_makeCollapsibleHTML('secHcp', '📈 HCP-utvikling', `
-        <div id="statsMotivation" style="margin-bottom:16px;"></div>
-        <div id="hcpGraph" style="margin-bottom:20px;"></div>
-        <div id="hcpHistoryList"></div>
-      `)}
-      ${_makeCollapsibleHTML('secHull', '🏆 Hull-statistikk', `
-        <div id="hullStats"><div class="loading"><div class="spinner"></div></div></div>
-      `)}
-      ${_makeCollapsibleHTML('secRunder', '📋 Alle runder', `
-        <div id="alleRunderList"><div class="loading"><div class="spinner"></div></div></div>
-      `)}
-      ${_makeCollapsibleHTML('secGolfbox', '📷 Importer fra Golfbox', `
-        <p style="font-size:13px;color:var(--cream-dim);margin-bottom:16px;">Importer dine tidligere runder fra Golfbox ved å ta bilde av score-tabellen. Ta gjerne flere bilder til du har minst 20 runder dekket.</p>
-        <button class="btn btn-outline btn-auto" onclick="openGolfboxImport()">📷 Importer fra Golfbox</button>
-        <div id="golfboxImportList" style="margin-top:16px;"></div>
-      `)}
-      ${_makeCollapsibleHTML('secEditProfile', '✏️ Rediger profil', `
-        <div id="profileAlert"></div>
-        <div class="form-group"><label>Visningsnavn</label><input type="text" id="editDisplayName" value="${p.display_name || ''}"></div>
-        <div class="form-group"><label>Handicap (følg Golfbox)</label><input type="number" id="editHcp" value="${p.handicap ?? ''}" step="0.1" min="-10" max="54"></div>
-        <button class="btn btn-auto" onclick="saveProfile()">Lagre endringer</button>
-      `)}
-      ${_makeCollapsibleHTML('secPassword', '🔐 Bytt passord', `
-        <p style="font-size:13px;color:var(--cream-dim);margin-bottom:16px;">Logg inn med nytt passord neste gang.</p>
-        <div id="passwordAlert"></div>
-        <div class="form-group"><label>Nytt passord</label><input type="password" id="newPassword1" placeholder="Minst 6 tegn"></div>
-        <div class="form-group"><label>Bekreft nytt passord</label><input type="password" id="newPassword2" placeholder="Gjenta passord"></div>
-        <button class="btn btn-auto" onclick="changePassword()">Endre passord</button>
-      `)}
-      ${p.is_admin ? _makeCollapsibleHTML('secAdmin', '⚙️ Admin', `
-        <button class="btn btn-outline btn-auto" onclick="showPage('players')" style="width:100%;margin-bottom:8px;">Administrer spillere</button>
-      `) : ''}
+    <div class="tabs" style="margin-bottom:20px;">
+      <button class="tab active" id="profileTabProfil" onclick="switchProfileTab('profil')"><i class="ti ti-user-circle" style="font-size:15px;vertical-align:-2px;margin-right:5px;"></i>Profil</button>
+      <button class="tab" id="profileTabStats" onclick="switchProfileTab('stats')"><i class="ti ti-chart-bar" style="font-size:15px;vertical-align:-2px;margin-right:5px;"></i>Min statistikk</button>
+    </div>
+    <div id="profileTabContentProfil">
+      <div id="statsKpis" style="margin-bottom:20px;"><div class="loading"><div class="spinner"></div></div></div>
+      <div style="display:flex;flex-direction:column;gap:2px;">
+        ${_makeCollapsibleHTML('secGolfbox', '<i class="ti ti-camera" style="font-size:15px;vertical-align:-2px;margin-right:6px;"></i>Importer fra Golfbox', `
+          <p style="font-size:13px;color:var(--cream-dim);margin-bottom:16px;">Importer dine tidligere runder fra Golfbox ved å ta bilde av score-tabellen. Ta gjerne flere bilder til du har minst 20 runder dekket.</p>
+          <button class="btn btn-outline btn-auto" onclick="openGolfboxImport()">📷 Importer fra Golfbox</button>
+          <div id="golfboxImportList" style="margin-top:16px;"></div>
+        `)}
+        ${_makeCollapsibleHTML('secRunder', '<i class="ti ti-clipboard-list" style="font-size:15px;vertical-align:-2px;margin-right:6px;"></i>Alle runder', `
+          <div id="alleRunderList"><div class="loading"><div class="spinner"></div></div></div>
+        `)}
+        ${_makeCollapsibleHTML('secEditProfile', '<i class="ti ti-pencil" style="font-size:15px;vertical-align:-2px;margin-right:6px;"></i>Rediger profil', `
+          <div id="profileAlert"></div>
+          <div class="form-group"><label>Visningsnavn</label><input type="text" id="editDisplayName" value="${p.display_name || ''}"></div>
+          <div class="form-group"><label>Handicap (følg Golfbox)</label><input type="number" id="editHcp" value="${p.handicap ?? ''}" step="0.1" min="-10" max="54"></div>
+          <button class="btn btn-auto" onclick="saveProfile()">Lagre endringer</button>
+        `)}
+        ${_makeCollapsibleHTML('secPassword', '<i class="ti ti-lock" style="font-size:15px;vertical-align:-2px;margin-right:6px;"></i>Bytt passord', `
+          <p style="font-size:13px;color:var(--cream-dim);margin-bottom:16px;">Logg inn med nytt passord neste gang.</p>
+          <div id="passwordAlert"></div>
+          <div class="form-group"><label>Nytt passord</label><input type="password" id="newPassword1" placeholder="Minst 6 tegn"></div>
+          <div class="form-group"><label>Bekreft nytt passord</label><input type="password" id="newPassword2" placeholder="Gjenta passord"></div>
+          <button class="btn btn-auto" onclick="changePassword()">Endre passord</button>
+        `)}
+        ${p.is_admin ? _makeCollapsibleHTML('secAdmin', '<i class="ti ti-settings" style="font-size:15px;vertical-align:-2px;margin-right:6px;"></i>Admin', `
+          <button class="btn btn-outline btn-auto" onclick="showPage('players')" style="width:100%;margin-bottom:8px;">Administrer spillere</button>
+        `) : ''}
+      </div>
+    </div>
+    <div id="profileTabContentStats" style="display:none;">
+      <div class="loading"><div class="spinner"></div></div>
     </div>
   `;
   _profileLoading = false;
   loadAndRenderDifferentials();
+}
+
+function switchProfileTab(tab) {
+  document.getElementById('profileTabProfil').classList.toggle('active', tab === 'profil');
+  document.getElementById('profileTabStats').classList.toggle('active', tab === 'stats');
+  document.getElementById('profileTabContentProfil').style.display = tab === 'profil' ? 'block' : 'none';
+  document.getElementById('profileTabContentStats').style.display = tab === 'stats' ? 'block' : 'none';
+  if (tab === 'stats' && !_profileStatTabLoaded) {
+    _profileStatTabLoaded = true;
+    _loadAndRenderPersonalStats();
+  }
+}
+
+async function _loadAndRenderPersonalStats() {
+  const el = document.getElementById('profileTabContentStats');
+  if (!el) return;
+  el.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  try {
+    if (!_profileDiffsCache) {
+      const { data } = await db.from('score_differentials')
+        .select('*').eq('player_id', currentProfile.id).order('date', { ascending: true });
+      _profileDiffsCache = data || [];
+    }
+    const diffs = _profileDiffsCache;
+    const cache = await _ensureProfileScoreCache(currentProfile.id, diffs, currentProfile?.handicap ?? null);
+    const { holeScores, roundSummaries } = cache;
+    const motiv = _calcHcpMotivation(diffs, 113, 72, 72, currentProfile?.handicap ?? null);
+    el.innerHTML = `
+      <div style="margin-bottom:24px;">
+        <div style="font-size:11px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px;">HCP-utvikling</div>
+        ${motiv ? _renderMotivBanner(motiv) + '<div style="height:12px;"></div>' : ''}
+        <div id="hcpGraph"></div>
+        <div id="hcpHistoryList" style="margin-top:16px;"></div>
+      </div>
+      <div id="personalStatsSection"></div>
+    `;
+    _renderHcpGraph(diffs);
+    _renderHcpHistoryList(diffs);
+    _renderPersonalStats(document.getElementById('personalStatsSection'), holeScores, roundSummaries);
+  } catch (e) {
+    el.innerHTML = `<div class="empty"><p style="color:var(--cream-dim);">Feil: ${e.message}</p></div>`;
+  }
+}
+
+function _renderPersonalStats(el, holeScores, roundSummaries) {
+  if (!el) return;
+  if (!holeScores.length) {
+    el.innerHTML = '<div class="empty"><div class="empty-icon" style="font-size:40px;opacity:0.4;">⛳</div><h3>Ingen app-runder</h3><p>Spill runder i appen for å se statistikk.</p></div>';
+    return;
+  }
+
+  // KPI calculations
+  const totalStrokes = holeScores.reduce((s, h) => s + h.strokes, 0);
+  const totalHoles = holeScores.length;
+  const avgStrokes18 = Math.round(totalStrokes / totalHoles * 18);
+
+  // Normalize SF: 9-hole rounds get netto par (2p) for each unplayed hole
+  const normalizedSFs = roundSummaries.map(r => r.sf + Math.max(0, 18 - r.played) * 2);
+  const avgSF18 = normalizedSFs.length ? (normalizedSFs.reduce((s, v) => s + v, 0) / normalizedSFs.length).toFixed(1) : null;
+  const bestRound = normalizedSFs.length ? Math.max(...normalizedSFs) : null;
+  const totalRounds = roundSummaries.length;
+
+  // Per-par averages
+  const byPar = { 3: [], 4: [], 5: [] };
+  for (const s of holeScores) { if (byPar[s.par]) byPar[s.par].push(s.sf); }
+
+  // Scoring distribution
+  const scoreDist = { eagle: 0, birdie: 0, par: 0, bogey: 0, double: 0 };
+  for (const s of holeScores) {
+    const v = s.strokes - s.par;
+    if (v <= -2) scoreDist.eagle++;
+    else if (v === -1) scoreDist.birdie++;
+    else if (v === 0) scoreDist.par++;
+    else if (v === 1) scoreDist.bogey++;
+    else scoreDist.double++;
+  }
+
+  // Top 3 best holes
+  const byKey = {};
+  for (const s of holeScores) {
+    const k = s.courseId + ':' + s.holeNumber;
+    if (!byKey[k]) byKey[k] = { hole: s.holeNumber, par: s.par, course: s.courseName, total: 0, count: 0 };
+    byKey[k].total += s.sf;
+    byKey[k].count++;
+  }
+  const topHoles = Object.values(byKey)
+    .filter(h => h.count >= 2)
+    .map(h => ({ ...h, avg: h.total / h.count }))
+    .sort((a, b) => b.avg - a.avg)
+    .slice(0, 3);
+
+  const distItems = [
+    { key: 'eagle', label: 'Eagle', color: '#c9a84c' },
+    { key: 'birdie', label: 'Birdie', color: '#85b7eb' },
+    { key: 'par', label: 'Par', color: '#52b788' },
+    { key: 'bogey', label: 'Bogey', color: '#f09595' },
+    { key: 'double', label: 'Double+', color: '#e24b4a' },
+  ];
+  const maxDist = Math.max(...distItems.map(d => scoreDist[d.key]), 1);
+  const totalDist = distItems.reduce((s, d) => s + scoreDist[d.key], 0);
+  const medals = ['🥇', '🥈', '🥉'];
+  const card = (label, value, sub) => `<div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:14px 8px;text-align:center;border:1px solid rgba(255,255,255,0.07);">
+    <div style="font-size:9px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">${label}</div>
+    <div style="font-family:'Playfair Display',serif;font-size:26px;color:var(--gold);line-height:1;">${value}</div>
+    <div style="font-size:10px;color:var(--cream-dim);margin-top:4px;">${sub}</div>
+  </div>`;
+
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:24px;">
+      ${card('Snitt Stableford 18h', avgSF18 ?? '–', totalRounds + ' runde' + (totalRounds !== 1 ? 'r' : ''))}
+      ${card('Snitt slag 18h', avgStrokes18, totalHoles + ' hull spilt')}
+      ${card('Beste runde', bestRound ?? '–', 'Stableford')}
+      ${card('Antall runder', totalRounds, 'i appen')}
+    </div>
+    <div style="margin-bottom:24px;">
+      <div style="font-size:11px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px;">Snitt Stableford per partype</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+        ${[3, 4, 5].map(par => {
+          const arr = byPar[par];
+          const avg = arr.length ? (arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(2) : '–';
+          return `<div style="background:rgba(0,0,0,0.2);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:14px 10px;text-align:center;">
+            <div style="font-size:11px;color:var(--cream-dim);margin-bottom:6px;">Par ${par}</div>
+            <div style="font-size:26px;font-weight:700;color:var(--gold);">${avg}</div>
+            <div style="font-size:10px;color:var(--cream-dim);margin-top:3px;">${arr.length} hull</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+    <div style="margin-bottom:24px;">
+      <div style="font-size:11px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px;">Scorefordeling</div>
+      <div style="background:rgba(0,0,0,0.2);border:1px solid rgba(255,255,255,0.07);border-radius:12px;padding:16px;">
+        ${distItems.map(d => {
+          const count = scoreDist[d.key];
+          const pct = totalDist > 0 ? (count / totalDist * 100).toFixed(1) : '0.0';
+          const barW = (count / maxDist * 100).toFixed(1);
+          return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+            <div style="width:64px;font-size:13px;color:var(--cream-dim);flex-shrink:0;">${d.label}</div>
+            <div style="flex:1;background:rgba(255,255,255,0.06);border-radius:4px;height:18px;overflow:hidden;">
+              <div style="height:100%;width:${barW}%;background:${d.color};border-radius:4px;"></div>
+            </div>
+            <div style="min-width:36px;text-align:right;font-size:13px;color:var(--cream);">${count}</div>
+            <div style="min-width:40px;text-align:right;font-size:11px;color:var(--cream-dim);">${pct}%</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+    ${topHoles.length ? `
+    <div style="margin-bottom:24px;">
+      <div style="font-size:11px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px;">Beste hull (snitt Stableford)</div>
+      ${topHoles.map((h, i) => `
+        <div style="display:flex;align-items:center;gap:14px;padding:13px 16px;background:rgba(0,0,0,0.2);border:1px solid rgba(255,255,255,0.07);border-radius:10px;margin-bottom:8px;">
+          <div style="font-size:20px;flex-shrink:0;">${medals[i]}</div>
+          <div style="flex:1;">
+            <div style="font-size:15px;color:var(--cream);font-weight:500;">Hull ${h.hole}</div>
+            <div style="font-size:12px;color:var(--cream-dim);margin-top:2px;">Par ${h.par} · ${h.course}</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:20px;font-weight:700;color:var(--gold);">${h.avg.toFixed(2)}</div>
+            <div style="font-size:10px;color:var(--cream-dim);">${h.count} runder</div>
+          </div>
+        </div>`).join('')}
+    </div>` : ''}
+  `;
 }
 
 async function _ensureProfileScoreCache(profileId, diffs, currentHI) {
@@ -265,7 +430,7 @@ async function saveProfile() {
   currentProfile.display_name = displayName;
   currentProfile.handicap = hcp;
   showAlert('profileAlert', 'Profil oppdatert!', 'success');
-  document.getElementById('topbarUsername').textContent = currentProfile.username;
+  const _tu = document.getElementById('topbarUsername'); if (_tu) _tu.textContent = currentProfile.username;
 }
 
 // ── HCP MOTIVATION ENGINE ──
@@ -570,49 +735,29 @@ function _renderStatCards(diffs, sfStats, estimate) {
     return;
   }
   const sorted = [...diffs].sort((a, b) => new Date(a.date) - new Date(b.date));
-
-  // HCP nå + trend
   const withHcp = sorted.filter(d => d.hcp_after != null);
-  const hcpNow  = withHcp.length ? parseFloat(withHcp[withHcp.length - 1].hcp_after) : null;
+  const hcpNow = withHcp.length ? parseFloat(withHcp[withHcp.length - 1].hcp_after) : null;
   const hcpPrev = withHcp.length > 1 ? parseFloat(withHcp[withHcp.length - 2].hcp_after) : null;
-  const delta   = hcpNow != null && hcpPrev != null ? +(hcpNow - hcpPrev).toFixed(1) : null;
+  const delta = hcpNow != null && hcpPrev != null ? +(hcpNow - hcpPrev).toFixed(1) : null;
   const improved = delta != null && delta < 0;
   const worsened = delta != null && delta > 0;
-  const trendColor  = improved ? '#4caf7d' : worsened ? 'var(--danger)' : 'var(--cream-dim)';
-  const trendArrow  = improved ? '↓' : worsened ? '↑' : '–';
-  const trendLabel  = delta != null && delta !== 0 ? (delta > 0 ? '+' : '') + delta : '';
-
-  // Stableford stats (18h only)
-  const sf18 = sfStats?.eighteen || [];
-  const best18 = sf18.length ? Math.max(...sf18) : null;
-  const avg18  = sf18.length ? Math.round(sf18.reduce((s,v)=>s+v,0)/sf18.length) : null;
-
-  const cardStyle = 'background:rgba(0,0,0,0.25);border-radius:10px;padding:14px 8px;text-align:center;border:1px solid rgba(255,255,255,0.07);';
-  const labelStyle = 'font-size:9px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;';
-  const bigStyle = "font-family:'Playfair Display',serif;font-size:26px;line-height:1;";
-  const subStyle = 'font-size:11px;color:var(--cream-dim);margin-top:6px;min-height:18px;';
+  const trendColor = improved ? '#4caf7d' : worsened ? 'var(--danger)' : 'var(--cream-dim)';
+  const trendArrow = improved ? '↓' : worsened ? '↑' : '–';
+  const trendLabel = delta != null && delta !== 0 ? (delta > 0 ? '+' : '') + delta : '';
 
   el.innerHTML = `
-    <div style="display:flex;gap:10px;">
-      <div style="flex:1;${cardStyle}">
-        <div style="${labelStyle}">HCP nå</div>
-        <div style="${bigStyle}color:var(--cream);">${hcpNow != null ? hcpNow.toFixed(1) : '–'}</div>
-        <div style="font-size:13px;color:${trendColor};margin-top:6px;font-weight:600;min-height:18px;">${trendArrow !== '–' ? trendArrow + ' ' + trendLabel : (hcpNow != null ? '<span style="color:var(--cream-dim);font-size:11px;">stabil</span>' : '')}</div>
-        ${estimate ? `<div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.07);">
-          <div style="font-size:9px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">Estimert HCP</div>
-          <div style="font-family:'Playfair Display',serif;font-size:20px;color:var(--gold-light);line-height:1;">${estimate.estimatedHCP}</div>
-          <div style="font-size:9px;color:rgba(255,255,255,0.3);margin-top:3px;">basert på ${estimate.newRoundsCount} runder siden siste Golfbox-import</div>
+    <div style="background:rgba(0,0,0,0.25);border-radius:12px;padding:18px 20px;border:1px solid rgba(255,255,255,0.08);">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;">
+        <div>
+          <div style="font-size:9px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">HCP nå</div>
+          <div style="font-family:'Playfair Display',serif;font-size:38px;color:var(--cream);line-height:1;">${hcpNow != null ? hcpNow.toFixed(1) : '–'}</div>
+          <div style="font-size:13px;color:${trendColor};margin-top:6px;font-weight:600;">${trendArrow !== '–' ? trendArrow + ' ' + trendLabel : (hcpNow != null ? '<span style="color:var(--cream-dim);font-size:11px;">stabil</span>' : '')}</div>
+        </div>
+        ${estimate ? `<div style="text-align:right;">
+          <div style="font-size:9px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Estimert HCP</div>
+          <div style="font-family:'Playfair Display',serif;font-size:38px;color:var(--gold-light);line-height:1;">${estimate.estimatedHCP}</div>
+          <div style="font-size:9px;color:rgba(255,255,255,0.3);margin-top:6px;">${estimate.newRoundsCount} runde${estimate.newRoundsCount !== 1 ? 'r' : ''} siden import</div>
         </div>` : ''}
-      </div>
-      <div style="flex:1;${cardStyle}">
-        <div style="${labelStyle}">Beste 18h runde</div>
-        <div style="${bigStyle}color:${best18 != null ? 'var(--gold)' : 'var(--cream)'};">${best18 ?? '–'}</div>
-        <div style="${subStyle}">${best18 != null ? 'Stableford' : ''}</div>
-      </div>
-      <div style="flex:1;${cardStyle}">
-        <div style="${labelStyle}">Snitt 18h</div>
-        <div style="${bigStyle}color:var(--cream);">${avg18 ?? '–'}</div>
-        <div style="${subStyle}">${avg18 != null ? sf18.length + ' runder' : ''}</div>
       </div>
     </div>`;
 }
