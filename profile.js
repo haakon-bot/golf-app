@@ -126,12 +126,10 @@ async function _loadAndRenderPersonalStats() {
         <div style="font-size:11px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px;">HCP-utvikling</div>
         ${motiv ? _renderMotivBanner(motiv) + '<div style="height:12px;"></div>' : ''}
         <div id="hcpGraph"></div>
-        <div id="hcpHistoryList" style="margin-top:16px;"></div>
       </div>
       <div id="personalStatsSection"></div>
     `;
     _renderHcpGraph(diffs);
-    _renderHcpHistoryList(diffs);
     _renderPersonalStats(document.getElementById('personalStatsSection'), holeScores, roundSummaries);
   } catch (e) {
     el.innerHTML = `<div class="empty"><p style="color:var(--cream-dim);">Feil: ${e.message}</p></div>`;
