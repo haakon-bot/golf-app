@@ -101,7 +101,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.116</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.117</span></div>
     <div style="display:flex; align-items:center; gap:4px;">
       <button id="topbarRefreshBtn" onclick="forceUpdate()" title="Oppdater app" style="background:none;border:none;color:var(--cream-dim);cursor:pointer;padding:8px;font-size:22px;opacity:0.45;-webkit-tap-highlight-color:transparent;line-height:1;"><i class="ti ti-refresh"></i></button>
       <button onclick="openDrawer()" title="Meny" style="background:none;border:none;color:var(--cream-dim);cursor:pointer;padding:8px;font-size:24px;-webkit-tap-highlight-color:transparent;line-height:1;"><i class="ti ti-menu-2"></i></button>
@@ -210,7 +210,15 @@
   </div>
   <!-- Stats -->
   <div class="page" id="page-stats">
-    <div class="page-header"><div><h1>Statistikk</h1><p>Kommer snart</p></div></div>
+    <div class="page-header"><div><h1>Statistikk</h1></div></div>
+    <div class="tabs">
+      <button class="tab active" id="statsTabSesong" onclick="switchStatsTab('sesong')">Sesong</button>
+      <button class="tab" id="statsTabH2h" onclick="switchStatsTab('h2h')">Head-to-head</button>
+    </div>
+    <div id="statsContentSesong"></div>
+    <div id="statsContentH2h" style="display:none;">
+      <div class="empty"><div class="empty-icon" style="font-size:40px;opacity:0.4;">⚔️</div><h3>Head-to-head</h3><p>Kommer snart</p></div>
+    </div>
   </div>
   <!-- Season Leaderboard -->
   <div class="page" id="page-season">
@@ -607,6 +615,7 @@
   </div>
 </div>
 <script src="app.js" defer></script>
+<script src="stats.js" defer></script>
 <script src="courses.js" defer></script>
 <script src="players.js" defer></script>
 <script src="rounds.js" defer></script>

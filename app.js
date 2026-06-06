@@ -263,6 +263,7 @@ function showPage(pageId) {
   if (pageId === 'rounds') loadRounds();
   if (pageId === 'dashboard') loadDashboard();
   if (pageId === 'live') loadLivePage();
+  if (pageId === 'stats') loadStatsPage();
 }
 
 // ── UTILITIES ──
