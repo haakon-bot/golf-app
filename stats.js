@@ -461,7 +461,10 @@ async function _loadAndRenderH2h() {
     let p1BirdiesTotal = 0, p2BirdiesTotal = 0;
     let p1StrokesTotal = 0, p2StrokesTotal = 0;
     let p1HolesTotal = 0, p2HolesTotal = 0;
-    const parWins = { p1: { 3: 0, 4: 0, 5: 0 }, p2: { 3: 0, 4: 0, 5: 0 } };
+    const parStats = {
+      p1: { 3: { strokes: 0, sf: 0, count: 0 }, 4: { strokes: 0, sf: 0, count: 0 }, 5: { strokes: 0, sf: 0, count: 0 } },
+      p2: { 3: { strokes: 0, sf: 0, count: 0 }, 4: { strokes: 0, sf: 0, count: 0 }, 5: { strokes: 0, sf: 0, count: 0 } },
+    };
 
     for (const round of sharedRounds) {
       const courseHoles = holesByCourse[round.course_id] || {};
@@ -488,10 +491,10 @@ async function _loadAndRenderH2h() {
         if (s1 > 0) { p1Total += sf1; p1Strokes += s1; p1Played++; if (s1 === hole.par - 1) roundP1Birdies++; }
         if (s2 > 0) { p2Total += sf2; p2Strokes += s2; p2Played++; if (s2 === hole.par - 1) roundP2Birdies++; }
 
-        // Par-type hole wins: only when both players scored
-        if (sf1 !== null && sf2 !== null && hole.par >= 3 && hole.par <= 5) {
-          if (sf1 > sf2) parWins.p1[hole.par]++;
-          else if (sf2 > sf1) parWins.p2[hole.par]++;
+        // Per-par-type stats
+        if (hole.par >= 3 && hole.par <= 5) {
+          if (s1 > 0) { parStats.p1[hole.par].strokes += s1; parStats.p1[hole.par].sf += sf1; parStats.p1[hole.par].count++; }
+          if (s2 > 0) { parStats.p2[hole.par].strokes += s2; parStats.p2[hole.par].sf += sf2; parStats.p2[hole.par].count++; }
         }
       }
 
@@ -588,9 +591,7 @@ async function _loadAndRenderH2h() {
           ${_h2hStatRow(p1Best, 'Beste runde', p2Best, p1Best > p2Best, p2Best > p1Best)}
           ${_h2hStatRow(p1AvgStrokes ?? '–', 'Snitt slag/18', p2AvgStrokes ?? '–', strokesDefined && p1AvgStrokes < p2AvgStrokes, strokesDefined && p2AvgStrokes < p1AvgStrokes)}
           ${_h2hStatRow(p1BirdiesTotal, 'Birdies', p2BirdiesTotal, p1BirdiesTotal > p2BirdiesTotal, p2BirdiesTotal > p1BirdiesTotal)}
-          ${_h2hStatRow(parWins.p1[3], 'Vinner par 3', parWins.p2[3], parWins.p1[3] > parWins.p2[3], parWins.p2[3] > parWins.p1[3])}
-          ${_h2hStatRow(parWins.p1[4], 'Vinner par 4', parWins.p2[4], parWins.p1[4] > parWins.p2[4], parWins.p2[4] > parWins.p1[4])}
-          ${_h2hStatRow(parWins.p1[5], 'Vinner par 5', parWins.p2[5], parWins.p1[5] > parWins.p2[5], parWins.p2[5] > parWins.p1[5])}
+          ${[3, 4, 5].map(par => _h2hParSection(par, parStats.p1[par], parStats.p2[par])).join('')}
           ${_h2hStatRow(fmtHcpChange(p1HcpChange), 'HCP ± 12 mnd', fmtHcpChange(p2HcpChange), hcpChangeDefined && p1HcpChange < p2HcpChange, hcpChangeDefined && p2HcpChange < p1HcpChange)}
           ${_h2hStatRow(p1Info?.handicap ?? '–', 'Nåværende HCP', p2Info?.handicap ?? '–', false, false)}
           <div style="padding:13px 16px;border-top:1px solid rgba(255,255,255,0.05);display:flex;align-items:center;gap:8px;">
@@ -637,6 +638,31 @@ async function _loadAndRenderH2h() {
   } catch (e) {
     dataEl.innerHTML = `<div class="empty"><p style="color:var(--cream-dim);">Feil: ${e.message}</p></div>`;
   }
+}
+
+function _h2hParSection(par, p1s, p2s) {
+  const p1AvgStr = p1s.count > 0 ? (p1s.strokes / p1s.count).toFixed(1) : null;
+  const p2AvgStr = p2s.count > 0 ? (p2s.strokes / p2s.count).toFixed(1) : null;
+  const p1AvgSF  = p1s.count > 0 ? (p1s.sf / p1s.count).toFixed(1) : null;
+  const p2AvgSF  = p2s.count > 0 ? (p2s.sf / p2s.count).toFixed(1) : null;
+  const strDef = p1AvgStr !== null && p2AvgStr !== null;
+  const sfDef  = p1AvgSF  !== null && p2AvgSF  !== null;
+  return `
+    <div style="padding:7px 16px;border-bottom:1px solid rgba(255,255,255,0.05);background:rgba(255,255,255,0.025);">
+      <span style="font-size:10px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1.5px;font-weight:500;">Par ${par}</span>
+    </div>
+    ${_h2hStatRow(
+      p1AvgStr !== null ? p1AvgStr + ' slag' : '–', 'Snitt slag',
+      p2AvgStr !== null ? p2AvgStr + ' slag' : '–',
+      strDef && parseFloat(p1AvgStr) < parseFloat(p2AvgStr),
+      strDef && parseFloat(p2AvgStr) < parseFloat(p1AvgStr)
+    )}
+    ${_h2hStatRow(
+      p1AvgSF !== null ? p1AvgSF + 'p' : '–', 'Snitt poeng',
+      p2AvgSF !== null ? p2AvgSF + 'p' : '–',
+      sfDef && parseFloat(p1AvgSF) > parseFloat(p2AvgSF),
+      sfDef && parseFloat(p2AvgSF) > parseFloat(p1AvgSF)
+    )}`;
 }
 
 function _h2hStatRow(v1, label, v2, p1Better, p2Better) {
