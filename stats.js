@@ -586,12 +586,14 @@ async function _loadAndRenderH2h() {
     const statsGridHtml = `
       <div style="margin-bottom:24px;">
         <div style="font-size:11px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px;">Statistikk</div>
-        <div style="background:rgba(0,0,0,0.2);border:1px solid rgba(255,255,255,0.07);border-radius:12px;overflow:hidden;">
+        <div style="background:rgba(0,0,0,0.2);border:1px solid rgba(255,255,255,0.07);border-radius:12px;overflow:hidden;margin-bottom:12px;">
           ${_h2hStatRow(p1Avg.toFixed(1), 'Snitt Stableford', p2Avg.toFixed(1), p1Avg > p2Avg, p2Avg > p1Avg)}
           ${_h2hStatRow(p1Best, 'Beste runde', p2Best, p1Best > p2Best, p2Best > p1Best)}
           ${_h2hStatRow(p1AvgStrokes ?? '–', 'Snitt slag/18', p2AvgStrokes ?? '–', strokesDefined && p1AvgStrokes < p2AvgStrokes, strokesDefined && p2AvgStrokes < p1AvgStrokes)}
           ${_h2hStatRow(p1BirdiesTotal, 'Birdies', p2BirdiesTotal, p1BirdiesTotal > p2BirdiesTotal, p2BirdiesTotal > p1BirdiesTotal)}
           ${[3, 4, 5].map(par => _h2hParSection(par, parStats.p1[par], parStats.p2[par])).join('')}
+        </div>
+        <div style="background:rgba(0,0,0,0.2);border:1px solid rgba(255,255,255,0.07);border-radius:12px;overflow:hidden;">
           ${_h2hStatRow(fmtHcpChange(p1HcpChange), 'HCP ± 12 mnd', fmtHcpChange(p2HcpChange), hcpChangeDefined && p1HcpChange < p2HcpChange, hcpChangeDefined && p2HcpChange < p1HcpChange)}
           ${_h2hStatRow(p1Info?.handicap ?? '–', 'Nåværende HCP', p2Info?.handicap ?? '–', false, false)}
           <div style="padding:13px 16px;border-top:1px solid rgba(255,255,255,0.05);display:flex;align-items:center;gap:8px;">
