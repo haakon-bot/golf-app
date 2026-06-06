@@ -160,7 +160,7 @@ function showApp() {
   document.getElementById('loginPage').style.display = 'none';
   document.getElementById('appShell').style.display = 'block';
   initUpdateButton();
-  document.getElementById('topbarUsername').textContent = currentProfile?.username || '–';
+  const _tuEl = document.getElementById('topbarUsername'); if (_tuEl) _tuEl.textContent = currentProfile?.username || '–';
   document.getElementById('dashGreeting').textContent = `Hei, ${currentProfile?.display_name || currentProfile?.username}!`;
   const _golfQuotes = [
     { text: "The most important shot in golf is the next one.", author: "Ben Hogan" },
