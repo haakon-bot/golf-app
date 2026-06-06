@@ -109,10 +109,23 @@ async function _fetchAndComputeStats() {
         }
 
         if (holesPlayed >= 9) {
+          // Normalize 9-hole rounds to 18-hole equivalent: fill unplayed holes with netto par,
+          // matching the same logic as calculateEstimatedHCP in profile.js.
+          let normalizedTotal = roundTotal;
+          const is9Hole = round.hole_range === 'front9' || round.hole_range === 'back9';
+          if (is9Hole) {
+            const playedNums = new Set(activeHoles.map(h => h.hole_number));
+            for (const h of Object.values(courseHoles)) {
+              if (playedNums.has(h.hole_number) || !h.par || !h.stroke_index) continue;
+              let tildelte = Math.floor(phcp / 18);
+              if (h.stroke_index <= (phcp % 18)) tildelte++;
+              normalizedTotal += calcStableford(h.par + tildelte, h.par, phcp, h.stroke_index);
+            }
+          }
           if (!playerStats[fp.player_id]) {
             playerStats[fp.player_id] = { name: fp.profiles?.display_name || 'Ukjent', totalPoints: 0, roundCount: 0 };
           }
-          playerStats[fp.player_id].totalPoints += roundTotal;
+          playerStats[fp.player_id].totalPoints += normalizedTotal;
           playerStats[fp.player_id].roundCount++;
         }
       }
