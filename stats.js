@@ -78,7 +78,7 @@ async function _fetchAndComputeStats() {
       for (const fp of (flight.flight_players || [])) {
         const phcp = _playingHcp(fp.handicap, round.tee_sets?.slope, round.tee_sets?.course_rating, coursePar);
         const pScores = scoreMap[`${round.id}_${fp.player_id}`] || {};
-        let roundTotal = 0, holesPlayed = 0;
+        let roundTotal = 0, roundStrokes = 0, holesPlayed = 0;
 
         for (const hole of activeHoles) {
           const strokes = pScores[hole.hole_number];
@@ -86,6 +86,7 @@ async function _fetchAndComputeStats() {
 
           const sf = calcStableford(strokes, hole.par, phcp, hole.stroke_index);
           roundTotal += sf;
+          roundStrokes += strokes;
           holesPlayed++;
 
           if (hole.par >= 3 && hole.par <= 5) {
@@ -123,10 +124,12 @@ async function _fetchAndComputeStats() {
             }
           }
           if (!playerStats[fp.player_id]) {
-            playerStats[fp.player_id] = { name: fp.profiles?.display_name || 'Ukjent', totalPoints: 0, roundCount: 0 };
+            playerStats[fp.player_id] = { name: fp.profiles?.display_name || 'Ukjent', totalPoints: 0, roundCount: 0, totalStrokes: 0, totalHolesForStrokes: 0 };
           }
           playerStats[fp.player_id].totalPoints += normalizedTotal;
           playerStats[fp.player_id].roundCount++;
+          playerStats[fp.player_id].totalStrokes += roundStrokes;
+          playerStats[fp.player_id].totalHolesForStrokes += holesPlayed;
         }
       }
     }
@@ -146,7 +149,11 @@ function _renderSesong(el, data) {
   // Leaderboard
   const leaderboard = Object.values(playerStats)
     .filter(p => p.roundCount > 0)
-    .map(p => ({ ...p, avg: p.totalPoints / p.roundCount }))
+    .map(p => ({
+      ...p,
+      avg: p.totalPoints / p.roundCount,
+      avgStrokes18: p.totalHolesForStrokes > 0 ? Math.round(p.totalStrokes / p.totalHolesForStrokes * 18) : null,
+    }))
     .sort((a, b) => b.avg - a.avg);
 
   const leaderHtml = `
@@ -162,7 +169,7 @@ function _renderSesong(el, data) {
             </div>
             <div style="text-align:right;">
               <div style="font-size:20px;font-weight:700;color:var(--gold);">${p.avg.toFixed(1)}</div>
-              <div style="font-size:10px;color:var(--cream-dim);">snitt</div>
+              <div style="font-size:10px;color:var(--cream-dim);">${p.avgStrokes18 != null ? `snitt ${p.avgStrokes18} slag` : 'snitt'}</div>
             </div>
           </div>`).join('') : '<div style="padding:24px;text-align:center;color:var(--cream-dim);font-size:14px;">Ingen spillere ennå</div>'}
       </div>
