@@ -657,7 +657,7 @@ async function saveGolfboxHistory() {
 
   btn.disabled = false; btn.textContent = 'Lagre historikk';
   if (saved === 0 && skipped > 0) {
-    document.getElementById('gbImportAlert').innerHTML = `<div class="alert alert-error">Ingen runder ble lagret (${skipped} feilet).</div>`;
+    document.getElementById('gbImportAlert').innerHTML = `<div style="padding:12px 16px;border-radius:8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);color:var(--cream-dim);font-size:14px;">Historikk er allerede oppdatert — ingen nye runder funnet.</div>`;
     return;
   }
   closeModal('modalGolfboxImport');
