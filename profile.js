@@ -633,7 +633,7 @@ async function saveGolfboxHistory() {
     btn.textContent = `⏳ Lagrer ${i + 1} av ${_golfboxParsed.length}…`;
     const r = _golfboxParsed[i];
     if (existingKeys.has(`${r.date}|${r.differential}`)) { skipped++; continue; }
-    const { error } = await db.from('score_differentials').insert({
+    const { error } = await db.from('score_differentials').upsert({
       player_id: currentProfile.id,
       date: r.date,
       differential: r.differential,
@@ -641,7 +641,7 @@ async function saveGolfboxHistory() {
       course_name: r.course_name || null,
       hcp_before: r.hcp_before ?? null,
       hcp_after: r.hcp_after ?? null,
-    });
+    }, { onConflict: 'player_id,date,differential,source', ignoreDuplicates: true });
     if (error) { skipped++; } else { saved++; }
   }
   // Update profile handicap to hcp_after from the most recent imported differential
