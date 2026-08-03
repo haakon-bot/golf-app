@@ -1,0 +1,20 @@
+name: Supabase keep-alive
+
+# Pinger databasen hver 3. dag så free tier-prosjektet aldri pauses
+on:
+  schedule:
+    - cron: '0 6 */3 * *'  # kl 06:00 UTC hver 3. dag
+  workflow_dispatch:        # kan også kjøres manuelt fra Actions-fanen
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase
+        env:
+          ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZxaXduc21oeXB4dHNkaXB6bnRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2MTA2NjIsImV4cCI6MjA5MzE4NjY2Mn0.QZjHeK-ckcM5aAIRsjeZalHQuLgkwCVcoxTL1pBpG68
+        run: |
+          curl -sf "https://fqiwnsmhypxtsdipzntm.supabase.co/rest/v1/profiles?select=id&limit=1" \
+            -H "apikey: $ANON_KEY" \
+            -H "Authorization: Bearer $ANON_KEY" > /dev/null
+          echo "Supabase pinget OK ⛳"
