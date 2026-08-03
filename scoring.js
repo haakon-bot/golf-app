@@ -31,7 +31,7 @@ async function openRound(roundId) {
   document.getElementById('scoringScreen').style.display = 'flex';
   document.getElementById('scoringScreen').style.flexDirection = 'column';
   const { data: round } = await db.from('rounds')
-    .select('*, courses(name, holes), tee_sets(name, slope, course_rating), flights(id, name, flight_players(id, player_id, handicap, profiles(display_name, username)))')
+    .select('*, courses(name, holes), tee_sets(name, slope, course_rating), flights(id, name, flight_players(id, player_id, handicap, profiles(display_name, username))), games(*)')
     .eq('id', roundId).single();
   if (!round) { document.getElementById('scoringScreen').style.display = 'none'; return; }
   if (!round.course_id) {
@@ -189,7 +189,7 @@ function renderPlayerInputs(holeData) {
   });
   document.getElementById('scPlayerScores').innerHTML = html;
 }
-function _playingHcp(hi, slope, cr, par) { return Math.round((hi || 36) * (slope || 113) / 113 + ((cr || 72) - (par || 72))); }
+// _playingHcp og calcStableford bor nå i games.js (spillmotoren, delte helpers).
 // Counts extra strokes from fullHCP that land on the given active holes (full 18-hole distribution).
 function _activeStrokes(fullHCP, activeHoles) {
   return (activeHoles || []).reduce((sum, hole) => {
@@ -198,18 +198,6 @@ function _activeStrokes(fullHCP, activeHoles) {
     if (hole.stroke_index <= (fullHCP % 18)) extra++;
     return sum + extra;
   }, 0);
-}
-function calcStableford(strokes, par, hcp, si) {
-  if (!strokes || !par || !si) return 0;
-  let extra = Math.floor(hcp / 18);
-  if (si <= (hcp % 18)) extra++;
-  return Math.max(0, par - (strokes - extra) + 2);
-}
-function calcStablefordWithHoles(strokes, par, hcp, si, totalHoles) {
-  if (!strokes || !par || !si) return 0;
-  let extra = Math.floor(hcp / totalHoles);
-  if (si <= (hcp % totalHoles)) extra++;
-  return Math.max(0, par - (strokes - extra) + 2);
 }
 function _fmtVsPar(n) {
   if (n == null || isNaN(n)) return '–';
@@ -312,91 +300,18 @@ function renderMiniLeaderboard() {
     </div>
   `).join('');
 }
-function toggleSkinsAmount() {
-  const wrap = document.getElementById('skinsAmountWrap');
-  if (wrap) wrap.style.display = document.getElementById('skinsEnabled').checked ? 'flex' : 'none';
-}
-
-function _computeSkins(holes, scores, allFP, round) {
-  const slope = round.tee_sets?.slope, cr = round.tee_sets?.course_rating;
-  const fcp = _fullCoursePar || 72;
-  const hcpMap = {};
-  allFP.forEach(fp => { hcpMap[fp.player_id] = _playingHcp(fp.handicap, slope, cr, fcp); });
-  let pot = 0;
-  const skinsByPlayer = {};
-  allFP.forEach(fp => { skinsByPlayer[fp.player_id] = 0; });
-  const holeResults = [];
-  for (const hole of holes) {
-    pot++;
-    if (!hole.par || !hole.stroke_index) {
-      holeResults.push({ holeNumber: hole.hole_number, par: hole.par, winnerId: null, pot, noData: true, sfByPlayer: {} });
-      continue;
-    }
-    const sfByPlayer = {};
-    let maxSf = -1, anyScore = false;
-    for (const fp of allFP) {
-      const s = scores[fp.player_id]?.[hole.hole_number];
-      if (!s || s <= 0) continue;
-      anyScore = true;
-      const sf = calcStableford(s, hole.par, hcpMap[fp.player_id], hole.stroke_index);
-      sfByPlayer[fp.player_id] = sf;
-      if (sf > maxSf) maxSf = sf;
-    }
-    if (!anyScore) {
-      holeResults.push({ holeNumber: hole.hole_number, par: hole.par, winnerId: null, pot, noScore: true, sfByPlayer: {} });
-      continue;
-    }
-    const winners = allFP.filter(fp => sfByPlayer[fp.player_id] === maxSf && maxSf >= 0);
-    if (winners.length === 1) {
-      const w = winners[0];
-      skinsByPlayer[w.player_id] += pot;
-      holeResults.push({ holeNumber: hole.hole_number, par: hole.par, winnerId: w.player_id,
-        winnerName: w.profiles?.display_name?.split(' ')[0] || '?', pot, tied: false, sfByPlayer });
-      pot = 0;
-    } else {
-      holeResults.push({ holeNumber: hole.hole_number, par: hole.par, winnerId: null, pot, tied: true, sfByPlayer });
-    }
-  }
-  return { skinsByPlayer, holeResults, remainingPot: pot };
-}
-
+// toggleSkinsAmount + skins-beregning/-rendring bor nå i games.js (skins-modulen).
+// Tynn wrapper: bygg ctx og la motoren rendre tracker-stripa.
 function renderSkinsTracker() {
   const strip = document.getElementById('scSkinsStrip');
   const el = document.getElementById('scSkins');
-  if (!strip || !el || !currentRound?.skins_amount) { if (strip) strip.style.display = 'none'; return; }
-  strip.style.display = 'block';
-  const kr = currentRound.skins_amount;
-  const multiFlights = roundFlights.length > 1;
-  const parts = [];
-  for (const flight of roundFlights) {
-    const fp = flight.flight_players || [];
-    if (fp.length < 2) continue;
-    const { skinsByPlayer, remainingPot } = _computeSkins(roundHoles, roundScores, fp, currentRound);
-    const maxSkins = Math.max(...fp.map(f => skinsByPlayer[f.player_id] || 0));
-    const cards = fp.map(p => {
-      const n = skinsByPlayer[p.player_id] || 0;
-      const isLeader = n > 0 && n === maxSkins;
-      return `<div style="flex-shrink:0;text-align:center;padding:7px 12px;border-radius:8px;border:1px solid ${isLeader ? 'rgba(201,168,76,0.4)' : 'rgba(255,255,255,0.07)'};background:${isLeader ? 'rgba(201,168,76,0.15)' : 'rgba(0,0,0,0.2)'};">
-        <div style="font-size:10px;color:var(--cream-dim);">${p.profiles?.display_name?.split(' ')[0] || '?'}</div>
-        <div style="font-family:'Playfair Display',serif;font-size:18px;color:${isLeader ? 'var(--gold)' : 'var(--cream)'};">${n}</div>
-        <div style="font-size:9px;color:var(--cream-dim);">${n * kr} kr</div>
-      </div>`;
-    });
-    if (remainingPot > 1) cards.push(`<div style="flex-shrink:0;text-align:center;padding:7px 12px;border-radius:8px;border:1px solid rgba(82,183,136,0.3);background:rgba(82,183,136,0.1);">
-      <div style="font-size:10px;color:var(--green-light);">Pott</div>
-      <div style="font-family:'Playfair Display',serif;font-size:18px;color:var(--green-light);">×${remainingPot}</div>
-      <div style="font-size:9px;color:var(--cream-dim);">${remainingPot * kr} kr</div>
-    </div>`);
-    if (multiFlights) {
-      parts.push(`<div style="flex-shrink:0;">
-        <div style="font-size:9px;color:var(--cream-dim);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;">${flight.name}</div>
-        <div style="display:flex;gap:6px;">${cards.join('')}</div>
-      </div>`);
-    } else {
-      parts.push(...cards);
-    }
-  }
-  el.innerHTML = parts.join('');
+  if (!strip || !el) return;
+  const html = getGame('skins').trackerUI({
+    round: currentRound, holes: roundHoles, scores: roundScores,
+    flights: roundFlights, fullCoursePar: _fullCoursePar,
+  });
+  strip.style.display = html ? 'block' : 'none';
+  el.innerHTML = html || '';
 }
 
 function _scorecardInlineHtml(fp, scores, holes, round, fullCoursePar) {
@@ -552,7 +467,7 @@ async function showRoundSummary(roundId) {
   document.getElementById('summaryTitle').textContent = 'Laster...';
   openModal('modalRoundSummary');
   const { data: round, error } = await db.from('rounds')
-    .select('*, courses(name, holes), tee_sets(name, slope, course_rating), flights(id, name, flight_players(id, player_id, handicap, profiles(display_name, username)))')
+    .select('*, courses(name, holes), tee_sets(name, slope, course_rating), flights(id, name, flight_players(id, player_id, handicap, profiles(display_name, username))), games(*)')
     .eq('id', roundId).single();
   if (error || !round) { document.getElementById('summaryTitle').textContent = 'Feil ved lasting'; return; }
   const { data: scores } = await db.from('scores').select('*').eq('round_id', roundId);
@@ -579,76 +494,16 @@ async function showRoundSummary(roundId) {
   window._summaryData = { round, holes: filteredHoles, sc, allFP, totalHoles, fullCoursePar };
   window._currentSummaryPlayer = null;
   if (allFP[0]) showSummaryPlayer(allFP[0].player_id);
-  // Skins summary
+  // Skins summary — delegeres til skins-modulen i motoren.
   const skinsSummaryEl = document.getElementById('skinsSummary');
   if (skinsSummaryEl) {
-    if (round.skins_amount && allFP.length > 1) {
-      skinsSummaryEl.style.display = 'block';
-      _renderSkinsSummary(round, filteredHoles, sc, round.flights || [], fullCoursePar);
-    } else {
-      skinsSummaryEl.style.display = 'none';
-    }
+    const html = getGame('skins').summaryUI({
+      round, holes: filteredHoles, scores: sc,
+      flights: round.flights || [], fullCoursePar,
+    });
+    skinsSummaryEl.style.display = html ? 'block' : 'none';
+    skinsSummaryEl.innerHTML = html || '';
   }
-}
-
-function _renderSkinsSummary(round, holes, sc, flights, fullCoursePar) {
-  const el = document.getElementById('skinsSummary');
-  if (!el) return;
-  const savedFcp = _fullCoursePar;
-  _fullCoursePar = fullCoursePar;
-  const kr = round.skins_amount;
-  const multiFlights = flights.length > 1;
-  const sections = flights.map(flight => {
-    const allFP = flight.flight_players || [];
-    if (allFP.length < 2) return '';
-    const { skinsByPlayer, holeResults, remainingPot } = _computeSkins(holes, sc, allFP, round);
-    const holeRows = holeResults.filter(r => !r.noData).map(r => {
-      const sfCells = allFP.map(fp => {
-        const sf = r.sfByPlayer?.[fp.player_id];
-        const isWinner = r.winnerId === fp.player_id;
-        return `<td style="padding:5px 8px;text-align:center;font-family:'Playfair Display',serif;font-size:14px;color:${isWinner ? 'var(--gold)' : sf != null ? 'var(--cream)' : 'var(--cream-dim)'};">${sf != null ? sf + 'p' : '–'}</td>`;
-      }).join('');
-      const winnerCell = r.noScore ? '<td style="padding:5px 8px;text-align:center;font-size:11px;color:var(--cream-dim);">–</td>'
-        : r.tied ? `<td style="padding:5px 8px;text-align:center;font-size:11px;color:var(--green-light);">↩ Rull</td>`
-        : `<td style="padding:5px 8px;text-align:center;font-size:12px;color:var(--gold);font-weight:600;">${r.winnerName} ×${r.pot}</td>`;
-      return `<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
-        <td style="padding:5px 8px;color:var(--cream-dim);font-size:12px;">${r.holeNumber}</td>
-        <td style="padding:5px 8px;text-align:center;color:var(--cream-dim);font-size:12px;">${r.par}</td>
-        ${sfCells}${winnerCell}
-      </tr>`;
-    }).join('');
-    const headerCells = allFP.map(fp => `<th style="padding:5px 8px;text-align:center;color:var(--cream-dim);font-size:10px;font-weight:400;text-transform:uppercase;letter-spacing:1px;">${fp.profiles?.display_name?.split(' ')[0] || '?'}</th>`).join('');
-    const totals = allFP.map(fp => {
-      const n = skinsByPlayer[fp.player_id] || 0;
-      return { name: fp.profiles?.display_name?.split(' ')[0] || '?', skins: n, kr: n * kr };
-    }).sort((a, b) => b.skins - a.skins);
-    const flightHeader = multiFlights ? `<div style="font-size:11px;color:var(--cream-dim);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;">${flight.name}</div>` : '';
-    return `<div style="background:rgba(201,168,76,0.06);border:1px solid rgba(201,168,76,0.25);border-radius:12px;padding:16px;${multiFlights ? 'margin-bottom:12px;' : ''}">
-      ${flightHeader}
-      <div style="font-size:11px;color:var(--gold);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:14px;">🎰 Skins · ${kr} kr per skin</div>
-      <div style="overflow-x:auto;margin-bottom:14px;">
-        <table style="width:100%;border-collapse:collapse;font-size:13px;">
-          <thead><tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
-            <th style="padding:5px 8px;text-align:left;color:var(--cream-dim);font-size:10px;font-weight:400;text-transform:uppercase;letter-spacing:1px;">Hull</th>
-            <th style="padding:5px 8px;text-align:center;color:var(--cream-dim);font-size:10px;font-weight:400;text-transform:uppercase;letter-spacing:1px;">Par</th>
-            ${headerCells}
-            <th style="padding:5px 8px;text-align:center;color:var(--cream-dim);font-size:10px;font-weight:400;text-transform:uppercase;letter-spacing:1px;">Vinner</th>
-          </tr></thead>
-          <tbody>${holeRows}</tbody>
-        </table>
-      </div>
-      ${remainingPot > 0 ? `<div style="font-size:12px;color:var(--green-light);margin-bottom:12px;">⚠️ ${remainingPot} skin(s) uten vinner (siste hull uavgjort)</div>` : ''}
-      <div style="display:flex;gap:10px;flex-wrap:wrap;">
-        ${totals.map((t, i) => `<div style="flex:1;min-width:80px;text-align:center;padding:10px;background:${i === 0 && t.skins > 0 ? 'rgba(201,168,76,0.15)' : 'rgba(0,0,0,0.2)'};border-radius:8px;border:1px solid ${i === 0 && t.skins > 0 ? 'rgba(201,168,76,0.3)' : 'rgba(255,255,255,0.07)'};">
-          <div style="font-size:11px;color:var(--cream-dim);">${t.name}</div>
-          <div style="font-family:'Playfair Display',serif;font-size:22px;color:${i === 0 && t.skins > 0 ? 'var(--gold)' : 'var(--cream)'};">${t.skins}</div>
-          <div style="font-size:12px;color:${t.kr > 0 ? 'var(--green-light)' : 'var(--cream-dim)'};">${t.kr} kr</div>
-        </div>`).join('')}
-      </div>
-    </div>`;
-  }).filter(Boolean);
-  _fullCoursePar = savedFcp;
-  el.innerHTML = sections.join('');
 }
 function showSummaryPlayer(playerId, btn) {
   if (btn) {
@@ -666,7 +521,7 @@ function showSummaryPlayer(playerId, btn) {
   let bestHole = null, worstHole = null;
   const rows = holes.map(h => {
     const s = playerScores[h.hole_number] || 0;
-    const stab = s > 0 ? calcStablefordStatic(s, h.par, hcp, h.stroke_index, 18) : 0;
+    const stab = s > 0 ? calcStableford(s, h.par, hcp, h.stroke_index, 18) : 0;
     totalStabs += stab;
     totalStrokes += s;
     if (s > 0) {
@@ -744,12 +599,6 @@ function showSummaryPlayer(playerId, btn) {
   window._currentSummaryPlayer = { fp, playerScores, holes, round, totalHoles };
   const activeMode = document.getElementById('golfboxTableBtn')?.classList.contains('active') ? 'table' : 'speak';
   showGolfboxMode(activeMode);
-}
-function calcStablefordStatic(strokes, par, hcp, si, totalHoles) {
-  if (!strokes || !par) return 0;
-  let extra = Math.floor(hcp / totalHoles);
-  if (si <= (hcp % totalHoles)) extra++;
-  return Math.max(0, par - (strokes - extra) + 2);
 }
 function showGolfboxMode(mode) {
   const tableBtn = document.getElementById('golfboxTableBtn');

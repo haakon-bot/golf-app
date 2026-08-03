@@ -105,7 +105,7 @@ async function renderPublicLive() {
     const ps = scoreMap[fp.player_id] || {};
     let pts = 0, played = 0;
     Object.entries(ps).forEach(([hn, strokes]) => {
-      if (strokes > 0) { played++; const h = holeMap[parseInt(hn)]; if (h?.par && h?.stroke_index) pts += calcStablefordLive(strokes, h.par, _playingHcp(fp.handicap, round.tee_sets?.slope, round.tee_sets?.course_rating, _pubPar), h.stroke_index, 18); }
+      if (strokes > 0) { played++; const h = holeMap[parseInt(hn)]; if (h?.par && h?.stroke_index) pts += calcStableford(strokes, h.par, _playingHcp(fp.handicap, round.tee_sets?.slope, round.tee_sets?.course_rating, _pubPar), h.stroke_index, 18); }
     });
     return { name: fp.profiles?.display_name || '?', pts, played, scores: ps };
   }).sort((a, b) => b.pts - a.pts);

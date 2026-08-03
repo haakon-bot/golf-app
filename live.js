@@ -13,7 +13,7 @@ async function loadLivePage() {
     el.innerHTML = '<div class="loading"><div class="spinner"></div> Laster...</div>';
 
     const { data: active } = await db.from('rounds')
-      .select('*, courses(name, holes), tee_sets(name, slope, course_rating), flights(id, name, flight_players(id, player_id, handicap, profiles(display_name)))')
+      .select('*, courses(name, holes), tee_sets(name, slope, course_rating), flights(id, name, flight_players(id, player_id, handicap, profiles(display_name))), games(*)')
       .eq('status', 'active')
       .order('created_at', { ascending: false });
 
@@ -73,7 +73,7 @@ async function renderLiveView(round) {
         if (h?.par && h?.stroke_index) {
           let extra = Math.floor(phcp / 18);
           if (h.stroke_index <= (phcp % 18)) extra++;
-          stableford += calcStablefordLive(strokes, h.par, phcp, h.stroke_index, 18);
+          stableford += calcStableford(strokes, h.par, phcp, h.stroke_index, 18);
           brutto += strokes;
           netto += strokes - extra;
           parThru += h.par;
@@ -88,36 +88,13 @@ async function renderLiveView(round) {
 
   const maxHole = standings.reduce((max, s) => Math.max(max, s.holesPlayed), 0);
 
-  // Compute skins per flight
+  // Compute skins via spillmotoren (skins-modulen). Flat skinsMap: playerId → antall.
   const skinsMap = {};
-  if (round.skins_amount) {
-    (round.flights || []).forEach(f => {
-      const flightFP = f.flight_players || [];
-      if (flightFP.length < 2) return;
-      const phcpMap = {};
-      flightFP.forEach(fp => { phcpMap[fp.player_id] = _playingHcp(fp.handicap, round.tee_sets?.slope, round.tee_sets?.course_rating, _livePar); });
-      flightFP.forEach(fp => { skinsMap[fp.player_id] = 0; });
-      let pot = 0;
-      for (const h of _liveActiveHoles) {
-        pot++;
-        if (!h.par || !h.stroke_index) continue;
-        let maxSf = -1;
-        const sfByPid = {};
-        let anyScore = false;
-        for (const fp of flightFP) {
-          const s = scoreMap[fp.player_id]?.[h.hole_number];
-          if (!s || s <= 0) continue;
-          anyScore = true;
-          const sf = calcStablefordLive(s, h.par, phcpMap[fp.player_id], h.stroke_index, holeCount);
-          sfByPid[fp.player_id] = sf;
-          if (sf > maxSf) maxSf = sf;
-        }
-        if (!anyScore) continue;
-        const winners = flightFP.filter(fp => sfByPid[fp.player_id] === maxSf && maxSf >= 0);
-        if (winners.length === 1) { skinsMap[winners[0].player_id] += pot; pot = 0; }
-      }
-    });
-  }
+  const _skins = getGame('skins').compute({
+    round, holes: _liveActiveHoles, scores: scoreMap,
+    flights: round.flights || [], fullCoursePar: _livePar,
+  });
+  if (_skins) _skins.flights.forEach(f => Object.assign(skinsMap, f.skinsByPlayer));
 
   // Build feed events
   const feedEvents = [];
@@ -148,7 +125,7 @@ async function renderLiveView(round) {
       const strokes = playerScores[hn];
       if (!strokes || !h?.par) return `<div style="text-align:center;padding:3px 1px;"><div style="width:28px;height:28px;margin:0 auto;display:flex;align-items:center;justify-content:center;font-size:13px;color:rgba(255,255,255,0.2);">–</div><div style="font-size:9px;color:rgba(255,255,255,0.15);margin-top:2px;">–</div></div>`;
       const diff = strokes - h.par;
-      const pts = h.stroke_index ? calcStablefordLive(strokes, h.par, hcp, h.stroke_index, 18) : 0;
+      const pts = h.stroke_index ? calcStableford(strokes, h.par, hcp, h.stroke_index, 18) : 0;
       let bs = 'width:28px;height:28px;margin:0 auto;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;';
       let col = 'var(--cream)';
       if (diff <= -2)      { col='#c8c0b0'; bs+='border-radius:50%;border:2px solid #c8c0b0;box-shadow:0 0 0 2px #0d2818,0 0 0 4px #c8c0b0;'; }
@@ -184,7 +161,7 @@ async function renderLiveView(round) {
             <div style="font-size:13px;color:${isLead ? 'var(--gold)' : 'var(--cream-dim)'};text-align:center;">${i+1}</div>
             <div>
               <div style="font-size:14px;color:var(--cream);font-weight:${isLead ? '600' : '400'};">${firstName}</div>
-              <div style="font-size:11px;color:var(--cream-dim);">thru ${s.holesPlayed} · HCP ${s.fp.handicap ?? '–'}${round.skins_amount ? ` · ${skinsMap[s.fp.player_id] ?? 0} skins` : ''}</div>
+              <div style="font-size:11px;color:var(--cream-dim);">thru ${s.holesPlayed} · HCP ${s.fp.handicap ?? '–'}${skinsAmount(round) ? ` · ${skinsMap[s.fp.player_id] ?? 0} skins` : ''}</div>
             </div>
             <div style="text-align:center;min-width:38px;">
               <div style="font-size:10px;color:var(--cream-dim);margin-bottom:2px;">Brutto</div>
@@ -221,11 +198,6 @@ async function renderLiveView(round) {
   `;
 }
 
-function calcStablefordLive(strokes, par, hcp, si, totalHoles) {
-  let extra = Math.floor(hcp / totalHoles);
-  if (si <= (hcp % totalHoles)) extra++;
-  return Math.max(0, par - (strokes - extra) + 2);
-}
 
 function showShareRoundModal(roundId, courseName, date) {
   document.getElementById('shareRoundDesc').textContent = `${courseName} · ${date}`;

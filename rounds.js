@@ -164,13 +164,17 @@ async function saveRound() {
   } else {
     holeRange = 'all';
   }
-  const skinsAmount = document.getElementById('skinsEnabled')?.checked
+  const skinsAmt = document.getElementById('skinsEnabled')?.checked
     ? (parseInt(document.getElementById('skinsAmount').value) || null) : null;
   const { data: round, error } = await db.from('rounds').insert({
     course_id: courseId, tee_set_id: teeId, date, created_by: currentProfile.id, status: 'active',
-    hole_range: holeRange, skins_amount: skinsAmount
+    hole_range: holeRange
   }).select().single();
   if (error) { showAlert('newRoundAlert', 'Feil: ' + error.message, 'error'); return; }
+  // Skins ligger nå som en games-rad i spillmotoren (rounds.skins_amount er utfaset).
+  if (skinsAmt) {
+    await db.from('games').insert({ round_id: round.id, game_type: 'skins', is_main: false, config: { amount: skinsAmt } });
+  }
   for (let i = 1; i <= flightCount; i++) {
     const flightDiv = document.getElementById(`flight-${i}`);
     if (!flightDiv) continue;
