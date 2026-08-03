@@ -18,6 +18,9 @@
 !profile.js
 !scoring.js
 !stats.js
+!games.js
 !.github
 !.github/workflows
 !.github/workflows/keep-alive.yml
+!migrations
+!migrations/*.sql
