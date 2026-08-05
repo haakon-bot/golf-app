@@ -604,7 +604,7 @@ function _wizStepCourse() {
 // chips, inline HCP, og lagbygging via TeamBuilder (løftet uendret) med
 // «bland på nytt» som minimerer spredning i tildelte slag.
 async function _wizLoadPlayers() {
-  const { data } = await db.from('profiles').select('id, display_name, handicap, username').order('display_name');
+  const { data } = await db.from('profiles').select('id, display_name, handicap, username, is_guest').order('display_name');
   _wizAllPlayers = data || [];
   if (WIZARD_STEPS[_wizStep].key === 'players') renderWizard();
 }
@@ -621,12 +621,56 @@ function _wizStepPlayers() {
     </div>
     <div id="wizTeamFairness" style="margin-top:10px;"></div>
     <div id="wizTeamBuilder" style="margin-top:12px;"></div>` : '';
+  const inpStyle = 'padding:9px 10px; border-radius:8px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.35); color:var(--cream); font-size:14px; font-family:\'DM Sans\',sans-serif;';
+  const newPlayer = `<div style="margin-top:20px;">
+    <button onclick="wizToggleNewPlayer()" id="wizNewPlayerBtn" style="background:none; border:1px dashed rgba(201,168,76,0.4); color:var(--gold); border-radius:8px; padding:10px 14px; cursor:pointer; font-size:13px; width:100%; -webkit-tap-highlight-color:transparent;">➕ Ny spiller (gjest)</button>
+    <div id="wizNewPlayerForm" style="display:none; margin-top:10px; padding:12px; border-radius:10px; background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.08);">
+      <div id="wizNewPlayerAlert"></div>
+      <div style="display:flex; gap:8px;">
+        <input id="wizGuestName" placeholder="Navn" style="flex:2; min-width:0; ${inpStyle}">
+        <input id="wizGuestHcp" type="number" step="0.1" min="-10" max="54" placeholder="HCP" style="flex:1; min-width:0; ${inpStyle} text-align:center;">
+        <button onclick="wizAddGuest()" style="flex-shrink:0; background:var(--gold); border:none; color:var(--green-deep); border-radius:8px; padding:9px 14px; cursor:pointer; font-weight:600; font-size:13px;">Legg til</button>
+      </div>
+      <div style="font-size:11px; color:var(--cream-dim); margin-top:8px;">Gjest uten innlogging — kan kobles til en konto senere.</div>
+    </div>
+  </div>`;
   return `<div>
     <label style="font-size:12px; text-transform:uppercase; letter-spacing:1px; color:var(--cream-dim); display:block; margin-bottom:8px;">Spillere</label>
     <div id="wizChips"></div>
+    ${newPlayer}
     ${teamSection}
-    <div style="margin-top:22px; font-size:11px; color:var(--cream-dim); line-height:1.5;">➕ Opprett ny spiller her — <em>kommer</em> (gjesteprofil). Bruk Admin → Spillere bak hamburgeren inntil videre.</div>
   </div>`;
+}
+function wizToggleNewPlayer() {
+  const f = document.getElementById('wizNewPlayerForm');
+  if (!f) return;
+  const open = f.style.display !== 'none';
+  f.style.display = open ? 'none' : 'block';
+  if (!open) document.getElementById('wizGuestName')?.focus();
+}
+function _wizGuestAlert(msg) {
+  const el = document.getElementById('wizNewPlayerAlert');
+  if (el) el.innerHTML = msg ? `<div style="color:#e8a070; font-size:12px; margin-bottom:8px;">${msg}</div>` : '';
+}
+// Oppretter en gjesteprofil (is_guest) med en gang, så den ikke forsvinner om
+// wizarden lukkes. Krever guest-migreringen (RLS insert-policy + is_guest).
+async function wizAddGuest() {
+  const name = (document.getElementById('wizGuestName')?.value || '').trim();
+  const hcpRaw = document.getElementById('wizGuestHcp')?.value;
+  if (!name) { _wizGuestAlert('Skriv inn et navn.'); return; }
+  const hcp = parseFloat(hcpRaw);
+  const handicap = isNaN(hcp) ? 54 : hcp;
+  const id = crypto.randomUUID();
+  const username = 'guest_' + id.replace(/-/g, '').slice(0, 8);
+  const { error } = await db.from('profiles').insert({ id, username, display_name: name, handicap, is_guest: true, is_approved: true });
+  if (error) { _wizGuestAlert('Kunne ikke opprette: ' + error.message); return; }
+  _wizAllPlayers.push({ id, display_name: name, handicap, username, is_guest: true });
+  _wizState.players.push({ id, name: name.split(' ')[0], handicap });
+  document.getElementById('wizGuestName').value = '';
+  document.getElementById('wizGuestHcp').value = '';
+  _wizGuestAlert('');
+  _wizRenderChips();
+  if (_wizIsTeamGame()) _wizMountTeams();
 }
 function _wizAfterPlayers() {
   _wizRenderChips();
@@ -639,8 +683,9 @@ function _wizRenderChips() {
   const selById = {}; _wizState.players.forEach(p => { selById[p.id] = p; });
   const chips = _wizAllPlayers.map(p => {
     const sel = selById[p.id];
+    const guestTag = p.is_guest ? `<span style="font-size:9px; color:var(--gold-dim); text-transform:uppercase; letter-spacing:0.5px;">gjest</span>` : '';
     return `<div style="display:inline-flex; align-items:center; gap:8px; margin:0 8px 8px 0; padding:8px 12px; border-radius:20px; border:1px solid ${sel ? 'var(--gold)' : 'rgba(255,255,255,0.12)'}; background:${sel ? 'rgba(201,168,76,0.15)' : 'rgba(0,0,0,0.2)'};">
-      <span onclick="wizTogglePlayer('${p.id}')" style="cursor:pointer; font-size:13px; color:${sel ? 'var(--gold)' : 'var(--cream)'}; -webkit-tap-highlight-color:transparent;">${sel ? '✓ ' : ''}${(p.display_name || '?').split(' ')[0]}</span>
+      <span onclick="wizTogglePlayer('${p.id}')" style="cursor:pointer; font-size:13px; color:${sel ? 'var(--gold)' : 'var(--cream)'}; -webkit-tap-highlight-color:transparent;">${sel ? '✓ ' : ''}${(p.display_name || '?').split(' ')[0]}</span>${guestTag}
       ${sel ? `<input type="number" step="0.1" min="-10" max="54" value="${sel.handicap ?? ''}" onchange="wizSetPlayerHcp('${p.id}', this.value)" title="HCP for dette spillet" style="width:52px; padding:3px 5px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.35); color:var(--cream); font-size:12px; text-align:center;">` : `<span style="font-size:11px; color:var(--cream-dim);">${p.handicap ?? '–'}</span>`}
     </div>`;
   }).join('');
