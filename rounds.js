@@ -44,6 +44,7 @@ let _roundAvailableRanges = { hasFront9: false, hasBack9: false };
 async function openNewRound() {
   flightCount = 0;
   _roundAvailableRanges = { hasFront9: false, hasBack9: false };
+  selectMainGame('stableford');
   document.getElementById('newRoundAlert').innerHTML = '';
   document.getElementById('flightList').innerHTML = '';
   document.getElementById('roundDate').value = new Date().toISOString().split('T')[0];
@@ -148,11 +149,55 @@ async function _updateFlightPlayerGoals() {
   }
 }
 
+// ── Hovedspill-valg (bolt-on-lim i dagens modal; erstattes av §2-flyten). ──
+let _selectedMainGame = 'stableford';
+function selectMainGame(type) {
+  _selectedMainGame = type;
+  const isScr = type === 'scramble';
+  const style = (btn, on) => { if (!btn) return;
+    btn.style.border = `1px solid ${on ? 'var(--gold)' : 'rgba(255,255,255,0.12)'}`;
+    btn.style.background = on ? 'rgba(201,168,76,0.18)' : 'transparent';
+    btn.style.color = on ? 'var(--gold)' : 'var(--cream-dim)';
+  };
+  style(document.getElementById('mainGameStableford'), !isScr);
+  style(document.getElementById('mainGameScramble'), isScr);
+  const setup = document.getElementById('scrambleSetup');
+  if (setup) setup.style.display = isScr ? 'block' : 'none';
+  if (isScr) {
+    const cfg = document.getElementById('scrambleConfig');
+    if (cfg && !cfg.innerHTML.trim()) cfg.innerHTML = getGame('scramble').setupUI({});
+    refreshTeamBuilder();
+  }
+}
+
+// Leser avkryssede spillere fra flightene og (gjen)bygger TeamBuilder.
+function refreshTeamBuilder() {
+  const sel = document.getElementById('roundTee');
+  const opt = sel?.options[sel.selectedIndex];
+  const slope = parseFloat(opt?.dataset.slope) || null;
+  const cr = parseFloat(opt?.dataset.cr) || null;
+  const seen = {}, players = [];
+  document.querySelectorAll('#flightList input[type=checkbox]:checked').forEach(cb => {
+    if (seen[cb.value]) return;
+    seen[cb.value] = true;
+    players.push({ id: cb.value, name: (cb.dataset.name || '?').split(' ')[0], handicap: parseFloat(cb.dataset.hcp) });
+  });
+  TeamBuilder.mount({ container: 'teamBuilder', players, numTeams: 2, slope, cr, par: _roundCoursePar });
+}
+
 async function saveRound() {
   const courseId = document.getElementById('roundCourse').value;
   const teeId = document.getElementById('roundTee').value;
   const date = document.getElementById('roundDate').value;
   if (!courseId || !teeId || !date) { showAlert('newRoundAlert', 'Fyll inn bane, tee og dato', 'error'); return; }
+  // Scramble: valider lag FØR runden opprettes (unngå foreldreløs runde).
+  const isScramble = _selectedMainGame === 'scramble';
+  let scrambleTeams = [];
+  if (isScramble) {
+    scrambleTeams = TeamBuilder.getTeams().filter(t => t.member_ids.length);
+    const v = getGame('scramble').validate({ teams: scrambleTeams });
+    if (!v.ok) { showAlert('newRoundAlert', v.warning, 'error'); return; }
+  }
   const { hasFront9, hasBack9 } = _roundAvailableRanges;
   let holeRange;
   if (hasFront9 && hasBack9) {
@@ -191,6 +236,21 @@ async function saveRound() {
           player_id: cb.value,
           message: `Du er lagt til i en runde på ${document.getElementById('roundCourse').options[document.getElementById('roundCourse').selectedIndex].text} (${date})`
         });
+      }
+    }
+  }
+  // Scramble-hovedspill: games-rad (is_main) + game_teams med frosset lag-HCP.
+  if (isScramble) {
+    const config = {
+      scoring: document.getElementById('scrambleScoring')?.value || 'netto',
+      countingDrives: document.getElementById('scrambleCountDrives')?.checked || false,
+      minDrivesPerPlayer: parseInt(document.getElementById('scrambleMinDrives')?.value) || 1,
+      fractionMode: 'whs',
+    };
+    const { data: g } = await db.from('games').insert({ round_id: round.id, game_type: 'scramble', is_main: true, config }).select().single();
+    if (g) {
+      for (const t of scrambleTeams) {
+        await db.from('game_teams').insert({ game_id: g.id, name: t.name, member_ids: t.member_ids, team_handicap: t.team_handicap });
       }
     }
   }

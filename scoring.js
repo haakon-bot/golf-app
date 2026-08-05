@@ -5,6 +5,11 @@ let roundScores = {};
 let roundHoles = [];
 let roundFlights = [];
 let _fullCoursePar = 72; // full 18-hole par, set when opening a round
+// Lag-scoring (scramble, §3.2/§5.1): lag-rader og lag-scores holdes adskilt
+// fra spillerscores så personlig statistikk ikke forurenses.
+let roundTeams = [];        // game_teams for scramble-hovedspillet
+let roundTeamScores = {};   // team_id → hull → slag
+let _scrambleGameRow = null;
 async function deleteRound(roundId) {
   const confirmed = await showConfirm('Slette denne runden? Dette sletter alle scores og kan ikke angres.');
   if (!confirmed) return;
@@ -31,7 +36,7 @@ async function openRound(roundId) {
   document.getElementById('scoringScreen').style.display = 'flex';
   document.getElementById('scoringScreen').style.flexDirection = 'column';
   const { data: round } = await db.from('rounds')
-    .select('*, courses(name, holes), tee_sets(name, slope, course_rating), flights(id, name, flight_players(id, player_id, handicap, profiles(display_name, username))), games(*)')
+    .select('*, courses(name, holes), tee_sets(name, slope, course_rating), flights(id, name, flight_players(id, player_id, handicap, profiles(display_name, username))), games(*, game_teams(*))')
     .eq('id', roundId).single();
   if (!round) { document.getElementById('scoringScreen').style.display = 'none'; return; }
   if (!round.course_id) {
@@ -54,10 +59,18 @@ async function openRound(roundId) {
   }
   currentHole = roundHoles.length > 0 ? Math.min(...roundHoles.map(h => h.hole_number)) : 1;
   roundFlights = round.flights || [];
+  _scrambleGameRow = scrambleGame(round);
+  roundTeams = _scrambleGameRow?.game_teams || [];
   roundScores = {};
+  roundTeamScores = {};
   (scores || []).forEach(s => {
-    if (!roundScores[s.player_id]) roundScores[s.player_id] = {};
-    roundScores[s.player_id][s.hole_number] = s.strokes;
+    if (s.team_id) {
+      if (!roundTeamScores[s.team_id]) roundTeamScores[s.team_id] = {};
+      roundTeamScores[s.team_id][s.hole_number] = s.strokes;
+    } else if (s.player_id) {
+      if (!roundScores[s.player_id]) roundScores[s.player_id] = {};
+      roundScores[s.player_id][s.hole_number] = s.strokes;
+    }
   });
   document.getElementById('scCourseName').textContent = round.courses?.name || '';
   document.getElementById('scRoundDate').textContent = round.date;
@@ -103,8 +116,13 @@ function renderScoringHole() {
     document.getElementById('scPar').style.color = 'var(--cream)';
   }
   renderHoleStats();
-  renderPlayerInputs(holeData);
+  if (_scrambleGameRow) {
+    renderTeamInputs(holeData);
+  } else {
+    renderPlayerInputs(holeData);
+  }
   renderMiniLeaderboard();
+  renderScrambleTracker();
   renderSkinsTracker();
 }
 function renderHoleStats() {
@@ -188,6 +206,109 @@ function renderPlayerInputs(holeData) {
     html += '</div>';
   });
   document.getElementById('scPlayerScores').innerHTML = html;
+}
+
+// ── Lag-scoring (scramble) ──────────────────────────────────────────────
+// ctx til spillmotoren. events tom i increment 1 (utslags-tracker kommer i
+// increment 2) — compute takler det (kvote dvaler når countingDrives er av).
+function _scrambleCtx() {
+  return { round: currentRound, holes: roundHoles, teamScores: roundTeamScores, teams: roundTeams, events: [], fullCoursePar: _fullCoursePar };
+}
+function _memberFirstName(playerId) {
+  for (const f of roundFlights) {
+    const fp = (f.flight_players || []).find(x => x.player_id === playerId);
+    if (fp) return (fp.profiles?.display_name || '?').split(' ')[0];
+  }
+  return '?';
+}
+function renderTeamInputs(holeData) {
+  let html = '';
+  roundTeams.forEach(team => {
+    const canEdit = (team.member_ids || []).includes(currentProfile?.id);
+    const teamHcp = team.team_handicap != null ? Number(team.team_handicap) : 0;
+    const strokes = roundTeamScores[team.id]?.[currentHole] || 0;
+    const extra = _teamExtraStrokes(teamHcp, holeData.stroke_index);
+    const net = strokes ? strokes - extra : 0;
+    const stableford = (holeData.par && holeData.stroke_index && strokes) ? calcStableford(strokes, holeData.par, teamHcp, holeData.stroke_index) : 0;
+    const scoreColor = holeData.par ? getScoreColor(strokes, holeData.par) : 'var(--cream)';
+    const scoreName = holeData.par ? getScoreName(strokes, holeData.par) : '';
+    const memberNames = (team.member_ids || []).map(_memberFirstName).join(', ');
+    const strokesLabel = extra > 0 ? `<span style="color:var(--green-light); font-size:11px;">${extra === 1 ? '+1 slag' : `+${extra} slag`}</span>` : '';
+    html += `
+    <div style="display:flex; align-items:center; gap:12px; padding:12px; background:rgba(0,0,0,0.2); border-radius:10px; margin-bottom:8px; border:1px solid rgba(255,255,255,0.06);">
+      <div style="width:36px; height:36px; border-radius:50%; background:var(--green-mid); border:2px solid var(--gold-dim); display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0;">⛳</div>
+      <div style="flex:1;">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <div style="font-size:14px;color:var(--cream);font-weight:500;">${team.name}</div>
+          <div style="font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(201,168,76,0.15);color:var(--gold-dim);white-space:nowrap;">HCP ${team.team_handicap ?? '–'}</div>
+        </div>
+        <div style="font-size:11px;color:var(--cream-dim);">${memberNames} ${strokesLabel} ${strokes > 0 ? `· <span style="color:${scoreColor}">${scoreName}</span> · netto ${net} · ${stableford}p` : ''}</div>
+      </div>
+      ${canEdit ? `
+      <div style="display:flex; align-items:center; gap:8px;">
+        <button onclick="adjustTeamScore('${team.id}', -1)" style="width:48px; height:48px; border-radius:50%; border:1px solid rgba(255,255,255,0.2); background:transparent; color:var(--cream); font-size:24px; cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1; touch-action:manipulation; -webkit-tap-highlight-color:transparent; user-select:none;">−</button>
+        <div id="teamscore-${team.id}" style="font-family:'Playfair Display',serif; font-size:36px; color:${scoreColor}; min-width:40px; text-align:center;">${strokes || '–'}</div>
+        <button onclick="adjustTeamScore('${team.id}', 1)" style="width:48px; height:48px; border-radius:50%; background:var(--green-mid); border:none; color:var(--cream); font-size:24px; cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1; touch-action:manipulation; -webkit-tap-highlight-color:transparent; user-select:none;">+</button>
+      </div>` : `
+      <div style="font-family:'Playfair Display',serif; font-size:32px; color:${scoreColor}; min-width:36px; text-align:center;">${strokes || '–'}</div>`}
+    </div>`;
+  });
+  document.getElementById('scPlayerScores').innerHTML = html;
+}
+let _adjustTeamLock = false;
+async function adjustTeamScore(teamId, delta) {
+  if (_adjustTeamLock) return;
+  _adjustTeamLock = true;
+  setTimeout(() => { _adjustTeamLock = false; }, 300);
+  if (!roundTeamScores[teamId]) roundTeamScores[teamId] = {};
+  const current = roundTeamScores[teamId][currentHole] || 0;
+  const newVal = Math.max(1, Math.min(current + delta, 15));
+  if (delta === -1 && current <= 1) {
+    roundTeamScores[teamId][currentHole] = 0;
+    await db.from('scores').delete()
+      .eq('round_id', currentRound.id)
+      .eq('team_id', teamId)
+      .eq('hole_number', currentHole);
+  } else {
+    roundTeamScores[teamId][currentHole] = newVal;
+    await db.from('scores').upsert({
+      round_id: currentRound.id, team_id: teamId,
+      hole_number: currentHole, strokes: newVal,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'round_id,team_id,hole_number' });
+  }
+  const holeData = roundHoles.find(h => h.hole_number === currentHole) || { par: null, stroke_index: null };
+  renderTeamInputs(holeData);
+  renderMiniLeaderboard();
+  renderScrambleTracker();
+}
+function renderScrambleTracker() {
+  const strip = document.getElementById('scScrambleStrip');
+  const el = document.getElementById('scScramble');
+  if (!strip || !el) return;
+  if (!_scrambleGameRow) { strip.style.display = 'none'; el.innerHTML = ''; return; }
+  const html = getGame('scramble').trackerUI(_scrambleCtx());
+  strip.style.display = html ? 'block' : 'none';
+  el.innerHTML = html || '';
+}
+function renderTeamMiniLeaderboard() {
+  const el = document.getElementById('scMiniLeader');
+  if (!el) return;
+  const data = getGame('scramble').compute(_scrambleCtx());
+  if (!data || !data.teams.length) { el.innerHTML = ''; return; }
+  const scoring = data.scoring;
+  el.innerHTML = data.teams.map((r, i) => {
+    const lead = i === 0 && r.thru > 0;
+    const vsPar = r.totalGross ? r.totalNet - r.totalPar : null;
+    const main = scoring === 'stableford' ? `${r.totalSf}p`
+      : scoring === 'slag' ? `${r.totalGross || '–'}`
+      : (vsPar == null ? '–' : vsPar === 0 ? 'E' : vsPar > 0 ? `+${vsPar}` : `${vsPar}`);
+    return `<div style="flex-shrink:0; text-align:center; padding:8px 14px; background:${lead ? 'rgba(201,168,76,0.2)' : 'rgba(0,0,0,0.2)'}; border-radius:8px; border:1px solid ${lead ? 'rgba(201,168,76,0.3)' : 'rgba(255,255,255,0.06)'};">
+      <div style="font-size:10px; color:var(--cream-dim);">${i + 1}. ${r.team.name}</div>
+      <div style="font-family:'Playfair Display',serif; font-size:20px; color:${lead ? 'var(--gold)' : 'var(--cream)'};">${main}</div>
+      <div style="font-size:10px; color:var(--cream-dim);">${r.thru} hull</div>
+    </div>`;
+  }).join('');
 }
 // _playingHcp og calcStableford bor nå i games.js (spillmotoren, delte helpers).
 // Counts extra strokes from fullHCP that land on the given active holes (full 18-hole distribution).
@@ -273,6 +394,7 @@ function changeHole(delta) {
   document.getElementById('scoringScreen').scrollTo(0, 0);
 }
 function renderMiniLeaderboard() {
+  if (_scrambleGameRow) return renderTeamMiniLeaderboard();
   const _rSlope = currentRound?.tee_sets?.slope, _rCr = currentRound?.tee_sets?.course_rating;
   const allFP = roundFlights.flatMap(f => f.flight_players || []);
   const standings = allFP.map(fp => {
@@ -467,15 +589,21 @@ async function showRoundSummary(roundId) {
   document.getElementById('summaryTitle').textContent = 'Laster...';
   openModal('modalRoundSummary');
   const { data: round, error } = await db.from('rounds')
-    .select('*, courses(name, holes), tee_sets(name, slope, course_rating), flights(id, name, flight_players(id, player_id, handicap, profiles(display_name, username))), games(*)')
+    .select('*, courses(name, holes), tee_sets(name, slope, course_rating), flights(id, name, flight_players(id, player_id, handicap, profiles(display_name, username))), games(*, game_teams(*))')
     .eq('id', roundId).single();
   if (error || !round) { document.getElementById('summaryTitle').textContent = 'Feil ved lasting'; return; }
   const { data: scores } = await db.from('scores').select('*').eq('round_id', roundId);
   const { data: holes } = await db.from('holes').select('*').eq('course_id', round.course_id).order('hole_number');
   const sc = {};
+  const teamScores = {};
   (scores || []).forEach(s => {
-    if (!sc[s.player_id]) sc[s.player_id] = {};
-    sc[s.player_id][s.hole_number] = s.strokes;
+    if (s.team_id) {
+      if (!teamScores[s.team_id]) teamScores[s.team_id] = {};
+      teamScores[s.team_id][s.hole_number] = s.strokes;
+    } else if (s.player_id) {
+      if (!sc[s.player_id]) sc[s.player_id] = {};
+      sc[s.player_id][s.hole_number] = s.strokes;
+    }
   });
   const holeRange = round.hole_range || 'all';
   const allDbHoles = holes || [];
@@ -487,13 +615,28 @@ async function showRoundSummary(roundId) {
   const allFP = (round.flights || []).flatMap(f => f.flight_players || []);
   const totalHoles = filteredHoles.length || 18;
   const fullCoursePar = allDbHoles.reduce((s,h) => s + (h.par||0), 0) || 72;
-  const tabs = allFP.map((fp, i) =>
-    `<button class="tab ${i === 0 ? 'active' : ''}" onclick="showSummaryPlayer('${fp.player_id}', this)">${fp.profiles?.display_name?.split(' ')[0]}</button>`
-  ).join('');
-  document.getElementById('summaryTabs').innerHTML = tabs;
-  window._summaryData = { round, holes: filteredHoles, sc, allFP, totalHoles, fullCoursePar };
-  window._currentSummaryPlayer = null;
-  if (allFP[0]) showSummaryPlayer(allFP[0].player_id);
+  // Scramble: lag-oppsummering i stedet for per-spiller-faner (ingen individuelle scores).
+  const scrambleRow = scrambleGame(round);
+  const scrambleSummaryEl = document.getElementById('scrambleSummary');
+  if (scrambleSummaryEl) {
+    const html = scrambleRow ? getGame('scramble').summaryUI({
+      round, holes: filteredHoles, teamScores, teams: scrambleRow.game_teams || [], events: [], fullCoursePar,
+    }) : '';
+    scrambleSummaryEl.style.display = html ? 'block' : 'none';
+    scrambleSummaryEl.innerHTML = html || '';
+  }
+  if (scrambleRow) {
+    document.getElementById('summaryTabs').innerHTML = '';
+    document.getElementById('summaryContent').innerHTML = '';
+  } else {
+    const tabs = allFP.map((fp, i) =>
+      `<button class="tab ${i === 0 ? 'active' : ''}" onclick="showSummaryPlayer('${fp.player_id}', this)">${fp.profiles?.display_name?.split(' ')[0]}</button>`
+    ).join('');
+    document.getElementById('summaryTabs').innerHTML = tabs;
+    window._summaryData = { round, holes: filteredHoles, sc, allFP, totalHoles, fullCoursePar };
+    window._currentSummaryPlayer = null;
+    if (allFP[0]) showSummaryPlayer(allFP[0].player_id);
+  }
   // Skins summary — delegeres til skins-modulen i motoren.
   const skinsSummaryEl = document.getElementById('skinsSummary');
   if (skinsSummaryEl) {
