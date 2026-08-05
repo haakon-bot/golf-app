@@ -101,7 +101,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.142</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.143</span></div>
     <div style="display:flex; align-items:center; gap:4px;">
       <button id="topbarRefreshBtn" onclick="forceUpdate()" title="Oppdater app" style="background:none;border:none;color:var(--cream-dim);cursor:pointer;padding:8px;font-size:22px;opacity:0.45;-webkit-tap-highlight-color:transparent;line-height:1;"><i class="ti ti-refresh"></i></button>
       <button onclick="openDrawer()" title="Meny" style="background:none;border:none;color:var(--cream-dim);cursor:pointer;padding:8px;font-size:24px;-webkit-tap-highlight-color:transparent;line-height:1;"><i class="ti ti-menu-2"></i></button>
@@ -159,7 +159,7 @@
     <div id="dashPendingBanner" style="margin-bottom:16px;"></div>
     <div id="dashActiveRound" style="display:none; margin-bottom:16px;"></div>
     <div style="display:flex; gap:12px; margin-bottom:12px;">
-      <button class="btn" style="flex:1;" onclick="showPage('rounds'); openNewRound();">⛳ Start runde</button>
+      <button class="btn" style="flex:1;" onclick="openNewGame()">⛳ Start et spill</button>
     </div>
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px;">
       <button onclick="showPage('live')" class="shortcut-card"><i class="ti ti-broadcast"></i><span>Live</span></button>
@@ -172,10 +172,7 @@
   <div class="page" id="page-rounds">
     <div class="page-header">
       <div><h1>Runder</h1><p>Aktive og tidligere runder</p></div>
-      <div style="display:flex; gap:8px; align-items:center;">
-        <button class="btn btn-outline btn-auto" onclick="openNewGame()" title="Ny §2-flyt (under bygging)">🧪 Start et spill</button>
-        <button class="btn btn-auto" onclick="openNewRound()">+ Ny runde</button>
-      </div>
+      <button class="btn btn-auto" onclick="openNewGame()">🧪 Start et spill</button>
     </div>
     <div id="roundsList"><div class="loading"><div class="spinner"></div> Laster...</div></div>
   </div>
@@ -230,71 +227,6 @@
   <!-- Training -->
   <div class="page" id="page-training">
     <div class="page-header"><div><h1>Trening</h1><p>Kommer snart</p></div></div>
-  </div>
-  <!-- MODAL: New Round -->
-  <div class="modal-overlay" id="modalNewRound" style="display:none;" onclick="closeModalOnOverlay(event,'modalNewRound')">
-    <div class="modal" style="max-width:600px;" onclick="event.stopPropagation()">
-      <h2>Ny runde</h2>
-      <div id="newRoundAlert"></div>
-      <div style="display:flex;gap:10px;margin-bottom:12px;align-items:flex-end;">
-        <div style="flex:2;min-width:0;">
-          <label style="font-size:13px;font-weight:500;color:var(--cream);display:block;margin-bottom:6px;">Bane *</label>
-          <select id="roundCourse" onchange="loadTeeSets(this.value)" style="width:100%;padding:12px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:var(--cream);font-size:14px;font-family:'DM Sans',sans-serif;">
-            <option value="">Velg bane...</option>
-          </select>
-        </div>
-        <div style="flex:1;min-width:0;">
-          <label style="font-size:13px;font-weight:500;color:var(--cream);display:block;margin-bottom:6px;">Tee *</label>
-          <select id="roundTee" style="width:100%;padding:12px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:var(--cream);font-size:14px;font-family:'DM Sans',sans-serif;">
-            <option value="">Velg tee...</option>
-          </select>
-        </div>
-        <div id="roundHoleRangeDiv" style="flex:1;min-width:0;display:none;"></div>
-      </div>
-      <div id="roundHoleWarning" style="display:none; padding:12px 16px; border-radius:8px; background:rgba(201,168,76,0.1); border:1px solid rgba(201,168,76,0.4); color:var(--gold-light); font-size:13px; margin-bottom:12px;">
-        ⚠️ Denne banen mangler hull-data (par og SI). Stableford og par vil ikke fungere under runde. <br>Gå til <strong>Baner → Hull-data</strong> og legg inn data først.
-      </div>
-      <div class="form-group">
-        <label>Dato</label>
-        <input type="date" id="roundDate" style="width:100%; padding:12px 16px; border-radius:8px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.3); color:var(--cream); font-size:15px; font-family:'DM Sans',sans-serif;">
-      </div>
-      <hr class="divider">
-      <div style="padding:4px 0 8px;">
-        <label style="font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--cream-dim);display:block;margin-bottom:8px;">Hovedspill</label>
-        <div style="display:flex;gap:6px;">
-          <button type="button" id="mainGameStableford" onclick="selectMainGame('stableford')" style="flex:1;padding:10px;border-radius:8px;cursor:pointer;font-size:14px;border:1px solid var(--gold);background:rgba(201,168,76,0.18);color:var(--gold);">Stableford</button>
-          <button type="button" id="mainGameScramble" onclick="selectMainGame('scramble')" style="flex:1;padding:10px;border-radius:8px;cursor:pointer;font-size:14px;border:1px solid rgba(255,255,255,0.12);background:transparent;color:var(--cream-dim);">⛳ Scramble</button>
-        </div>
-        <div id="scrambleSetup" style="display:none;margin-top:12px;">
-          <div id="scrambleConfig"></div>
-          <button type="button" class="btn-sm" onclick="refreshTeamBuilder()" style="margin:12px 0 10px;">🔄 Bygg lag fra valgte spillere</button>
-          <div id="teamBuilder"></div>
-        </div>
-      </div>
-      <hr class="divider">
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0 8px;">
-        <label for="skinsEnabled" style="display:flex;align-items:center;gap:10px;cursor:pointer;">
-          <input type="checkbox" id="skinsEnabled" onchange="toggleSkinsAmount()" style="width:18px;height:18px;cursor:pointer;">
-          <span style="font-size:14px;color:var(--cream);">🎰 Skins-spill</span>
-        </label>
-        <div id="skinsAmountWrap" style="display:none;align-items:center;gap:6px;">
-          <input type="number" id="skinsAmount" value="50" min="1" max="500" style="width:68px;padding:6px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.3);color:var(--cream);font-size:14px;font-family:'DM Sans',sans-serif;text-align:center;">
-          <span style="font-size:13px;color:var(--cream-dim);">kr/hull</span>
-        </div>
-      </div>
-      <hr class="divider">
-      <div id="flightBuilder">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-          <label style="font-size:12px; text-transform:uppercase; letter-spacing:1px; color:var(--cream-dim);">Flighter & spillere</label>
-          <button class="btn-sm" onclick="addFlight()">+ Legg til flight</button>
-        </div>
-        <div id="flightList"></div>
-      </div>
-      <div class="modal-actions">
-        <button class="btn btn-outline" onclick="closeModal('modalNewRound')">Avbryt</button>
-        <button class="btn" onclick="saveRound()">Start runde</button>
-      </div>
-    </div>
   </div>
   <!-- SCREEN: Start et spill (§2-wizard, fullskjerm) -->
   <div id="newGameScreen" style="display:none; position:fixed; inset:0; background:var(--green-deep); z-index:500; overflow-y:auto; flex-direction:column;">

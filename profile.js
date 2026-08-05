@@ -475,56 +475,6 @@ function _renderMotivBanner(motiv) {
   return `<div style="background:rgba(82,183,136,0.08);border:1px solid rgba(82,183,136,0.3);border-radius:10px;padding:12px 16px;font-size:13px;color:rgba(82,183,136,0.9);">En dårlig runde faller ut — godt utgangspunkt!</div>`;
 }
 
-async function updateRoundMotivation() {
-  const teeId = document.getElementById('roundTee').value;
-  const el = document.getElementById('teeMotivDiv');
-  if (!el) return;
-  if (!teeId) { el.innerHTML = ''; return; }
-  el.innerHTML = '<div style="font-size:12px;color:var(--cream-dim);padding:8px 0;">⏳ Beregner HCP-mål...</div>';
-  try {
-    const { data: tee } = await db.from('tee_sets').select('slope,course_rating,course_id').eq('id', teeId).single();
-    if (!tee?.slope || !tee?.course_rating) { el.innerHTML = ''; return; }
-    const slope = tee.slope, cr = tee.course_rating;
-    const { data: courseHoles } = await db.from('holes').select('hole_number,par,stroke_index').eq('course_id', tee.course_id);
-    const holeRange = document.getElementById('roundHoleRange')?.value || 'all';
-    const par = (courseHoles||[]).reduce((s,h) => s + (h.par||0), 0) || 72;
-    const motivActiveHoles = holeRange === 'front9' ? (courseHoles||[]).filter(h => h.hole_number <= 9)
-      : holeRange === 'back9' ? (courseHoles||[]).filter(h => h.hole_number >= 10)
-      : (courseHoles||[]);
-    const playerIds = allPlayers.map(p => p.id);
-    if (!playerIds.length) { el.innerHTML = ''; return; }
-    const { data: allDiffs } = await db.from('score_differentials').select('player_id,date,differential,source').in('player_id', playerIds);
-    const byPlayer = {};
-    (allDiffs || []).forEach(d => { (byPlayer[d.player_id] = byPlayer[d.player_id] || []).push(d); });
-    const courseName = document.getElementById('roundCourse').options[document.getElementById('roundCourse').selectedIndex]?.text || '';
-    const playerRows = allPlayers
-      .map(p => ({ p, motiv: _calcHcpMotivation(byPlayer[p.id] || [], slope, cr, par, p.handicap ?? null) }))
-      .filter(({ motiv }) => motiv !== null)
-      .map(({ p, motiv }) => {
-        const X = motiv.stablefordImprove, Y = motiv.stablefordDecline;
-        const activeS = _activeStrokes(motiv.playingHCP, motivActiveHoles);
-        return `
-        <div style="padding:9px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
-          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
-            <div style="font-size:13px;color:var(--cream);">${p.display_name}</div>
-            <div style="font-size:11px;color:rgba(255,255,255,0.4);">Tildelte slag: ${activeS}</div>
-          </div>
-          <div style="font-size:12px;color:#4caf7d;">${X}p eller mer → HCP ned</div>
-          ${Y != null ? `<div style="font-size:12px;color:rgba(255,120,100,0.9);">Under ${Y}p → HCP opp</div>` : ''}
-          <div style="font-size:11px;color:rgba(255,255,255,0.3);">${Y != null ? `${Y}–${X - 1}p` : `Under ${X}p`} → ingen endring</div>
-          ${motiv.droppedContext === 'good_drop' ? `<div style="font-size:11px;color:rgba(82,183,136,0.7);font-style:italic;">En dårlig runde faller ut — godt utgangspunkt!</div>` : motiv.droppedContext === 'bad_drop' ? `<div style="font-size:11px;color:rgba(255,180,100,0.75);font-style:italic;">En god runde faller ut — vær obs!</div>` : ''}
-        </div>`;
-      });
-    if (!playerRows.length) { el.innerHTML = ''; return; }
-    el.innerHTML = `<div style="background:rgba(0,0,0,0.2);border-radius:10px;padding:14px;border:1px solid rgba(255,255,255,0.07);margin-bottom:4px;">
-      <div style="font-size:10px;color:var(--gold);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;">🎯 HCP-mål · ${courseName} · Slope ${slope}</div>
-      ${playerRows.join('')}
-    </div>`;
-  } catch(e) {
-    el.innerHTML = '';
-  }
-}
-
 // ── GOLFBOX IMPORT ──
 let _golfboxFiles = [];
 let _golfboxParsed = [];

@@ -1,8 +1,4 @@
 // ── ROUNDS ──
-let allPlayers = [];
-let flightCount = 0;
-let _roundCourseHoles = [];
-let _roundCoursePar = 72;
 async function loadRounds() {
   const { data: rounds } = await db.from('rounds')
     .select('*, courses(name), tee_sets(name, slope, course_rating), flights(id, name, flight_players(id, handicap, profiles(display_name, username)))')
@@ -39,225 +35,6 @@ async function loadRounds() {
       <button onclick="deleteRound('${r.id}')" style="background:none; border:1px solid rgba(192,57,43,0.4); color:var(--danger); border-radius:6px; padding:6px 10px; cursor:pointer; font-size:14px; flex-shrink:0;" title="Slett runde">🗑</button>
     </div>`;
   }).join('');
-}
-let _roundAvailableRanges = { hasFront9: false, hasBack9: false };
-async function openNewRound() {
-  flightCount = 0;
-  _roundAvailableRanges = { hasFront9: false, hasBack9: false };
-  selectMainGame('stableford');
-  document.getElementById('newRoundAlert').innerHTML = '';
-  document.getElementById('flightList').innerHTML = '';
-  document.getElementById('roundDate').value = new Date().toISOString().split('T')[0];
-  const rangeDiv = document.getElementById('roundHoleRangeDiv');
-  if (rangeDiv) { rangeDiv.style.display = 'none'; rangeDiv.innerHTML = ''; }
-  // Open modal immediately so the button always feels responsive
-  const sel = document.getElementById('roundCourse');
-  sel.innerHTML = '<option value="">Laster baner...</option>';
-  openModal('modalNewRound');
-  const { data: courses } = await db.from('courses').select('id, name').order('name');
-  sel.innerHTML = '<option value="">Velg bane...</option>' +
-    (courses || []).map(c => `<option value="${c.id}">${c.name}</option>`).join('');
-  const { data: players } = await db.from('profiles').select('id, display_name, username, handicap').order('display_name');
-  allPlayers = players || [];
-  addFlight();
-}
-async function loadTeeSets(courseId) {
-  if (!courseId) return;
-  const { data: tees } = await db.from('tee_sets').select('*').eq('course_id', courseId);
-  const sel = document.getElementById('roundTee');
-  sel.innerHTML = '<option value="">Velg tee...</option>' +
-    (tees || []).map(t => `<option value="${t.id}" data-slope="${t.slope}" data-cr="${t.course_rating}" data-tee-name="${t.name}">${t.name} — Slope ${t.slope}, CR ${t.course_rating}</option>`).join('');
-  sel.removeEventListener('change', _updateFlightPlayerGoals);
-  sel.addEventListener('change', _updateFlightPlayerGoals);
-  const { data: holes } = await db.from('holes').select('hole_number, par, stroke_index').eq('course_id', courseId);
-  _roundCourseHoles = holes || [];
-  _roundCoursePar = _roundCourseHoles.reduce((s, h) => s + (h.par || 0), 0) || 72;
-  const holeNums = (holes || []).map(h => h.hole_number);
-  const hasFront9 = holeNums.some(n => n <= 9);
-  const hasBack9 = holeNums.some(n => n >= 10);
-  _roundAvailableRanges = { hasFront9, hasBack9 };
-  const warningEl = document.getElementById('roundHoleWarning');
-  if (warningEl) warningEl.style.display = holeNums.length === 0 ? 'block' : 'none';
-  const rangeDiv = document.getElementById('roundHoleRangeDiv');
-  if (!rangeDiv) return;
-  if (hasFront9 && hasBack9) {
-    rangeDiv.style.display = 'block';
-    rangeDiv.innerHTML = `<label style="font-size:13px;font-weight:500;color:var(--cream);display:block;margin-bottom:6px;">Hull</label>
-      <select id="roundHoleRange" style="width:100%;padding:12px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:var(--cream);font-size:14px;font-family:'DM Sans',sans-serif;">
-        <option value="all">Hull 1–18</option>
-        <option value="front9">Hull 1–9</option>
-        <option value="back9">Hull 10–18</option>
-      </select>`;
-    document.getElementById('roundHoleRange').addEventListener('change', _updateFlightPlayerGoals);
-
-  } else {
-    rangeDiv.style.display = 'none';
-    rangeDiv.innerHTML = '';
-  }
-}
-function addFlight() {
-  flightCount++;
-  const div = document.createElement('div');
-  div.id = `flight-${flightCount}`;
-  div.style.cssText = 'background:rgba(0,0,0,0.2); border-radius:8px; padding:14px; margin-bottom:10px; border:1px solid rgba(255,255,255,0.07);';
-  div.innerHTML = `
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-      <div style="font-size:13px; font-weight:600; color:var(--gold-light);">Flight ${flightCount}</div>
-      ${flightCount > 1 ? `<button onclick="document.getElementById('flight-${flightCount}').remove()" class="remove-btn">×</button>` : ''}
-    </div>
-    <div style="display:flex;flex-direction:column;gap:4px;" id="flight-players-${flightCount}">
-      ${allPlayers.map(p => `
-        <label style="display:flex;align-items:flex-start;gap:8px;padding:8px 12px;background:rgba(255,255,255,0.05);border-radius:8px;cursor:pointer;border:1px solid rgba(255,255,255,0.1);">
-          <input type="checkbox" value="${p.id}" data-name="${p.display_name}" data-hcp="${p.handicap || 36}" style="accent-color:var(--gold);flex-shrink:0;margin-top:2px;">
-          <div>
-            <span style="font-size:13px;color:var(--cream-dim);">${p.display_name}</span>
-            <span style="font-size:11px;color:var(--cream-dim);margin-left:4px;">(${p.handicap ?? '–'})</span>
-            <div data-player-goal="${p.id}"></div>
-          </div>
-        </label>
-      `).join('')}
-    </div>
-  `;
-  document.getElementById('flightList').appendChild(div);
-  _updateFlightPlayerGoals();
-}
-async function _updateFlightPlayerGoals() {
-  const sel = document.getElementById('roundTee');
-  const opt = sel?.options[sel.selectedIndex];
-  const slope = parseFloat(opt?.dataset.slope);
-  const cr = parseFloat(opt?.dataset.cr);
-
-  if (!slope || !cr || !allPlayers.length) {
-    document.querySelectorAll('[data-player-goal]').forEach(el => { el.innerHTML = ''; });
-    return;
-  }
-
-  const holeRange = document.getElementById('roundHoleRange')?.value || 'all';
-  const activeHoles = holeRange === 'front9' ? _roundCourseHoles.filter(h => h.hole_number <= 9)
-    : holeRange === 'back9' ? _roundCourseHoles.filter(h => h.hole_number >= 10)
-    : _roundCourseHoles;
-
-  for (const p of allPlayers) {
-    const goals = document.querySelectorAll(`[data-player-goal="${p.id}"]`);
-    if (!goals.length) continue;
-    const hi = parseFloat(p.handicap);
-    if (isNaN(hi)) { goals.forEach(el => { el.innerHTML = ''; }); continue; }
-    const tildelte = _activeStrokes(_playingHcp(hi, slope, cr, _roundCoursePar), activeHoles);
-    goals.forEach(el => {
-      el.innerHTML = `<div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:3px;">Tildelte slag: ${tildelte}</div>`;
-    });
-  }
-}
-
-// ── Hovedspill-valg (bolt-on-lim i dagens modal; erstattes av §2-flyten). ──
-let _selectedMainGame = 'stableford';
-function selectMainGame(type) {
-  _selectedMainGame = type;
-  const isScr = type === 'scramble';
-  const style = (btn, on) => { if (!btn) return;
-    btn.style.border = `1px solid ${on ? 'var(--gold)' : 'rgba(255,255,255,0.12)'}`;
-    btn.style.background = on ? 'rgba(201,168,76,0.18)' : 'transparent';
-    btn.style.color = on ? 'var(--gold)' : 'var(--cream-dim)';
-  };
-  style(document.getElementById('mainGameStableford'), !isScr);
-  style(document.getElementById('mainGameScramble'), isScr);
-  const setup = document.getElementById('scrambleSetup');
-  if (setup) setup.style.display = isScr ? 'block' : 'none';
-  if (isScr) {
-    const cfg = document.getElementById('scrambleConfig');
-    if (cfg && !cfg.innerHTML.trim()) cfg.innerHTML = getGame('scramble').setupUI({});
-    refreshTeamBuilder();
-  }
-}
-
-// Leser avkryssede spillere fra flightene og (gjen)bygger TeamBuilder.
-function refreshTeamBuilder() {
-  const sel = document.getElementById('roundTee');
-  const opt = sel?.options[sel.selectedIndex];
-  const slope = parseFloat(opt?.dataset.slope) || null;
-  const cr = parseFloat(opt?.dataset.cr) || null;
-  const seen = {}, players = [];
-  document.querySelectorAll('#flightList input[type=checkbox]:checked').forEach(cb => {
-    if (seen[cb.value]) return;
-    seen[cb.value] = true;
-    players.push({ id: cb.value, name: (cb.dataset.name || '?').split(' ')[0], handicap: parseFloat(cb.dataset.hcp) });
-  });
-  TeamBuilder.mount({ container: 'teamBuilder', players, numTeams: 2, slope, cr, par: _roundCoursePar });
-}
-
-async function saveRound() {
-  const courseId = document.getElementById('roundCourse').value;
-  const teeId = document.getElementById('roundTee').value;
-  const date = document.getElementById('roundDate').value;
-  if (!courseId || !teeId || !date) { showAlert('newRoundAlert', 'Fyll inn bane, tee og dato', 'error'); return; }
-  // Scramble: valider lag FØR runden opprettes (unngå foreldreløs runde).
-  const isScramble = _selectedMainGame === 'scramble';
-  let scrambleTeams = [];
-  if (isScramble) {
-    scrambleTeams = TeamBuilder.getTeams().filter(t => t.member_ids.length);
-    const v = getGame('scramble').validate({ teams: scrambleTeams });
-    if (!v.ok) { showAlert('newRoundAlert', v.warning, 'error'); return; }
-  }
-  const { hasFront9, hasBack9 } = _roundAvailableRanges;
-  let holeRange;
-  if (hasFront9 && hasBack9) {
-    holeRange = document.getElementById('roundHoleRange')?.value || 'all';
-  } else if (hasFront9) {
-    holeRange = 'front9';
-  } else if (hasBack9) {
-    holeRange = 'back9';
-  } else {
-    holeRange = 'all';
-  }
-  const skinsAmt = document.getElementById('skinsEnabled')?.checked
-    ? (parseInt(document.getElementById('skinsAmount').value) || null) : null;
-  const { data: round, error } = await db.from('rounds').insert({
-    course_id: courseId, tee_set_id: teeId, date, created_by: currentProfile.id, status: 'active',
-    hole_range: holeRange
-  }).select().single();
-  if (error) { showAlert('newRoundAlert', 'Feil: ' + error.message, 'error'); return; }
-  // Skins ligger nå som en games-rad i spillmotoren (rounds.skins_amount er utfaset).
-  if (skinsAmt) {
-    await db.from('games').insert({ round_id: round.id, game_type: 'skins', is_main: false, config: { amount: skinsAmt } });
-  }
-  for (let i = 1; i <= flightCount; i++) {
-    const flightDiv = document.getElementById(`flight-${i}`);
-    if (!flightDiv) continue;
-    const checked = flightDiv.querySelectorAll('input[type=checkbox]:checked');
-    if (!checked.length) continue;
-    const { data: flight } = await db.from('flights').insert({ round_id: round.id, name: `Flight ${i}` }).select().single();
-    for (const cb of checked) {
-      await db.from('flight_players').insert({
-        flight_id: flight.id, player_id: cb.value,
-        handicap: parseFloat(cb.dataset.hcp) || 36, tee_set_id: teeId
-      });
-      if (cb.value !== currentProfile.id) {
-        await db.from('notifications').insert({
-          player_id: cb.value,
-          message: `Du er lagt til i en runde på ${document.getElementById('roundCourse').options[document.getElementById('roundCourse').selectedIndex].text} (${date})`
-        });
-      }
-    }
-  }
-  // Scramble-hovedspill: games-rad (is_main) + game_teams med frosset lag-HCP.
-  if (isScramble) {
-    const config = {
-      scoring: document.getElementById('scrambleScoring')?.value || 'netto',
-      countingDrives: document.getElementById('scrambleCountDrives')?.checked || false,
-      minDrivesPerPlayer: parseInt(document.getElementById('scrambleMinDrives')?.value) || 1,
-      fractionMode: 'whs',
-    };
-    const { data: g } = await db.from('games').insert({ round_id: round.id, game_type: 'scramble', is_main: true, config }).select().single();
-    if (g) {
-      for (const t of scrambleTeams) {
-        await db.from('game_teams').insert({ game_id: g.id, name: t.name, member_ids: t.member_ids, team_handicap: t.team_handicap });
-      }
-    }
-  }
-  closeModal('modalNewRound');
-  // Vis del-modal før scoring starter
-  showShareRoundModal(round.id, document.getElementById('roundCourse').options[document.getElementById('roundCourse').selectedIndex].text, date);
-  await openRound(round.id);
 }
 
 let _dashboardLoading = false;
@@ -360,10 +137,10 @@ async function loadDashboard() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// §2 «Start et spill»-wizard (SPILLAPP-SPEC.md §2.2) — increment B: steg 1+2.
+// §2 «Start et spill»-wizard (SPILLAPP-SPEC.md §2.2) — steg 1–4 + Start.
 // Egen fullskjerm-side (#newGameScreen), bundet steg-nav 1→2→3→4→Start med
-// ett state-objekt som bæres gjennom stegene. Bygges PARALLELT med dagens
-// modal (openNewRound), som pensjoneres i increment D.
+// ett state-objekt som bæres gjennom stegene. Den gamle ny-runde-modalen er
+// pensjonert (increment D) — dette er nå eneste vei inn til å starte et spill.
 //
 // _wizState-format (bevisst): .config = hovedspillets games.config jsonb
 // VERBATIM (compute + steg 4 leser uendret); .addons = [{type, config}] der
@@ -462,7 +239,7 @@ const WIZARD_RENDERERS = {
   game:    () => _wizStepGame(),
   course:  () => _wizStepCourse(),
   players: () => _wizStepPlayers(),
-  spice:   () => _wizPlaceholder('🌶️', 'Krydder', 'Foreslåtte kompatible tilleggsspill. (increment D)'),
+  spice:   () => _wizStepSpice(),
 };
 function _wizStepGame() {
   return mainGames().map(g => {
@@ -793,6 +570,76 @@ function wizReshuffleTeams() {
   TeamBuilder.setAssignment(map);   // → onChange → fairness oppdateres
 }
 
+// ── Steg 4: Krydder (foreslåtte tilleggsspill) ────────────────────────────
+// Foreslår kompatible tillegg (addonCompatibility), inline-innstilling per
+// valgt tillegg, og skjuler inkompatible med kort begrunnelse (§2.2 steg 4).
+// Valgte tillegg lagres i _wizState.addons = [{type, config}] (games-rader).
+function _wizStepSpice() {
+  const { compatible, hidden } = addonCompatibility(_wizState.mainGame);
+  const chosen = {}; (_wizState.addons || []).forEach(a => { chosen[a.type] = a; });
+  const cards = compatible.length ? compatible.map(g => {
+    const on = chosen[g.type];
+    return `<div style="padding:14px 16px; margin-bottom:10px; border-radius:12px; border:1px solid ${on ? 'var(--gold)' : 'rgba(255,255,255,0.08)'}; background:${on ? 'rgba(201,168,76,0.1)' : 'rgba(0,0,0,0.2)'};">
+      <div onclick="wizToggleAddon('${g.type}')" style="display:flex; justify-content:space-between; align-items:center; gap:10px; cursor:pointer; -webkit-tap-highlight-color:transparent;">
+        <div>
+          <div style="font-family:'Playfair Display',serif; font-size:16px; color:${on ? 'var(--gold)' : 'var(--cream)'};">${g.meta.navn}</div>
+          <div style="font-size:12px; color:var(--cream-dim); margin-top:3px; line-height:1.4;">${g.meta.beskrivelse}</div>
+        </div>
+        <div style="flex-shrink:0; width:26px; height:26px; border-radius:50%; border:1px solid ${on ? 'var(--gold)' : 'rgba(255,255,255,0.2)'}; color:${on ? 'var(--gold)' : 'var(--cream-dim)'}; display:flex; align-items:center; justify-content:center; font-size:16px;">${on ? '✓' : '+'}</div>
+      </div>
+      ${on ? `<div onclick="event.stopPropagation();" style="margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.08);">${_wizAddonSettingUI(g.type, on.config)}</div>` : ''}
+    </div>`;
+  }).join('') : `<div style="padding:20px; text-align:center; color:var(--cream-dim); font-size:13px;">Ingen tilleggsspill passer dette oppsettet ennå.</div>`;
+  const hiddenNote = hidden.length ? `<div style="margin-top:14px; font-size:11px; color:var(--cream-dim); line-height:1.5;">Skjult: ${hidden.map(h => `${h.game.meta.navn} (${h.reason})`).join(' · ')}</div>` : '';
+  return `<div>
+    <label style="font-size:12px; text-transform:uppercase; letter-spacing:1px; color:var(--cream-dim); display:block; margin-bottom:8px;">Tilleggsspill <span style="text-transform:none; letter-spacing:0; color:rgba(255,255,255,0.35);">· valgfritt</span></label>
+    ${cards}
+    ${hiddenNote}
+    <div style="margin-top:24px; padding:14px 16px; border-radius:12px; background:rgba(82,183,136,0.08); border:1px solid rgba(82,183,136,0.2);">
+      <div style="font-size:10px; color:var(--green-light); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:6px;">Klar til start</div>
+      <div style="font-size:14px; color:var(--cream); line-height:1.5;">${_wizSummaryLine()}</div>
+    </div>
+  </div>`;
+}
+function _wizAddonSettingUI(type, config) {
+  const inp = 'width:70px; padding:5px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.35); color:var(--cream); font-size:13px; text-align:center;';
+  if (type === 'skins') {
+    return `<label style="display:flex; align-items:center; justify-content:space-between; font-size:13px; color:var(--cream);">Kr per skin
+      <input type="number" min="1" max="500" value="${config.amount ?? 50}" onchange="wizSetAddonConfig('skins','amount', parseInt(this.value)||0)" style="${inp}"></label>`;
+  }
+  return '';
+}
+function wizToggleAddon(type) {
+  const i = (_wizState.addons || []).findIndex(a => a.type === type);
+  if (i >= 0) _wizState.addons.splice(i, 1);
+  else {
+    const g = getGame(type);
+    _wizState.addons.push({ type, config: g && g.defaultConfig ? g.defaultConfig() : {} });
+  }
+  renderWizard();
+}
+function wizSetAddonConfig(type, key, val) {
+  const a = (_wizState.addons || []).find(a => a.type === type);
+  if (a) { a.config[key] = val; renderWizard(); }
+}
+// Én-linjes oppsummering (§2.2): «Scramble · Grini GK · 18 hull · 2 lag · skins».
+function _wizSummaryLine() {
+  const parts = [];
+  const g = _wizState.mainGame ? getGame(_wizState.mainGame) : null;
+  if (g) parts.push(g.meta.navn);
+  const cn = (_wizCourses || []).find(c => c.id === _wizState.courseId)?.name;
+  if (cn) parts.push(cn);
+  if (_wizState.course) parts.push(`${_wizState.course.holeCount} hull`);
+  if (_wizIsTeamGame()) {
+    const nt = (_wizState.teams || []).filter(t => t.member_ids.length).length;
+    parts.push(`${nt} lag`);
+  } else if (_wizState.players.length) {
+    parts.push(`${_wizState.players.length} spillere`);
+  }
+  (_wizState.addons || []).forEach(a => { const ag = getGame(a.type); if (ag) parts.push(ag.meta.navn.toLowerCase()); });
+  return parts.join(' · ');
+}
+
 function _wizLoadingBox(txt) {
   return `<div style="text-align:center; padding:48px 24px; color:var(--cream-dim); font-size:14px;">${txt}</div>`;
 }
@@ -805,7 +652,7 @@ function _wizPlaceholder(emoji, title, desc) {
 }
 // Oppretter spillet fra _wizState: round + games (hoved + evt. tillegg) +
 // game_teams (scramble) + én flight med alle spillere som roster. Speiler
-// saveRound; den gamle modalen pensjoneres i increment D.
+// speiler den tidligere saveRound (nå fjernet med den gamle modalen).
 async function wizardStart() {
   const g = getGame(_wizState.mainGame);
   // Sikre at spiller/lag-kravene er oppfylt selv om vi «startet» fra steg 4.

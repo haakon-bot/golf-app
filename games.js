@@ -42,21 +42,27 @@ function sideGames(round) { return roundGames(round).filter(g => !g.is_main); }
 function hasRole(g, role) { return (g.meta.roles || []).includes(role); }
 function mainGames() { return listGames().filter(g => hasRole(g, 'main')); }
 
-// Kompatibilitet (§4/§2.2): gyldige tillegg gitt hovedspill + kontekst.
-function compatibleAddons(mainType, ctx) {
-  const main = getGame(mainType);
-  if (!main) return [];
-  return listGames().filter(g => {
-    if (g.type === mainType) return false;
-    if (!hasRole(g, 'addon')) return false;              // må kunne være tillegg
-    if (g.meta.status === 'coming_soon') return false;   // ikke ferdige
-    // individuell-score-tillegg passer ikke oppå rent lagspill (f.eks. skins på scramble)
-    if (g.meta.kreverIndividuellScore && main.meta.kreverLag && !main.meta.kreverIndividuellScore) return false;
-    // lag-tillegg krever lag-hovedspill
-    if (g.meta.kreverLag && !main.meta.kreverLag) return false;
-    return true;
-  });
+// Hvorfor et tillegg ikke passer et hovedspill — null = passer (§4/§2.2).
+function _addonReason(main, g) {
+  if (g.meta.status === 'coming_soon') return 'kommer snart';
+  if (g.meta.kreverIndividuellScore && main.meta.kreverLag && !main.meta.kreverIndividuellScore) return 'krever individuell scoring';
+  if (g.meta.kreverLag && !main.meta.kreverLag) return 'krever lagspill';
+  return null;
 }
+
+// Kompatibilitet (§2.2 steg 4): { compatible:[game], hidden:[{game, reason}] }.
+// Steg 4 foreslår compatible og skjuler hidden med kort begrunnelse.
+function addonCompatibility(mainType) {
+  const main = getGame(mainType);
+  const compatible = [], hidden = [];
+  if (main) listGames().forEach(g => {
+    if (g.type === mainType || !hasRole(g, 'addon')) return;
+    const reason = _addonReason(main, g);
+    if (reason) hidden.push({ game: g, reason }); else compatible.push(g);
+  });
+  return { compatible, hidden };
+}
+function compatibleAddons(mainType) { return addonCompatibility(mainType).compatible; }
 
 // ==========================================================================
 // Skins-modul (SPILLAPP-SPEC.md §5.3) — første spill i motoren.
@@ -131,6 +137,9 @@ const SkinsGame = {
   },
 
   amount(round) { return skinsAmount(round); },
+
+  // Standard games.config for skins (wizard steg 4 seeder herfra).
+  defaultConfig() { return { amount: 50 }; },
 
   // Oppsett-markup (beløp per skin). Foreløpig speiler den den statiske UI-en i
   // index.html; den dynamiske oppsett-flyten (§2) kobles på senere.
@@ -285,12 +294,6 @@ const StablefordGame = {
   summaryUI() { return ''; },
 };
 registerGame(StablefordGame);
-
-// Skins-oppsett i ny-runde-modalen (statisk UI i index.html inntil videre).
-function toggleSkinsAmount() {
-  const wrap = document.getElementById('skinsAmountWrap');
-  if (wrap) wrap.style.display = document.getElementById('skinsEnabled').checked ? 'flex' : 'none';
-}
 
 // ==========================================================================
 // game_events-kontrakt for scramble-utslag (SPILLAPP-SPEC.md §5.1, §11.3).
