@@ -478,6 +478,13 @@ const ScrambleGame = {
     status: 'ready',
   },
 
+  // Standard games.config for scramble (§2.2: wizard seeder herfra). Formatet
+  // er nøyaktig det compute leser — ingen oversettelse. «Tellende utslag»
+  // uttrykkes i UI som ett tall (0 = av) som mapper på countingDrives+min.
+  defaultConfig() {
+    return { scoring: 'netto', countingDrives: false, minDrivesPerPlayer: 1, fractionMode: 'whs' };
+  },
+
   // Konfig-kontroller (scoring + tellende utslag). Lag-byggeren mountes separat
   // via TeamBuilder (egen gjenbrukbar komponent), ikke herfra.
   setupUI(config = {}) {
