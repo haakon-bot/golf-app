@@ -385,10 +385,9 @@ let _wizLastCourseId = null; // sist spilte bane (forhåndsvalgt)
 let _wizCourseTees = [];     // tee-sett for valgt bane
 let _wizCourseHoles = [];    // hull for valgt bane
 let _wizAllPlayers = null;   // profiles-cache for spiller-chips (steg 3)
-// Gjeste-oppretting krever at FK profiles_id_fkey løsnes (migrering under
-// arbeid). Skjult til den er kjørt, så ingen treffer FK-feilen. Flipp til true
-// (én-linjes deploy) når migreringen er på plass.
-const WIZ_GUEST_CREATE = false;
+// Gjeste-oppretting: FK profiles_id_fkey er droppet (2026-08-guest-fk-drop.sql)
+// + is_guest-kolonne/RLS insert-policy på plass, så gjester kan opprettes.
+const WIZ_GUEST_CREATE = true;
 
 function openNewGame() {
   _wizStep = 0;
