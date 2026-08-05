@@ -358,3 +358,77 @@ async function loadDashboard() {
     _dashboardLoading = false;
   }
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+// §2 «Start et spill»-wizard (SPILLAPP-SPEC.md §2.2) — increment A: skall.
+// Egen fullskjerm-side (#newGameScreen), bundet steg-nav 1→2→3→4→Start med
+// ett state-objekt som bæres gjennom stegene. Steg-innhold fylles i B/C/D;
+// nå er rendererne stillas. Bygges PARALLELT med dagens modal (openNewRound),
+// som pensjoneres i increment D.
+// ══════════════════════════════════════════════════════════════════════════
+const WIZARD_STEPS = [
+  { key: 'game',    label: 'Velg spill' },
+  { key: 'course',  label: 'Bane & hull' },
+  { key: 'players', label: 'Spillere & lag' },
+  { key: 'spice',   label: 'Krydder' },
+];
+let _wizStep = 0;
+let _wizState = null;
+
+function openNewGame() {
+  _wizStep = 0;
+  _wizState = { mainGame: null, config: {}, courseId: null, teeId: null, holeRange: 'all', players: [], teams: [], addons: [] };
+  const scr = document.getElementById('newGameScreen');
+  scr.style.display = 'flex';
+  scr.style.flexDirection = 'column';
+  scr.scrollTo?.(0, 0);
+  renderWizard();
+}
+function closeNewGame() {
+  document.getElementById('newGameScreen').style.display = 'none';
+}
+function wizardBack() {
+  if (_wizStep === 0) { closeNewGame(); return; }
+  _wizStep--;
+  renderWizard();
+}
+function wizardNext() {
+  // Steg-validering kobles på i increment B/C (blokkerer «Neste» ved mangler).
+  if (_wizStep >= WIZARD_STEPS.length - 1) { wizardStart(); return; }
+  _wizStep++;
+  renderWizard();
+}
+function renderWizard() {
+  const step = WIZARD_STEPS[_wizStep];
+  const isLast = _wizStep >= WIZARD_STEPS.length - 1;
+  document.getElementById('ngStepLabel').textContent = `Steg ${_wizStep + 1} av ${WIZARD_STEPS.length} · ${step.label}`;
+  document.getElementById('ngBackBtn').textContent = _wizStep === 0 ? '✕' : '←';
+  document.getElementById('ngNextBtn').textContent = isLast ? 'Start spillet →' : 'Neste →';
+  document.getElementById('ngStepDots').innerHTML = WIZARD_STEPS.map((s, i) =>
+    `<div title="${s.label}" style="width:${i === _wizStep ? '24px' : '8px'}; height:8px; border-radius:4px; background:${i < _wizStep ? 'var(--gold-dim)' : i === _wizStep ? 'var(--gold)' : 'rgba(255,255,255,0.15)'}; transition:all 0.2s;"></div>`
+  ).join('');
+  const renderer = WIZARD_RENDERERS[step.key];
+  const el = document.getElementById('ngStepContent');
+  el.innerHTML = renderer ? renderer() : '';
+  el.parentElement.scrollTo?.(0, 0);
+}
+// Steg-renderere fylles i senere increments (B: game/course, C: players, D: spice).
+// Stillas nå: viser hva steget skal gjøre, så skallet er testbart ende-til-ende.
+const WIZARD_RENDERERS = {
+  game:    () => _wizPlaceholder('🎯', 'Velg spill', 'Ekspanderende spillkort fra spillmodulenes meta + variantvalg. (increment B)'),
+  course:  () => _wizPlaceholder('⛳', 'Bane & hull', 'Velg bane (sist spilt forhåndsvalgt), tee og hvilke hull. (increment B)'),
+  players: () => _wizPlaceholder('👥', 'Spillere & lag', 'Spiller-chips, inline HCP, lagbygging med «bland på nytt». (increment C)'),
+  spice:   () => _wizPlaceholder('🌶️', 'Krydder', 'Foreslåtte kompatible tilleggsspill. (increment D)'),
+};
+function _wizPlaceholder(emoji, title, desc) {
+  return `<div style="text-align:center; padding:48px 24px; color:var(--cream-dim);">
+    <div style="font-size:44px; margin-bottom:12px;">${emoji}</div>
+    <div style="font-family:'Playfair Display',serif; font-size:20px; color:var(--cream); margin-bottom:8px;">${title}</div>
+    <div style="font-size:13px; line-height:1.5; max-width:320px; margin:0 auto;">${desc}</div>
+  </div>`;
+}
+function wizardStart() {
+  // Porteres i increment C: opprett round + games (+ game_teams) fra _wizState,
+  // deretter closeNewGame() + openRound(). Nå bare et hint i skallet.
+  alert('Wizard-skallet står. Steg-innhold + «Start» bygges i increment B/C/D.');
+}

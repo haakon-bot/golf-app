@@ -36,13 +36,24 @@ function gameOfType(round, type) { return roundGames(round).find(g => g.game_typ
 function mainGame(round) { return roundGames(round).find(g => g.is_main) || null; }
 function sideGames(round) { return roundGames(round).filter(g => !g.is_main); }
 
-// Kompatibilitet (§4): filtrer gyldige tillegg gitt hovedspill + kontekst.
-// Minimal nå (kun skins finnes); utvides når flere spill kommer inn.
+// Rollehjelpere (§2.2): hvilke spill kan velges som hovedspill / tillegg.
+// coming_soon-spill tas MED i mainGames (vises nedtonet i velgeren), men
+// filtreres bort som tillegg (kan ikke aktiveres ennå).
+function hasRole(g, role) { return (g.meta.roles || []).includes(role); }
+function mainGames() { return listGames().filter(g => hasRole(g, 'main')); }
+
+// Kompatibilitet (§4/§2.2): gyldige tillegg gitt hovedspill + kontekst.
 function compatibleAddons(mainType, ctx) {
   const main = getGame(mainType);
+  if (!main) return [];
   return listGames().filter(g => {
     if (g.type === mainType) return false;
-    if (g.meta.kreverIndividuellScore && main && main.meta.kreverLag && !main.meta.kreverIndividuellScore) return false;
+    if (!hasRole(g, 'addon')) return false;              // må kunne være tillegg
+    if (g.meta.status === 'coming_soon') return false;   // ikke ferdige
+    // individuell-score-tillegg passer ikke oppå rent lagspill (f.eks. skins på scramble)
+    if (g.meta.kreverIndividuellScore && main.meta.kreverLag && !main.meta.kreverIndividuellScore) return false;
+    // lag-tillegg krever lag-hovedspill
+    if (g.meta.kreverLag && !main.meta.kreverLag) return false;
     return true;
   });
 }
@@ -115,6 +126,8 @@ const SkinsGame = {
     maxSpillere: 99,
     kreverLag: false,
     kreverIndividuellScore: true,
+    roles: ['addon'],       // sidespill oppå individuell scoring (§4)
+    status: 'ready',
   },
 
   amount(round) { return skinsAmount(round); },
@@ -245,6 +258,33 @@ const SkinsGame = {
   },
 };
 registerGame(SkinsGame);
+
+// ==========================================================================
+// Stableford (SPILLAPP-SPEC.md §5) — individuelt standard-hovedspill.
+// Scoring-skjermen rendrer individuell stableford nativt (renderPlayerInputs,
+// mini-ledertavle, oppsummerings-faner), så modulens compute/tracker/summary
+// er bevisst no-ops. Rollen er å figurere i spillvelgeren (§2.2 steg 1) som
+// standardvalget og skrive en informativ games-rad (game_type='stableford').
+// ==========================================================================
+const StablefordGame = {
+  type: 'stableford',
+  meta: {
+    navn: 'Stableford',
+    beskrivelse: 'Klassisk individuell stableford — netto poeng per hull mot par.',
+    minSpillere: 1,
+    maxSpillere: 99,
+    kreverLag: false,
+    kreverIndividuellScore: true,
+    roles: ['main'],
+    status: 'ready',
+  },
+  setupUI() { return ''; },                 // ingen variantvalg
+  validate() { return { ok: true }; },
+  compute() { return null; },               // native scoring håndterer det
+  trackerUI() { return ''; },
+  summaryUI() { return ''; },
+};
+registerGame(StablefordGame);
 
 // Skins-oppsett i ny-runde-modalen (statisk UI i index.html inntil videre).
 function toggleSkinsAmount() {
@@ -434,6 +474,8 @@ const ScrambleGame = {
     maxSpillere: 99,
     kreverLag: true,
     kreverIndividuellScore: false,
+    roles: ['main'],
+    status: 'ready',
   },
 
   // Konfig-kontroller (scoring + tellende utslag). Lag-byggeren mountes separat
