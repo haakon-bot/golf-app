@@ -359,14 +359,21 @@ function _teamExtraStrokes(teamHcp, strokeIndex) {
 const TeamBuilder = {
   _c: null, _players: [], _numTeams: 2, _course: {}, _assign: {},
 
-  // opts: { container (el|id), players:[{id,name,handicap}], numTeams, slope, cr, par }
+  _onChange: null,
+
+  // opts: { container (el|id), players:[{id,name,handicap}], numTeams, slope, cr, par,
+  //         assign (initial {playerId:teamIndex}), onChange (teams, assign) => void }
   mount(opts = {}) {
     this._c = typeof opts.container === 'string' ? document.getElementById(opts.container) : opts.container;
     this._numTeams = opts.numTeams || 2;
     this._course = { slope: opts.slope, cr: opts.cr, par: opts.par };
-    this._assign = {};
+    this._assign = { ...(opts.assign || {}) };
+    this._onChange = opts.onChange || null;
     this.setPlayers(opts.players || []);
   },
+
+  // Sett hele fordelingen på én gang (brukes av «bland på nytt»).
+  setAssignment(map) { this._assign = { ...map }; this.render(); },
 
   setCourse(slope, cr, par) { this._course = { slope, cr, par }; this.render(); },
 
@@ -380,9 +387,17 @@ const TeamBuilder = {
   // eksisterende lag-plassering; nye spillere fordeles round-robin.
   setPlayers(players) {
     this._players = players || [];
-    let idx = 0;
-    this._players.forEach(p => { if (this._assign[p.id] == null) { this._assign[p.id] = idx % this._numTeams; idx++; } });
+    // Fjern fordeling for spillere som er tatt bort først.
     Object.keys(this._assign).forEach(id => { if (!this._players.find(p => p.id === id)) delete this._assign[id]; });
+    // Nye spillere: legg på det minste laget nå (balansert — robust når spillere
+    // legges til én og én, i motsetning til naiv round-robin som klumper på lag 1).
+    this._players.forEach(p => {
+      if (this._assign[p.id] != null) return;
+      const counts = Array.from({ length: this._numTeams }, (_, t) => this._players.filter(x => this._assign[x.id] === t).length);
+      let min = 0;
+      for (let t = 1; t < this._numTeams; t++) if (counts[t] < counts[min]) min = t;
+      this._assign[p.id] = min;
+    });
     this.render();
   },
 
@@ -406,7 +421,8 @@ const TeamBuilder = {
   render() {
     if (!this._c) return;
     if (!this._players.length) {
-      this._c.innerHTML = `<div style="font-size:12px;color:var(--cream-dim);padding:10px 0;">Kryss av spillere i flighten under, og trykk «Bygg lag».</div>`;
+      this._c.innerHTML = `<div style="font-size:12px;color:var(--cream-dim);padding:10px 0;">Velg spillere over for å bygge lag.</div>`;
+      if (this._onChange) this._onChange([], this._assign);
       return;
     }
     const teams = this.getTeams();
@@ -431,6 +447,7 @@ const TeamBuilder = {
       <div style="display:flex;gap:6px;margin-bottom:10px;">${teamPickerBtns}</div>
       <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">${teamCards}</div>
       <div>${rows}</div>`;
+    if (this._onChange) this._onChange(this.getTeams(), this._assign);
   },
 };
 
