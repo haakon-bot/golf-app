@@ -6,7 +6,7 @@ async function loadRounds() {
     .limit(20);
   const el = document.getElementById('roundsList');
   if (!rounds?.length) {
-    el.innerHTML = '<div class="empty"><div class="empty-icon">⛳</div><h3>Ingen runder ennå</h3><p>Trykk "+ Ny runde" for å starte!</p></div>';
+    el.innerHTML = '<div class="empty"><div class="empty-icon">⛳</div><h3>Ingen spill ennå</h3><p>Trykk "🧪 Start et spill" for å starte!</p></div>';
     return;
   }
   el.innerHTML = rounds.map(r => {
@@ -153,9 +153,18 @@ const WIZARD_STEPS = [
   { key: 'players', label: 'Spillere & lag' },
   { key: 'spice',   label: 'Krydder' },
 ];
+// Edit-modus (§2.6): spilltype + bane/hull er låst mid-runde → kun steg 3+4.
+const EDIT_STEPS = [
+  { key: 'players', label: 'Spillere & HCP' },
+  { key: 'spice',   label: 'Tilleggsspill' },
+];
+function _wizSteps() { return _wizEditRoundId ? EDIT_STEPS : WIZARD_STEPS; }
 let _wizStep = 0;
 let _wizState = null;
 let _wizWarning = '';
+let _wizEditRoundId = null;       // null = opprett, satt = rediger aktiv runde
+let _wizPlayerScoreCount = {};    // player_id → antall hull med score (gate fjerning)
+let _wizFlightId = null;          // flight for roster-mutasjoner i edit-modus
 // Steg 2-cacher (lette read-only henting; bane-adm. hører hjemme bak hamburger).
 let _wizCourses = null;      // [{id, name}]
 let _wizLastCourseId = null; // sist spilte bane (forhåndsvalgt)
@@ -169,6 +178,7 @@ const WIZ_GUEST_CREATE = true;
 function openNewGame() {
   _wizStep = 0;
   _wizWarning = '';
+  _wizEditRoundId = null; _wizPlayerScoreCount = {}; _wizFlightId = null;
   _wizState = { mainGame: null, config: {}, courseId: null, teeId: null, holeRange: 'all', course: null, players: [], teams: [], teamAssign: {}, numTeams: 2, addons: [] };
   _wizCourseTees = []; _wizCourseHoles = [];
   const scr = document.getElementById('newGameScreen');
@@ -181,6 +191,7 @@ function openNewGame() {
 }
 function closeNewGame() {
   document.getElementById('newGameScreen').style.display = 'none';
+  _wizEditRoundId = null;
 }
 function wizardBack() {
   _wizWarning = '';
@@ -192,12 +203,12 @@ function wizardNext() {
   const v = _wizValidateStep(_wizStep);
   if (!v.ok) { _wizWarning = v.warning; renderWizard(); return; }
   _wizWarning = '';
-  if (_wizStep >= WIZARD_STEPS.length - 1) { wizardStart(); return; }
+  if (_wizStep >= _wizSteps().length - 1) { _wizEditRoundId ? wizardSave() : wizardStart(); return; }
   _wizStep++;
   renderWizard();
 }
 function _wizValidateStep(i) {
-  const key = WIZARD_STEPS[i].key;
+  const key = _wizSteps()[i].key;
   if (key === 'game' && !_wizState.mainGame) return { ok: false, warning: 'Velg et spill for å gå videre.' };
   if (key === 'course') {
     if (!_wizState.courseId) return { ok: false, warning: 'Velg en bane.' };
@@ -208,6 +219,7 @@ function _wizValidateStep(i) {
     const g = _wizState.mainGame ? getGame(_wizState.mainGame) : null;
     const need = g?.meta.minSpillere || 1;
     if (_wizState.players.length < need) return { ok: false, warning: `Velg minst ${need} spiller${need > 1 ? 'e' : ''}.` };
+    if (_wizState.players.length > _wizMaxPlayers()) return { ok: false, warning: `Maks ${_wizMaxPlayers()} spillere per spill — ett spill = én flight.` };
     if (_wizIsTeamGame()) {
       const teams = (_wizState.teams || []).filter(t => t.member_ids.length);
       const vt = g.validate ? g.validate({ teams }) : { ok: true };
@@ -218,20 +230,25 @@ function _wizValidateStep(i) {
   return { ok: true };
 }
 function renderWizard() {
-  const step = WIZARD_STEPS[_wizStep];
-  const isLast = _wizStep >= WIZARD_STEPS.length - 1;
-  document.getElementById('ngStepLabel').textContent = `Steg ${_wizStep + 1} av ${WIZARD_STEPS.length} · ${step.label}`;
+  const steps = _wizSteps();
+  const editing = !!_wizEditRoundId;
+  const step = steps[_wizStep];
+  const isLast = _wizStep >= steps.length - 1;
+  document.getElementById('ngStepLabel').textContent = `${editing ? 'Rediger' : 'Steg ' + (_wizStep + 1) + ' av ' + steps.length} · ${step.label}`;
   document.getElementById('ngBackBtn').textContent = _wizStep === 0 ? '✕' : '←';
-  document.getElementById('ngNextBtn').textContent = isLast ? 'Start spillet →' : 'Neste →';
-  document.getElementById('ngStepDots').innerHTML = WIZARD_STEPS.map((s, i) =>
+  document.getElementById('ngNextBtn').textContent = isLast ? (editing ? 'Lagre endringer' : 'Start spillet →') : 'Neste →';
+  document.getElementById('ngStepDots').innerHTML = steps.map((s, i) =>
     `<div title="${s.label}" style="width:${i === _wizStep ? '24px' : '8px'}; height:8px; border-radius:4px; background:${i < _wizStep ? 'var(--gold-dim)' : i === _wizStep ? 'var(--gold)' : 'rgba(255,255,255,0.15)'}; transition:all 0.2s;"></div>`
   ).join('');
+  // Låst-kontekst-banner i edit-modus (spilltype + bane/hull kan ikke endres).
+  const g = _wizState.mainGame ? getGame(_wizState.mainGame) : null;
+  const lockBanner = editing ? `<div style="background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:10px 14px; margin-bottom:14px; font-size:12px; color:var(--cream-dim);">🔒 ${g?.meta.navn || 'Spill'} · ${_wizState.courseName || ''} · ${_wizState.course?.holeCount || ''} hull <span style="color:rgba(255,255,255,0.35);">— spilltype og bane er låst i en aktiv runde</span></div>` : '';
   const warn = _wizWarning ? `<div style="background:rgba(201,168,76,0.12); border:1px solid rgba(201,168,76,0.4); color:var(--gold-light); font-size:13px; padding:10px 14px; border-radius:8px; margin-bottom:14px;">⚠️ ${_wizWarning}</div>` : '';
   const renderer = WIZARD_RENDERERS[step.key];
   const el = document.getElementById('ngStepContent');
-  el.innerHTML = warn + (renderer ? renderer() : '');
+  el.innerHTML = lockBanner + warn + (renderer ? renderer() : '');
   el.parentElement.scrollTo?.(0, 0);
-  if (step.key === 'players') _wizAfterPlayers();   // mount chips + TeamBuilder etter DOM finnes
+  if (step.key === 'players') _wizAfterPlayers();   // mount chips/teams etter DOM finnes
 }
 
 // ── Steg 1: Velg spill ────────────────────────────────────────────────────
@@ -303,7 +320,7 @@ async function _wizLoadCourses() {
   if (!_wizState.courseId && _wizLastCourseId && _wizCourses.find(c => c.id === _wizLastCourseId)) {
     await wizSelectCourse(_wizLastCourseId, true);
   }
-  if (WIZARD_STEPS[_wizStep].key === 'course') renderWizard();
+  if (_wizSteps()[_wizStep].key === 'course') renderWizard();
 }
 async function wizSelectCourse(courseId, silent) {
   if (!courseId) {
@@ -386,7 +403,7 @@ function _wizStepCourse() {
 async function _wizLoadPlayers() {
   const { data } = await db.from('profiles').select('id, display_name, handicap, username, is_guest').order('display_name');
   _wizAllPlayers = data || [];
-  if (WIZARD_STEPS[_wizStep].key === 'players') renderWizard();
+  if (_wizSteps()[_wizStep].key === 'players') renderWizard();
 }
 function _wizIsTeamGame() {
   const g = _wizState.mainGame ? getGame(_wizState.mainGame) : null;
@@ -394,6 +411,14 @@ function _wizIsTeamGame() {
 }
 function _wizStepPlayers() {
   const team = _wizIsTeamGame();
+  // Edit-modus + scramble: roster/lag låst → read-only lag med redigerbar lag-HCP.
+  if (_wizEditRoundId && team) {
+    return `<div>
+      <label style="font-size:12px; text-transform:uppercase; letter-spacing:1px; color:var(--cream-dim); display:block; margin-bottom:8px;">Lag <span style="text-transform:none; letter-spacing:0; color:rgba(255,255,255,0.35);">· sammensetning låst</span></label>
+      <div id="wizEditTeams"></div>
+      <div style="margin-top:14px; font-size:11px; color:var(--cream-dim); line-height:1.5;">Lag-sammensetning er låst når spillet er i gang (lag-score ville blitt meningsløs ved bytte). Du kan justere lag-HCP og tilleggsspill.</div>
+    </div>`;
+  }
   const teamSection = team ? `
     <div style="margin-top:24px; display:flex; align-items:center; justify-content:space-between;">
       <label style="font-size:12px; text-transform:uppercase; letter-spacing:1px; color:var(--cream-dim);">Lag</label>
@@ -438,6 +463,7 @@ async function wizAddGuest() {
   const name = (document.getElementById('wizGuestName')?.value || '').trim();
   const hcpRaw = document.getElementById('wizGuestHcp')?.value;
   if (!name) { _wizGuestAlert('Skriv inn et navn.'); return; }
+  if (_wizState.players.length >= _wizMaxPlayers()) { _wizGuestAlert(`Spillet er fullt (maks ${_wizMaxPlayers()} spillere). Fjern en spiller først.`); return; }
   const hcp = parseFloat(hcpRaw);
   const handicap = isNaN(hcp) ? 54 : hcp;
   const id = crypto.randomUUID();
@@ -453,30 +479,93 @@ async function wizAddGuest() {
   if (_wizIsTeamGame()) _wizMountTeams();
 }
 function _wizAfterPlayers() {
+  if (_wizEditRoundId && _wizIsTeamGame()) { _wizRenderEditTeams(); return; }
   _wizRenderChips();
-  if (_wizIsTeamGame()) _wizMountTeams();
+  if (_wizIsTeamGame()) _wizMountTeams();   // scramble opprett
+}
+function _wizRenderEditTeams() {
+  const el = document.getElementById('wizEditTeams');
+  if (!el) return;
+  el.innerHTML = (_wizState.teams || []).map((t, idx) => {
+    const names = (t.member_ids || []).map(id => _wizState.players.find(p => p.id === id)?.name || '?').join(', ');
+    const allotted = _wizAllottedForTeam(t);
+    return `<div style="padding:12px 14px; margin-bottom:10px; border-radius:10px; background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.07);">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+        <div><div style="font-size:14px; color:var(--cream);">${t.name}</div><div style="font-size:11px; color:var(--cream-dim); margin-top:2px;">${names}</div></div>
+        <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--cream-dim);">Lag-HCP
+          <input type="number" value="${t.team_handicap ?? ''}" onchange="wizSetTeamHcp(${idx}, this.value)" style="width:56px; padding:5px 6px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.35); color:var(--cream); font-size:13px; text-align:center;"></label>
+      </div>
+      <div style="font-size:11px; color:var(--cream-dim); margin-top:8px;">Tildelte slag: ${allotted}</div>
+    </div>`;
+  }).join('');
+}
+function wizSetTeamHcp(idx, val) {
+  const t = _wizState.teams[idx];
+  if (!t) return;
+  const n = parseInt(val);
+  t.team_handicap = isNaN(n) ? null : n;
+  _wizRenderEditTeams();   // regn om tildelte slag
+}
+// §2.6: fjerning blokkert til score er nullstilt. Én knapp tømmer alle hull.
+async function wizNullPlayerScore(playerId) {
+  const p = _wizState.players.find(x => x.id === playerId);
+  const name = p?.name || 'spilleren';
+  const count = _wizPlayerScoreCount[playerId] || 0;
+  const ok = await showConfirm(`Nullstille alle ${name}s scorer (${count} hull)? Kan ikke angres.`, 'Nullstill');
+  if (!ok) return;
+  await db.from('scores').delete().eq('round_id', _wizEditRoundId).eq('player_id', playerId);
+  delete _wizPlayerScoreCount[playerId];
+  _wizRenderChips();
 }
 function _wizRenderChips() {
   const el = document.getElementById('wizChips');
   if (!el) return;
   if (!_wizAllPlayers) { el.innerHTML = _wizLoadingBox('Laster spillere…'); return; }
+  const editing = !!_wizEditRoundId;
   const selById = {}; _wizState.players.forEach(p => { selById[p.id] = p; });
   const chips = _wizAllPlayers.map(p => {
     const sel = selById[p.id];
     const guestTag = p.is_guest ? `<span style="font-size:9px; color:var(--gold-dim); text-transform:uppercase; letter-spacing:0.5px;">gjest</span>` : '';
+    const scored = editing && (_wizPlayerScoreCount[p.id] || 0) > 0;
+    // Navnet kan klikkes for å legge til (uvalgt) eller fjerne (valgt + ingen score).
+    const clickable = !sel || !scored;
+    const nameSpan = `<span ${clickable ? `onclick="wizTogglePlayer('${p.id}')"` : ''} style="cursor:${clickable ? 'pointer' : 'default'}; font-size:13px; color:${sel ? 'var(--gold)' : 'var(--cream)'}; -webkit-tap-highlight-color:transparent;">${sel ? '✓ ' : ''}${(p.display_name || '?').split(' ')[0]}</span>`;
+    let right;
+    if (sel) {
+      const hcp = `<input type="number" step="0.1" min="-10" max="54" value="${sel.handicap ?? ''}" onchange="wizSetPlayerHcp('${p.id}', this.value)" title="HCP for dette spillet" style="width:52px; padding:3px 5px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.35); color:var(--cream); font-size:12px; text-align:center;">`;
+      const nullBtn = scored ? `<button onclick="wizNullPlayerScore('${p.id}')" title="Tøm alle hull for å kunne fjerne spilleren" style="background:none; border:1px solid rgba(192,57,43,0.35); color:#e8a070; border-radius:6px; padding:3px 7px; cursor:pointer; font-size:10px; -webkit-tap-highlight-color:transparent;">Nullstill</button>` : '';
+      right = hcp + nullBtn;
+    } else {
+      right = `<span style="font-size:11px; color:var(--cream-dim);">${p.handicap ?? '–'}</span>`;
+    }
     return `<div style="display:inline-flex; align-items:center; gap:8px; margin:0 8px 8px 0; padding:8px 12px; border-radius:20px; border:1px solid ${sel ? 'var(--gold)' : 'rgba(255,255,255,0.12)'}; background:${sel ? 'rgba(201,168,76,0.15)' : 'rgba(0,0,0,0.2)'};">
-      <span onclick="wizTogglePlayer('${p.id}')" style="cursor:pointer; font-size:13px; color:${sel ? 'var(--gold)' : 'var(--cream)'}; -webkit-tap-highlight-color:transparent;">${sel ? '✓ ' : ''}${(p.display_name || '?').split(' ')[0]}</span>${guestTag}
-      ${sel ? `<input type="number" step="0.1" min="-10" max="54" value="${sel.handicap ?? ''}" onchange="wizSetPlayerHcp('${p.id}', this.value)" title="HCP for dette spillet" style="width:52px; padding:3px 5px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.35); color:var(--cream); font-size:12px; text-align:center;">` : `<span style="font-size:11px; color:var(--cream-dim);">${p.handicap ?? '–'}</span>`}
+      ${nameSpan}${guestTag}${right}
     </div>`;
   }).join('');
   el.innerHTML = chips + `<div style="font-size:11px; color:var(--cream-dim); margin-top:4px;">${_wizState.players.length} valgt</div>`;
 }
+// Effektivt spillertak: min(4, spillets maxSpillere) — ett spill = én flight (§2.5).
+function _wizMaxPlayers() {
+  const g = _wizState.mainGame ? getGame(_wizState.mainGame) : null;
+  return Math.min(4, g?.meta.maxSpillere ?? 4);
+}
 function wizTogglePlayer(id) {
   const i = _wizState.players.findIndex(p => p.id === id);
   if (i >= 0) {
+    // §2.6: kan ikke fjerne en spiller med score før den er nullstilt.
+    if (_wizEditRoundId && (_wizPlayerScoreCount[id] || 0) > 0) {
+      _wizWarning = `${_wizState.players[i].name} har score — nullstill den før du fjerner spilleren.`;
+      renderWizard();
+      return;
+    }
     _wizState.players.splice(i, 1);
     delete _wizState.teamAssign[id];
   } else {
+    if (_wizState.players.length >= _wizMaxPlayers()) {
+      _wizWarning = `Maks ${_wizMaxPlayers()} spillere per spill — ett spill = én flight.`;
+      renderWizard();
+      return;
+    }
     const p = (_wizAllPlayers || []).find(x => x.id === id);
     if (!p) return;
     _wizState.players.push({ id: p.id, name: (p.display_name || '?').split(' ')[0], handicap: p.handicap ?? 36 });
@@ -656,7 +745,7 @@ function _wizPlaceholder(emoji, title, desc) {
 async function wizardStart() {
   const g = getGame(_wizState.mainGame);
   // Sikre at spiller/lag-kravene er oppfylt selv om vi «startet» fra steg 4.
-  const pIdx = WIZARD_STEPS.findIndex(s => s.key === 'players');
+  const pIdx = _wizSteps().findIndex(s => s.key === 'players');
   const vp = _wizValidateStep(pIdx);
   if (!vp.ok) { _wizStep = pIdx; _wizWarning = vp.warning; renderWizard(); return; }
   const btn = document.getElementById('ngNextBtn');
@@ -695,4 +784,106 @@ async function wizardStart() {
   }
   closeNewGame();
   await openRound(round.id);
+}
+
+// ── Edit-modus: rediger oppsett på en aktiv runde (§2.6) ──────────────────
+// Åpner wizarden forhåndsutfylt, kun steg spillere/HCP + tillegg. Spilltype +
+// bane/hull låst. Score-kollisjoner flagges/nektes, aldri stille ødelagt.
+async function openEditGame(roundId) {
+  if (!roundId) return;
+  const { data: round } = await db.from('rounds')
+    .select('*, courses(name), tee_sets(name, slope, course_rating), flights(id, name, flight_players(id, player_id, handicap, profiles(display_name, username, is_guest))), games(*, game_teams(*))')
+    .eq('id', roundId).single();
+  if (!round) return;
+  const [{ data: holes }, { data: scores }] = await Promise.all([
+    db.from('holes').select('hole_number, par, stroke_index').eq('course_id', round.course_id).order('hole_number'),
+    db.from('scores').select('player_id, hole_number').eq('round_id', roundId),
+  ]);
+  _wizPlayerScoreCount = {};
+  (scores || []).forEach(s => { if (s.player_id) _wizPlayerScoreCount[s.player_id] = (_wizPlayerScoreCount[s.player_id] || 0) + 1; });
+  const main = (round.games || []).find(g => g.is_main) || null;
+  const addons = (round.games || []).filter(g => !g.is_main).map(g => ({ type: g.game_type, config: g.config || {} }));
+  const flight = (round.flights || [])[0] || null;
+  _wizFlightId = flight?.id || null;
+  const allFP = (round.flights || []).flatMap(f => f.flight_players || []);
+  const players = allFP.map(fp => ({ id: fp.player_id, name: (fp.profiles?.display_name || '?').split(' ')[0], handicap: fp.handicap, is_guest: fp.profiles?.is_guest, _fpId: fp.id }));
+  const holeRange = round.hole_range || 'all';
+  const hs = holes || [];
+  const activeHoles = holeRange === 'front9' ? hs.filter(h => h.hole_number <= 9) : holeRange === 'back9' ? hs.filter(h => h.hole_number >= 10) : hs;
+  const course = { holes: hs, activeHoles, par: hs.reduce((s, h) => s + (h.par || 0), 0) || 72, holeCount: activeHoles.length, slope: round.tee_sets?.slope ?? null, cr: round.tee_sets?.course_rating ?? null, hasFront9: hs.some(h => h.hole_number <= 9), hasBack9: hs.some(h => h.hole_number >= 10) };
+  const teams = (main?.game_teams || []).map(t => ({ name: t.name, member_ids: t.member_ids || [], members: (t.member_ids || []).map(id => players.find(p => p.id === id)).filter(Boolean), team_handicap: t.team_handicap, _teamId: t.id }));
+  _wizEditRoundId = roundId;
+  _wizStep = 0;
+  _wizWarning = '';
+  _wizState = {
+    mainGame: main?.game_type || 'stableford',
+    config: main?.config || {},
+    courseId: round.course_id, teeId: round.tee_set_id, holeRange, course,
+    courseName: round.courses?.name || '',
+    players, teams, teamAssign: {}, numTeams: teams.length || 2, addons,
+    _orig: {
+      players: players.map(p => ({ id: p.id, handicap: p.handicap, _fpId: p._fpId })),
+      addons: addons.map(a => ({ type: a.type, config: { ...a.config } })),
+      teams: teams.map(t => ({ _teamId: t._teamId, team_handicap: t.team_handicap })),
+    },
+  };
+  const scr = document.getElementById('newGameScreen');
+  scr.style.display = 'flex'; scr.style.flexDirection = 'column'; scr.scrollTo?.(0, 0);
+  renderWizard();
+  if (!_wizAllPlayers) _wizLoadPlayers();   // async; re-rendrer chips når klart
+}
+
+// Muterer den eksisterende runden fra _wizState (diff mot _orig). Roster-
+// fjerning er allerede gated bak nullstilling, så fjernede spillere har
+// ingen score å kollidere med.
+async function wizardSave() {
+  const pIdx = _wizSteps().findIndex(s => s.key === 'players');
+  const vp = _wizValidateStep(pIdx);
+  if (!vp.ok) { _wizStep = pIdx; _wizWarning = vp.warning; renderWizard(); return; }
+  const btn = document.getElementById('ngNextBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Lagrer…'; }
+  const rid = _wizEditRoundId;
+  const g = getGame(_wizState.mainGame);
+  const orig = _wizState._orig || { players: [], addons: [], teams: [] };
+  try {
+    if (!g.meta.kreverLag) {
+      const nowById = {}; _wizState.players.forEach(p => { nowById[p.id] = p; });
+      const origById = {}; orig.players.forEach(p => { origById[p.id] = p; });
+      for (const op of orig.players) {
+        if (!nowById[op.id] && op._fpId) await db.from('flight_players').delete().eq('id', op._fpId);
+      }
+      for (const np of _wizState.players) {
+        const op = origById[np.id];
+        if (!op) {
+          if (_wizFlightId) await db.from('flight_players').insert({ flight_id: _wizFlightId, player_id: np.id, handicap: np.handicap ?? 36, tee_set_id: _wizState.teeId });
+        } else if ((op.handicap ?? null) !== (np.handicap ?? null)) {
+          await db.from('flight_players').update({ handicap: np.handicap ?? 36 }).eq('id', op._fpId);
+        }
+      }
+    } else {
+      for (const t of _wizState.teams) {
+        const ot = (orig.teams || []).find(x => x._teamId === t._teamId);
+        if (ot && (ot.team_handicap ?? null) !== (t.team_handicap ?? null)) {
+          await db.from('game_teams').update({ team_handicap: t.team_handicap }).eq('id', t._teamId);
+        }
+      }
+    }
+    const nowAddon = {}; (_wizState.addons || []).forEach(a => { nowAddon[a.type] = a; });
+    const origAddon = {}; (orig.addons || []).forEach(a => { origAddon[a.type] = a; });
+    for (const oa of (orig.addons || [])) {
+      if (!nowAddon[oa.type]) await db.from('games').delete().eq('round_id', rid).eq('game_type', oa.type).eq('is_main', false);
+    }
+    for (const na of (_wizState.addons || [])) {
+      const oa = origAddon[na.type];
+      if (!oa) await db.from('games').insert({ round_id: rid, game_type: na.type, is_main: false, config: na.config || {} });
+      else if (JSON.stringify(oa.config) !== JSON.stringify(na.config)) await db.from('games').update({ config: na.config || {} }).eq('round_id', rid).eq('game_type', na.type).eq('is_main', false);
+    }
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Lagre endringer'; }
+    _wizWarning = 'Kunne ikke lagre: ' + (e.message || 'ukjent feil');
+    renderWizard();
+    return;
+  }
+  closeNewGame();
+  await openRound(rid);
 }

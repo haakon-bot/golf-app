@@ -101,7 +101,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.143</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.144</span></div>
     <div style="display:flex; align-items:center; gap:4px;">
       <button id="topbarRefreshBtn" onclick="forceUpdate()" title="Oppdater app" style="background:none;border:none;color:var(--cream-dim);cursor:pointer;padding:8px;font-size:22px;opacity:0.45;-webkit-tap-highlight-color:transparent;line-height:1;"><i class="ti ti-refresh"></i></button>
       <button onclick="openDrawer()" title="Meny" style="background:none;border:none;color:var(--cream-dim);cursor:pointer;padding:8px;font-size:24px;-webkit-tap-highlight-color:transparent;line-height:1;"><i class="ti ti-menu-2"></i></button>
@@ -229,7 +229,7 @@
     <div class="page-header"><div><h1>Trening</h1><p>Kommer snart</p></div></div>
   </div>
   <!-- SCREEN: Start et spill (§2-wizard, fullskjerm) -->
-  <div id="newGameScreen" style="display:none; position:fixed; inset:0; background:var(--green-deep); z-index:500; overflow-y:auto; flex-direction:column;">
+  <div id="newGameScreen" style="display:none; position:fixed; inset:0; background:var(--green-deep); z-index:600; overflow-y:auto; flex-direction:column;">
     <div style="background:var(--green-dark); padding:max(14px, env(safe-area-inset-top)) 16px 14px; border-bottom:1px solid rgba(201,168,76,0.2); display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; z-index:10;">
       <button onclick="wizardBack()" id="ngBackBtn" style="background:none; border:none; color:var(--gold); font-size:22px; cursor:pointer; -webkit-tap-highlight-color:transparent; min-width:32px; text-align:left;">←</button>
       <div style="text-align:center;">
@@ -255,6 +255,7 @@
       </div>
       <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
         <button onclick="showLeaderboard()" style="background:none; border:none; color:var(--gold-light); font-size:13px; cursor:pointer; font-family:'DM Sans',sans-serif; -webkit-tap-highlight-color:transparent; touch-action:manipulation;">Ledertavle</button>
+        <button id="scEditBtn" onclick="openEditGame(currentRound?.id)" style="display:none; background:none; border:none; color:var(--cream-dim); font-size:12px; cursor:pointer; font-family:'DM Sans',sans-serif; -webkit-tap-highlight-color:transparent; touch-action:manipulation;">⚙ Oppsett</button>
         <button onclick="shareLiveLink(currentRound?.id, currentRound?.courses?.name)" style="background:none; border:none; color:var(--cream-dim); font-size:12px; cursor:pointer; font-family:'DM Sans',sans-serif; -webkit-tap-highlight-color:transparent; touch-action:manipulation;">📤 Del live</button>
       </div>
     </div>

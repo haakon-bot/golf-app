@@ -74,6 +74,29 @@ kvoten strammer seg, automatisk straff når den er matematisk umulig.
 Full gjennomgang av alle spill (hovedspill, tilleggsspill, varianter,
 meta-krav) før flere spill implementeres. Egen spilliste-økt.
 
+### §2.5 Faste regler (låst 6. aug 2026)
+- **Ett spill = én flight, maks 4 spillere.** Effektivt tak =
+  min(4, spillets `meta.maxSpillere`) — spill kan være strengere
+  (matchplay 2, wolf nøyaktig 4), aldri over 4.
+- **Ingen skins/spill på tvers av flighter.** Det finnes ingen felles
+  oversikt på tvers, så det tillates ikke. Turnering med livescore er
+  et separat, senere konsept (andre elementer enn skins).
+
+### §2.6 Redigere oppsett på en aktiv runde
+Grunnregel: **en endring som ikke går opp mot allerede tastet score
+skal flagges og nektes/forklares — aldri stille ødelegge score.**
+- **Låst mid-runde:** spilltype og bane/hull (endring foreldreløser
+  all score) samt **scramble-roster/lag** (en spillers slag er vevd
+  inn i lagets delte score; å regne det bort ville dikte opp en runde).
+- **HCP-endring:** regnes om for hele runden. Ærlig — netto/poeng er
+  alltid utledet av uendret brutto; ingen lagret netto å bevare.
+- **Fjerne spiller med score:** blokkert til scoren er nullstilt. Én
+  «nullstill [spiller]s score»-knapp tømmer alle hans hull samlet,
+  deretter kan spilleren fjernes. To bevisste steg (ingen slett-bak-
+  én-advarsel som klikkes vekk på autopilot).
+- **Tilleggsspill:** fritt av/på/beløp — beregnes av eksisterende
+  brutto, ingenting ødelegges.
+
 ---
 
 ## 3. Arkitektur: spillmotoren

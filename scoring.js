@@ -82,12 +82,19 @@ async function openRound(roundId) {
   const nextBottom = document.getElementById('scNextHoleBottom');
   if (finishBtn) finishBtn.style.display = isParticipant ? 'inline-block' : 'none';
   if (nextBottom) nextBottom.style.display = isParticipant ? 'block' : 'none';
+  // ⚙ Oppsett kun for deltakere i en aktiv runde (§2.6 rediger oppsett)
+  const editBtn = document.getElementById('scEditBtn');
+  if (editBtn) editBtn.style.display = (isParticipant && round.status === 'active') ? 'inline-block' : 'none';
 
   renderScoringHole();
   document.getElementById('scoringScreen').style.display = 'flex';
   document.getElementById('scoringScreen').style.flexDirection = 'column';
 }
-function closeScoringScreen() {
+async function closeScoringScreen() {
+  if (currentRound?.status === 'active') {
+    const ok = await showConfirm('Forlate spillet? Det lagres og kan gjenopptas fra oversikten.', 'Forlat');
+    if (!ok) return;
+  }
   document.getElementById('scoringScreen').style.display = 'none';
   loadRounds();
   loadDashboard();

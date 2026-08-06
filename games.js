@@ -281,7 +281,7 @@ const StablefordGame = {
     navn: 'Stableford',
     beskrivelse: 'Klassisk individuell stableford — netto poeng per hull mot par.',
     minSpillere: 1,
-    maxSpillere: 99,
+    maxSpillere: 4,          // ett spill = én flight, maks 4 (§2.5)
     kreverLag: false,
     kreverIndividuellScore: true,
     roles: ['main'],
@@ -491,7 +491,7 @@ const ScrambleGame = {
     navn: 'Scramble',
     beskrivelse: 'Lagspill med delt ball — laget spiller beste plassering hvert slag. Netto lagscore mot par.',
     minSpillere: 2,
-    maxSpillere: 99,
+    maxSpillere: 4,          // ett spill = én flight, maks 4 (§2.5)
     kreverLag: true,
     kreverIndividuellScore: false,
     roles: ['main'],
