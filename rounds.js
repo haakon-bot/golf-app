@@ -287,18 +287,14 @@ function _wizStepGame() {
 function _wizVariantUI(type) {
   if (type !== 'scramble') return '';
   const c = _wizState.config || {};
-  const drives = c.countingDrives ? (c.minDrivesPerPlayer || 1) : 0;
   const selStyle = 'padding:6px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.35);color:var(--cream);font-size:13px;';
   const opt = (v, l) => `<option value="${v}" ${c.scoring === v ? 'selected' : ''}>${l}</option>`;
-  return `<div onclick="event.stopPropagation();" style="margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.08); display:flex; flex-direction:column; gap:12px;">
+  // Kun scoring her. «Tellende utslag» settes i steg 3 — det avhenger av lag/
+  // flighter som ikke er satt opp ennå.
+  return `<div onclick="event.stopPropagation();" style="margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.08);">
     <label style="display:flex; justify-content:space-between; align-items:center; font-size:13px; color:var(--cream);">Scoring
       <select onchange="wizSetConfig('scoring', this.value)" style="${selStyle}">${opt('netto', 'Netto (mot par)')}${opt('slag', 'Brutto slag')}${opt('stableford', 'Stableford')}</select>
     </label>
-    <label style="display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:13px; color:var(--cream);">
-      <span>Tellende utslag / spiller <span style="color:var(--cream-dim); font-size:11px;">(0 = av)</span></span>
-      <input type="number" min="0" max="6" value="${drives}" onchange="wizSetDrives(this.value)" style="width:56px; ${selStyle} text-align:center;">
-    </label>
-    ${drives > 0 ? `<div style="font-size:11px; color:var(--cream-dim);">Kvoten sjekkes mot antall hull og lagstørrelse i steg 2–3.</div>` : ''}
   </div>`;
 }
 function wizSelectGame(type) {
@@ -313,7 +309,7 @@ function wizSetDrives(val) {
   const n = Math.max(0, Math.min(6, parseInt(val) || 0));
   _wizState.config.countingDrives = n > 0;
   _wizState.config.minDrivesPerPlayer = n > 0 ? n : 1;
-  renderWizard();   // for å vise/skjule kvote-hintet
+  // Ingen re-render: kontrollen bor i steg 3 (ville re-mountet TeamBuilder).
 }
 
 // ── Steg 2: Bane & hull (lett read-only plukker) ──────────────────────────
@@ -430,7 +426,14 @@ function _wizStepPlayers() {
       <button onclick="wizReshuffleTeams()" style="background:none; border:1px solid rgba(201,168,76,0.35); color:var(--gold); border-radius:8px; padding:7px 12px; cursor:pointer; font-size:13px; -webkit-tap-highlight-color:transparent;">🔀 Bland på nytt</button>
     </div>
     <div id="wizTeamFairness" style="margin-top:10px;"></div>
-    <div id="wizTeamBuilder" style="margin-top:12px;"></div>` : '';
+    <div id="wizTeamBuilder" style="margin-top:12px;"></div>
+    <div style="margin-top:18px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.08);">
+      <label style="display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:13px; color:var(--cream);">
+        <span>Tellende utslag / spiller <span style="color:var(--cream-dim); font-size:11px;">(0 = av)</span></span>
+        <input type="number" min="0" max="6" value="${_wizState.config?.countingDrives ? (_wizState.config.minDrivesPerPlayer || 1) : 0}" onchange="wizSetDrives(this.value)" style="width:56px; padding:6px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.35); color:var(--cream); font-size:13px; text-align:center;">
+      </label>
+      <div style="font-size:11px; color:var(--cream-dim); margin-top:6px;">Minste antall ganger hver spillers utslag må brukes. Utslags-tracker kommer.</div>
+    </div>` : '';
   // Individuelt (opprett): fordel spillere på flighter (maks 4/flight). §2.5/§2.7.
   const flightSection = (!team && !_wizEditRoundId) ? `
     <div style="margin-top:24px;">
