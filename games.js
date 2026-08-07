@@ -474,6 +474,102 @@ const TeamBuilder = {
 };
 
 // ==========================================================================
+// FlightBuilder (SPILLAPP-SPEC.md §2.5/§2.7) — fordel spillere på flighter.
+// TeamBuilder-klon for multi-flight-konkurranse: variabelt antall flighter,
+// MAKS 4 per flight, ingen HCP (flighter er scoregrupper, ikke lag). Nye
+// spillere legges på minste ikke-fulle flight; auto-nudge legger til flight
+// når det trengs. Ren vanilla, egen state, onChange-hook som TeamBuilder.
+// ==========================================================================
+const FlightBuilder = {
+  _c: null, _players: [], _numFlights: 1, _assign: {}, _onChange: null, _max: 4,
+
+  // opts: { container, players:[{id,name}], numFlights, assign, max, onChange }
+  mount(opts = {}) {
+    this._c = typeof opts.container === 'string' ? document.getElementById(opts.container) : opts.container;
+    this._numFlights = opts.numFlights || 1;
+    this._max = opts.max || 4;
+    this._assign = { ...(opts.assign || {}) };
+    this._onChange = opts.onChange || null;
+    this.setPlayers(opts.players || []);
+  },
+
+  _counts() { return Array.from({ length: this._numFlights }, (_, f) => this._players.filter(x => this._assign[x.id] === f).length); },
+  _smallestOpen() {
+    const c = this._counts();
+    let min = -1;
+    for (let f = 0; f < this._numFlights; f++) if (c[f] < this._max && (min < 0 || c[f] < c[min])) min = f;
+    if (min < 0) { this._numFlights++; return this._numFlights - 1; }   // alle fulle → ny flight
+    return min;
+  },
+
+  setPlayers(players) {
+    this._players = players || [];
+    // nok flighter til å romme alle (auto-nudge)
+    const need = Math.max(1, Math.ceil(this._players.length / this._max));
+    if (this._numFlights < need) this._numFlights = need;
+    // fjern borttatte
+    Object.keys(this._assign).forEach(id => { if (!this._players.find(p => p.id === id)) delete this._assign[id]; });
+    // plasser nye (eller ugyldig-plasserte) på minste åpne flight
+    this._players.forEach(p => {
+      const cur = this._assign[p.id];
+      if (cur != null && cur < this._numFlights) return;
+      this._assign[p.id] = this._smallestOpen();
+    });
+    this.render();
+  },
+
+  setAssignment(map) { this._assign = { ...map }; this.render(); },
+  addFlight() { this._numFlights++; this.render(); },
+  assign(pid, flight) {
+    const c = this._counts();
+    if (this._assign[pid] !== flight && c[flight] >= this._max) return;  // full → avvis
+    this._assign[pid] = flight;
+    this.render();
+  },
+
+  // → [{ name:'Flight N', member_ids, members }] for hver flight.
+  getFlights() {
+    const flights = [];
+    for (let f = 0; f < this._numFlights; f++) {
+      const members = this._players.filter(p => this._assign[p.id] === f);
+      flights.push({ name: `Flight ${f + 1}`, member_ids: members.map(p => p.id), members });
+    }
+    return flights;
+  },
+
+  render() {
+    if (!this._c) return;
+    if (!this._players.length) {
+      this._c.innerHTML = `<div style="font-size:12px;color:var(--cream-dim);padding:10px 0;">Velg spillere over for å fordele dem på flighter.</div>`;
+      if (this._onChange) this._onChange(this.getFlights(), this._assign);
+      return;
+    }
+    const counts = this._counts();
+    const flightCards = this.getFlights().map((fl, f) => `<div style="flex:1;min-width:120px;padding:8px 10px;border-radius:8px;background:rgba(0,0,0,0.25);border:1px solid ${counts[f] > this._max ? 'rgba(192,57,43,0.4)' : 'rgba(201,168,76,0.2)'};">
+      <div style="font-size:11px;color:var(--gold-light);">${fl.name} <span style="color:var(--cream-dim);">${counts[f]}/${this._max}</span></div>
+      <div style="font-size:11px;color:var(--cream);margin-top:3px;min-height:14px;">${fl.members.map(m => m.name).join(', ') || '—'}</div>
+    </div>`).join('');
+    const rows = this._players.map(p => {
+      const seg = [];
+      for (let f = 0; f < this._numFlights; f++) {
+        const on = this._assign[p.id] === f;
+        const full = !on && counts[f] >= this._max;
+        seg.push(`<button type="button" ${full ? 'disabled' : `onclick="FlightBuilder.assign('${p.id}',${f})"`} style="min-width:32px;padding:5px 8px;border:1px solid ${on ? 'var(--gold)' : 'rgba(255,255,255,0.12)'};background:${on ? 'rgba(201,168,76,0.2)' : 'transparent'};color:${on ? 'var(--gold)' : full ? 'rgba(255,255,255,0.2)' : 'var(--cream-dim)'};font-size:12px;cursor:${full ? 'not-allowed' : 'pointer'};${f === 0 ? 'border-radius:6px 0 0 6px;' : f === this._numFlights - 1 ? 'border-radius:0 6px 6px 0;' : ''}">${f + 1}</button>`);
+      }
+      return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;">
+        <span style="font-size:13px;color:var(--cream);">${p.name}</span>
+        <div style="display:flex;">${seg.join('')}</div>
+      </div>`;
+    }).join('');
+    this._c.innerHTML = `
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">${flightCards}</div>
+      <div style="text-align:right;margin-bottom:8px;"><button type="button" onclick="FlightBuilder.addFlight()" style="background:none;border:1px dashed rgba(201,168,76,0.4);color:var(--gold);border-radius:6px;padding:5px 10px;cursor:pointer;font-size:12px;">+ Ny flight</button></div>
+      <div>${rows}</div>`;
+    if (this._onChange) this._onChange(this.getFlights(), this._assign);
+  },
+};
+
+// ==========================================================================
 // Scramble / Texas scramble (SPILLAPP-SPEC.md §5.1) — første lagspill.
 // Delt ball: scorer på team_id (scores). compute leser lag-scores + drive_used.
 // ==========================================================================

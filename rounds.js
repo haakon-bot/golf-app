@@ -179,7 +179,7 @@ function openNewGame() {
   _wizStep = 0;
   _wizWarning = '';
   _wizEditRoundId = null; _wizPlayerScoreCount = {}; _wizFlightId = null;
-  _wizState = { mainGame: null, config: {}, courseId: null, teeId: null, holeRange: 'all', course: null, players: [], teams: [], teamAssign: {}, numTeams: 2, addons: [] };
+  _wizState = { mainGame: null, config: {}, courseId: null, teeId: null, holeRange: 'all', course: null, players: [], teams: [], teamAssign: {}, numTeams: 2, flights: [], flightAssign: {}, numFlights: 1, addons: [] };
   _wizCourseTees = []; _wizCourseHoles = [];
   const scr = document.getElementById('newGameScreen');
   scr.style.display = 'flex';
@@ -219,11 +219,16 @@ function _wizValidateStep(i) {
     const g = _wizState.mainGame ? getGame(_wizState.mainGame) : null;
     const need = g?.meta.minSpillere || 1;
     if (_wizState.players.length < need) return { ok: false, warning: `Velg minst ${need} spiller${need > 1 ? 'e' : ''}.` };
-    if (_wizState.players.length > _wizMaxPlayers()) return { ok: false, warning: `Maks ${_wizMaxPlayers()} spillere per spill — ett spill = én flight.` };
     if (_wizIsTeamGame()) {
+      if (_wizState.players.length > _wizMaxPlayers()) return { ok: false, warning: `Maks ${_wizMaxPlayers()} spillere i et lagspill (én flight).` };
       const teams = (_wizState.teams || []).filter(t => t.member_ids.length);
       const vt = g.validate ? g.validate({ teams }) : { ok: true };
       if (!vt.ok) return vt;
+    } else if (!_wizEditRoundId) {
+      // Individuelt multi-flight: maks 4 per flight (FlightBuilder skal hindre
+      // dette, men valider defensivt).
+      const over = (_wizState.flights || []).filter(f => f.member_ids.length > _wizMaxPlayers());
+      if (over.length) return { ok: false, warning: `Maks ${_wizMaxPlayers()} spillere per flight — fordel på flere flighter.` };
     }
   }
   // spice: valideres i increment D
@@ -426,6 +431,12 @@ function _wizStepPlayers() {
     </div>
     <div id="wizTeamFairness" style="margin-top:10px;"></div>
     <div id="wizTeamBuilder" style="margin-top:12px;"></div>` : '';
+  // Individuelt (opprett): fordel spillere på flighter (maks 4/flight). §2.5/§2.7.
+  const flightSection = (!team && !_wizEditRoundId) ? `
+    <div style="margin-top:24px;">
+      <label style="font-size:12px; text-transform:uppercase; letter-spacing:1px; color:var(--cream-dim);">Flighter <span style="text-transform:none; letter-spacing:0; color:rgba(255,255,255,0.35);">· maks 4 per flight</span></label>
+      <div id="wizFlightBuilder" style="margin-top:12px;"></div>
+    </div>` : '';
   const inpStyle = 'padding:9px 10px; border-radius:8px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.35); color:var(--cream); font-size:14px; font-family:\'DM Sans\',sans-serif;';
   const newPlayer = `<div style="margin-top:20px;">
     <button onclick="wizToggleNewPlayer()" id="wizNewPlayerBtn" style="background:none; border:1px dashed rgba(201,168,76,0.4); color:var(--gold); border-radius:8px; padding:10px 14px; cursor:pointer; font-size:13px; width:100%; -webkit-tap-highlight-color:transparent;">➕ Ny spiller (gjest)</button>
@@ -443,7 +454,7 @@ function _wizStepPlayers() {
     <label style="font-size:12px; text-transform:uppercase; letter-spacing:1px; color:var(--cream-dim); display:block; margin-bottom:8px;">Spillere</label>
     <div id="wizChips"></div>
     ${WIZ_GUEST_CREATE ? newPlayer : ''}
-    ${teamSection}
+    ${teamSection}${flightSection}
   </div>`;
 }
 function wizToggleNewPlayer() {
@@ -463,7 +474,7 @@ async function wizAddGuest() {
   const name = (document.getElementById('wizGuestName')?.value || '').trim();
   const hcpRaw = document.getElementById('wizGuestHcp')?.value;
   if (!name) { _wizGuestAlert('Skriv inn et navn.'); return; }
-  if (_wizState.players.length >= _wizMaxPlayers()) { _wizGuestAlert(`Spillet er fullt (maks ${_wizMaxPlayers()} spillere). Fjern en spiller først.`); return; }
+  if (_wizIsTeamGame() && _wizState.players.length >= _wizMaxPlayers()) { _wizGuestAlert(`Lagspillet er fullt (maks ${_wizMaxPlayers()} spillere i én flight).`); return; }
   const hcp = parseFloat(hcpRaw);
   const handicap = isNaN(hcp) ? 54 : hcp;
   const id = crypto.randomUUID();
@@ -477,11 +488,29 @@ async function wizAddGuest() {
   _wizGuestAlert('');
   _wizRenderChips();
   if (_wizIsTeamGame()) _wizMountTeams();
+  else if (!_wizEditRoundId) _wizMountFlights();
 }
 function _wizAfterPlayers() {
   if (_wizEditRoundId && _wizIsTeamGame()) { _wizRenderEditTeams(); return; }
   _wizRenderChips();
-  if (_wizIsTeamGame()) _wizMountTeams();   // scramble opprett
+  if (_wizIsTeamGame()) _wizMountTeams();               // scramble opprett (én flight + lag)
+  else if (!_wizEditRoundId) _wizMountFlights();        // individuelt opprett: multi-flight
+}
+// Individuelt opprett: fordel valgte spillere på flighter (maks 4/flight).
+function _wizMountFlights() {
+  FlightBuilder.mount({
+    container: 'wizFlightBuilder',
+    players: _wizState.players,
+    numFlights: _wizState.numFlights || 1,
+    assign: _wizState.flightAssign || {},
+    max: _wizMaxPlayers(),
+    onChange: _wizFlightsChanged,
+  });
+}
+function _wizFlightsChanged(flights, assign) {
+  _wizState.flights = flights;
+  _wizState.flightAssign = { ...assign };
+  _wizState.numFlights = FlightBuilder._numFlights;
 }
 // §2.6-prinsipp: vis RÅ inndata (spiller-HCP) redigerbart, aldri de BEREGNEDE
 // (lag-HCP, tildelte slag). Roster er låst — kun tallene endres.
@@ -572,8 +601,10 @@ function wizTogglePlayer(id) {
     _wizState.players.splice(i, 1);
     delete _wizState.teamAssign[id];
   } else {
-    if (_wizState.players.length >= _wizMaxPlayers()) {
-      _wizWarning = `Maks ${_wizMaxPlayers()} spillere per spill — ett spill = én flight.`;
+    // Lagspill (scramble) = én flight → tak på totalen. Individuelt = multi-
+    // flight → ingen tak på totalen (FlightBuilder håndhever maks 4 per flight).
+    if (_wizIsTeamGame() && _wizState.players.length >= _wizMaxPlayers()) {
+      _wizWarning = `Maks ${_wizMaxPlayers()} spillere i et lagspill (én flight).`;
       renderWizard();
       return;
     }
@@ -584,6 +615,7 @@ function wizTogglePlayer(id) {
   _wizWarning = '';
   _wizRenderChips();
   if (_wizIsTeamGame()) _wizMountTeams();
+  else if (!_wizEditRoundId) _wizMountFlights();
 }
 function wizSetPlayerHcp(id, val) {
   const p = _wizState.players.find(x => x.id === id);
@@ -735,6 +767,8 @@ function _wizSummaryLine() {
     parts.push(`${nt} lag`);
   } else if (_wizState.players.length) {
     parts.push(`${_wizState.players.length} spillere`);
+    const nf = (_wizState.flights || []).filter(f => f.member_ids.length).length;
+    if (nf > 1) parts.push(`${nf} flighter`);
   }
   (_wizState.addons || []).forEach(a => { const ag = getGame(a.type); if (ag) parts.push(ag.meta.navn.toLowerCase()); });
   return parts.join(' · ');
@@ -782,14 +816,20 @@ async function wizardStart() {
   for (const a of (_wizState.addons || [])) {
     await db.from('games').insert({ round_id: round.id, game_type: a.type, is_main: false, config: a.config || {} });
   }
-  // Roster: én flight med alle valgte spillere
-  const { data: flight } = await db.from('flights').insert({ round_id: round.id, name: 'Flight 1' }).select().single();
+  // Roster: individuelt = flighter fra FlightBuilder; scramble = én flight m/ alle.
   const courseName = (_wizCourses || []).find(c => c.id === _wizState.courseId)?.name || 'en bane';
-  if (flight) {
-    for (const p of _wizState.players) {
-      await db.from('flight_players').insert({ flight_id: flight.id, player_id: p.id, handicap: p.handicap ?? 36, tee_set_id: _wizState.teeId });
-      if (p.id !== currentProfile.id) {
-        await db.from('notifications').insert({ player_id: p.id, message: `Du er lagt til i et spill på ${courseName} (${date})` });
+  const flights = (!g.meta.kreverLag && (_wizState.flights || []).some(f => f.member_ids.length))
+    ? _wizState.flights.filter(f => f.member_ids.length)
+    : [{ name: 'Flight 1', member_ids: _wizState.players.map(p => p.id) }];
+  for (let i = 0; i < flights.length; i++) {
+    const fl = flights[i];
+    const { data: flight } = await db.from('flights').insert({ round_id: round.id, name: fl.name || `Flight ${i + 1}` }).select().single();
+    if (!flight) continue;
+    for (const pid of fl.member_ids) {
+      const p = _wizState.players.find(x => x.id === pid);
+      await db.from('flight_players').insert({ flight_id: flight.id, player_id: pid, handicap: p?.handicap ?? 36, tee_set_id: _wizState.teeId });
+      if (pid !== currentProfile.id) {
+        await db.from('notifications').insert({ player_id: pid, message: `Du er lagt til i et spill på ${courseName} (${date})` });
       }
     }
   }
