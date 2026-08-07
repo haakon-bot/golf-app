@@ -19,13 +19,14 @@ async function init() {
         showPending(currentProfile.display_name);
       } else {
         showApp();
-        if (_isLiveHash()) {
-          setTimeout(() => { showPage('live'); }, 400);
-        }
+        if (_joinHashCode()) { setTimeout(() => showJoinPage(), 300); }
+        else if (_isLiveHash()) { setTimeout(() => { showPage('live'); }, 400); }
       }
     } else showLogin();
   } else {
-    if (_isLiveHash()) {
+    if (_joinHashCode()) {
+      showJoinPage();
+    } else if (_isLiveHash()) {
       showPublicLive();
     } else {
       showLogin();

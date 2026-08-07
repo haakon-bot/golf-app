@@ -225,6 +225,97 @@ function shareLiveLink(roundId, courseName) {
     });
   }
 }
+// ── Bli med / join (§2.7 G3) ──────────────────────────────────────────────
+// Arrangøren deler én kort kode/lenke; hver spiller åpner den, velger seg selv
+// fra oppsettet → rutes til sin flights scoring. Krever join-migreringen
+// (rounds.join_code + flight_players.claimed_at).
+function _genJoinCode() {
+  const c = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // uten forvekslbare (0/O, 1/I)
+  let s = ''; for (let i = 0; i < 6; i++) s += c[Math.floor(Math.random() * c.length)];
+  return s;
+}
+async function shareJoinLink(roundId, courseName) {
+  if (!roundId) return;
+  try {
+    const { data: round, error } = await db.from('rounds').select('id, join_code').eq('id', roundId).single();
+    if (error) throw error;
+    let code = round?.join_code;
+    if (!code) {
+      code = _genJoinCode();
+      const { error: e2 } = await db.from('rounds').update({ join_code: code }).eq('id', roundId);
+      if (e2) throw e2;
+    }
+    const url = `${location.origin}${location.pathname}#join=${code}`;
+    const text = `⛳ Bli med i golfspillet${courseName ? ' på ' + courseName : ''}!\nKode: ${code}\n${url}`;
+    if (navigator.share) navigator.share({ title: 'Bli med – The Fantastic FORE!', text, url }).catch(() => {});
+    else navigator.clipboard?.writeText(url).then(() => alert('Bli-med-lenke kopiert!\nKode: ' + code)).catch(() => prompt('Kopier lenken:', url));
+  } catch (e) {
+    alert('Kunne ikke lage bli-med-kode. Er join-migreringen kjørt i Supabase?\n' + (e.message || ''));
+  }
+}
+function _joinHashCode() { const m = (location.hash || '').match(/^#join=(.+)$/); return m ? decodeURIComponent(m[1]) : null; }
+let _joinInterval = null;
+async function showJoinPage() {
+  document.getElementById('loginPage').style.display = 'none';
+  document.getElementById('appShell').style.display = 'none';
+  document.getElementById('publicLivePage').style.display = 'none';
+  const pend = document.getElementById('pendingPage'); if (pend) pend.style.display = 'none';
+  document.getElementById('joinPage').style.display = 'block';
+  await renderJoinPage();
+  if (!_joinInterval) _joinInterval = setInterval(renderJoinPage, 6000);   // gråing oppdateres
+}
+async function renderJoinPage() {
+  const code = _joinHashCode();
+  const statusEl = document.getElementById('joinStatus');
+  const contentEl = document.getElementById('joinContent');
+  if (!code) { contentEl.innerHTML = _joinMsg('Mangler kode', 'Lenken må inneholde en kode.'); return; }
+  const { data: round, error } = await db.from('rounds')
+    .select('id, join_code, date, status, courses(name), flights(id, name, flight_players(id, player_id, claimed_at, profiles(display_name)))')
+    .eq('join_code', code).single();
+  if (error || !round) { statusEl.textContent = ''; contentEl.innerHTML = _joinMsg('Fant ikke spillet', 'Sjekk koden, eller be arrangøren dele på nytt.'); return; }
+  statusEl.textContent = `${round.courses?.name || ''} · ${round.date}`;
+  const myFpId = localStorage.getItem('fore_me_' + round.id);
+  const flights = (round.flights || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  const flightHtml = flights.map(f => {
+    const rows = (f.flight_players || []).map(fp => {
+      const name = fp.profiles?.display_name || '?';
+      const mine = myFpId === fp.id;
+      const taken = !!fp.claimed_at && !mine;
+      const style = taken ? 'opacity:0.4;' : '';
+      const right = mine ? `<span style="font-size:11px;color:var(--green-light);">✓ deg</span>`
+        : taken ? `<span style="font-size:11px;color:var(--cream-dim);">allerede med</span>`
+        : `<span style="font-size:12px;color:var(--gold);">Velg →</span>`;
+      const onclick = (taken || mine) ? '' : `onclick="claimSelf('${fp.id}','${round.id}')"`;
+      return `<div ${onclick} style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-radius:10px;background:rgba(0,0,0,0.2);border:1px solid ${mine ? 'var(--green-light)' : 'rgba(255,255,255,0.08)'};margin-bottom:6px;cursor:${(taken || mine) ? 'default' : 'pointer'};${style}-webkit-tap-highlight-color:transparent;">
+        <span style="font-size:14px;color:var(--cream);">${name}</span>${right}
+      </div>`;
+    }).join('');
+    return `<div style="margin-bottom:18px;">
+      <div style="font-size:11px;color:var(--gold);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;">${f.name || 'Flight'}</div>
+      ${rows || '<div style="font-size:12px;color:var(--cream-dim);">Ingen spillere.</div>'}
+    </div>`;
+  }).join('');
+  contentEl.innerHTML = `<div style="font-size:13px;color:var(--cream-dim);margin-bottom:16px;text-align:center;">Finn navnet ditt og trykk «Velg» — du rutes til din flight.</div>${flightHtml}`;
+}
+function _joinMsg(title, sub) {
+  return `<div style="text-align:center;padding:50px 20px;color:var(--cream-dim);"><div style="font-size:40px;margin-bottom:12px;">⛳</div><div style="font-size:16px;color:var(--cream);">${title}</div><div style="font-size:13px;margin-top:8px;">${sub}</div></div>`;
+}
+async function claimSelf(fpId, roundId) {
+  try {
+    await db.from('flight_players').update({ claimed_at: new Date().toISOString() }).eq('id', fpId);
+  } catch (e) { /* claimed_at kan mangle før migrering — fortsett likevel */ }
+  localStorage.setItem('fore_me_' + roundId, fpId);   // enhets-identitet (også for gjest, G4)
+  if (_joinInterval) { clearInterval(_joinInterval); _joinInterval = null; }
+  if (currentProfile) {
+    document.getElementById('joinPage').style.display = 'none';
+    showApp();
+    openRound(roundId);
+  } else {
+    // Gjest uten innlogging: full gjeste-tasting kommer i G4.
+    document.getElementById('joinContent').innerHTML = _joinMsg('Du er med! ✓', 'Gjeste-tasting uten innlogging kommer straks. Logg inn for å taste nå.') +
+      `<div style="text-align:center;margin-top:16px;"><button onclick="showLoginFromPublic()" class="btn btn-outline" style="font-size:13px;padding:10px 24px;">Logg inn</button></div>`;
+  }
+}
 function toggleLiveScorecardRow(playerId) {
   const target = document.getElementById('lvsc-' + playerId);
   if (!target) return;

@@ -36,6 +36,14 @@
     <button onclick="showLoginFromPublic()" class="btn btn-outline" style="font-size:13px; padding:10px 24px;">Logg inn / Registrer</button>
   </div>
 </div>
+<!-- BLI MED / JOIN (§2.7) — åpnes via #join=<kode>, velg deg selv -->
+<div id="joinPage" style="display:none; min-height:100vh; padding:max(20px, env(safe-area-inset-top)) 20px 20px; max-width:600px; margin:0 auto;">
+  <div style="text-align:center; margin-bottom:8px;">
+    <div style="font-family:'Playfair Display',serif; font-size:26px; color:var(--gold);">⛳ Bli med</div>
+    <div id="joinStatus" style="font-size:12px; color:var(--cream-dim); margin-top:4px; letter-spacing:1px; text-transform:uppercase;"></div>
+  </div>
+  <div id="joinContent" style="margin-top:16px;"></div>
+</div>
 <!-- LOGIN PAGE -->
 <div id="loginPage" style="display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; padding:max(20px, env(safe-area-inset-top)) 20px 20px;">
   <div style="text-align:center; margin-bottom:40px;">
@@ -101,7 +109,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.147</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.148</span></div>
     <div style="display:flex; align-items:center; gap:4px;">
       <button id="topbarRefreshBtn" onclick="forceUpdate()" title="Oppdater app" style="background:none;border:none;color:var(--cream-dim);cursor:pointer;padding:8px;font-size:22px;opacity:0.45;-webkit-tap-highlight-color:transparent;line-height:1;"><i class="ti ti-refresh"></i></button>
       <button onclick="openDrawer()" title="Meny" style="background:none;border:none;color:var(--cream-dim);cursor:pointer;padding:8px;font-size:24px;-webkit-tap-highlight-color:transparent;line-height:1;"><i class="ti ti-menu-2"></i></button>
@@ -256,6 +264,7 @@
       <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
         <button onclick="showLeaderboard()" style="background:none; border:none; color:var(--gold-light); font-size:13px; cursor:pointer; font-family:'DM Sans',sans-serif; -webkit-tap-highlight-color:transparent; touch-action:manipulation;">Ledertavle</button>
         <button id="scEditBtn" onclick="openEditGame(currentRound?.id)" style="display:none; background:none; border:none; color:var(--cream-dim); font-size:12px; cursor:pointer; font-family:'DM Sans',sans-serif; -webkit-tap-highlight-color:transparent; touch-action:manipulation;">⚙ Oppsett</button>
+        <button onclick="shareJoinLink(currentRound?.id, currentRound?.courses?.name)" style="background:none; border:none; color:var(--gold-light); font-size:12px; cursor:pointer; font-family:'DM Sans',sans-serif; -webkit-tap-highlight-color:transparent; touch-action:manipulation;">🔗 Del spill</button>
         <button onclick="shareLiveLink(currentRound?.id, currentRound?.courses?.name)" style="background:none; border:none; color:var(--cream-dim); font-size:12px; cursor:pointer; font-family:'DM Sans',sans-serif; -webkit-tap-highlight-color:transparent; touch-action:manipulation;">📤 Del live</button>
       </div>
     </div>
