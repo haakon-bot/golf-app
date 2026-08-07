@@ -567,6 +567,9 @@ async function openChangeTee() {
 async function applyTeeChange() {
   const newTeeId = document.getElementById('changeTeeSelect').value;
   if (!newTeeId || newTeeId === currentRound.tee_set_id) { closeModal('modalChangeTee'); return; }
+  // Score-endrende operasjon (ny slope/CR → ny netto/tildelte slag for alle).
+  const ok = await showConfirm('Bytte tee regner om score for alle — fortsett?', 'Bytt tee');
+  if (!ok) return;
   await db.from('rounds').update({ tee_set_id: newTeeId }).eq('id', currentRound.id);
   const { data: tee } = await db.from('tee_sets').select('id, name, slope, course_rating').eq('id', newTeeId).single();
   if (tee) {
@@ -574,6 +577,15 @@ async function applyTeeChange() {
     currentRound.tee_sets = tee;
     const teeBtnEl = document.getElementById('scTeeBtn');
     if (teeBtnEl) teeBtnEl.textContent = `Tee: ${tee.name} ✏️`;
+    // Individuell netto regnes ut live fra spiller-HCP + ny slope/CR (ok).
+    // Scramble: lag-HCP var frosset på gammel tee → utled på nytt via samme
+    // WHS-hjelper (én kilde til sannhet), ellers henger lag-netto igjen.
+    if (_scrambleGameRow && roundTeams.length) {
+      const hcpByPlayer = {};
+      roundFlights.flatMap(f => f.flight_players || []).forEach(fp => { hcpByPlayer[fp.player_id] = fp.handicap; });
+      const updated = await persistScrambleTeamHandicaps(roundTeams, hcpByPlayer, tee.slope, tee.course_rating, _fullCoursePar);
+      updated.forEach(u => { const t = roundTeams.find(x => x.id === u.id); if (t) t.team_handicap = u.team_handicap; });
+    }
   }
   closeModal('modalChangeTee');
   renderScoringHole();

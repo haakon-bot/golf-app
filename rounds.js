@@ -483,28 +483,39 @@ function _wizAfterPlayers() {
   _wizRenderChips();
   if (_wizIsTeamGame()) _wizMountTeams();   // scramble opprett
 }
+// §2.6-prinsipp: vis RÅ inndata (spiller-HCP) redigerbart, aldri de BEREGNEDE
+// (lag-HCP, tildelte slag). Roster er låst — kun tallene endres.
 function _wizRenderEditTeams() {
   const el = document.getElementById('wizEditTeams');
   if (!el) return;
   el.innerHTML = (_wizState.teams || []).map((t, idx) => {
-    const names = (t.member_ids || []).map(id => _wizState.players.find(p => p.id === id)?.name || '?').join(', ');
+    const memberRows = (t.member_ids || []).map(id => {
+      const p = _wizState.players.find(x => x.id === id);
+      return `<div style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:5px 0;">
+        <span style="font-size:13px; color:var(--cream);">${p?.name || '?'}</span>
+        <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--cream-dim);">HCP
+          <input type="number" step="0.1" min="-10" max="54" value="${p?.handicap ?? ''}" onchange="wizSetScrambleHcp('${id}', ${idx}, this.value)" style="width:56px; padding:4px 6px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.35); color:var(--cream); font-size:13px; text-align:center;"></label>
+      </div>`;
+    }).join('');
     const allotted = _wizAllottedForTeam(t);
     return `<div style="padding:12px 14px; margin-bottom:10px; border-radius:10px; background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.07);">
-      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-        <div><div style="font-size:14px; color:var(--cream);">${t.name}</div><div style="font-size:11px; color:var(--cream-dim); margin-top:2px;">${names}</div></div>
-        <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--cream-dim);">Lag-HCP
-          <input type="number" value="${t.team_handicap ?? ''}" onchange="wizSetTeamHcp(${idx}, this.value)" style="width:56px; padding:5px 6px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.35); color:var(--cream); font-size:13px; text-align:center;"></label>
-      </div>
-      <div style="font-size:11px; color:var(--cream-dim); margin-top:8px;">Tildelte slag: ${allotted}</div>
+      <div style="font-size:14px; color:var(--cream); margin-bottom:6px;">${t.name}</div>
+      ${memberRows}
+      <div style="margin-top:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.06); font-size:11px; color:var(--cream-dim);">Lag-HCP <span style="color:var(--gold-light);">${t.team_handicap ?? '–'}</span> · Tildelte slag <span style="color:var(--gold-light);">${allotted}</span> <span style="color:rgba(255,255,255,0.3);">— regnes ut</span></div>
     </div>`;
   }).join('');
 }
-function wizSetTeamHcp(idx, val) {
-  const t = _wizState.teams[idx];
-  if (!t) return;
-  const n = parseInt(val);
-  t.team_handicap = isNaN(n) ? null : n;
-  _wizRenderEditTeams();   // regn om tildelte slag
+// Endret spiller-HCP → utled lagets lag-HCP på nytt (WHS) + tildelte slag, live.
+function wizSetScrambleHcp(playerId, teamIdx, val) {
+  const p = _wizState.players.find(x => x.id === playerId);
+  if (p) { const n = parseFloat(val); p.handicap = isNaN(n) ? null : n; }
+  const t = _wizState.teams[teamIdx];
+  const c = _wizState.course || {};
+  if (t) {
+    const members = (t.member_ids || []).map(id => _wizState.players.find(x => x.id === id)).filter(Boolean);
+    t.team_handicap = scrambleTeamHandicap(members, c.slope, c.cr, c.par);
+  }
+  _wizRenderEditTeams();
 }
 // §2.6: fjerning blokkert til score er nullstilt. Én knapp tømmer alle hull.
 async function wizNullPlayerScore(playerId) {
@@ -861,12 +872,20 @@ async function wizardSave() {
         }
       }
     } else {
-      for (const t of _wizState.teams) {
-        const ot = (orig.teams || []).find(x => x._teamId === t._teamId);
-        if (ot && (ot.team_handicap ?? null) !== (t.team_handicap ?? null)) {
-          await db.from('game_teams').update({ team_handicap: t.team_handicap }).eq('id', t._teamId);
+      // Scramble: roster låst. Skriv endrede spiller-HCP (rå inndata), utled så
+      // lag-HCP på nytt via WHS-hjelperen (én kilde til sannhet).
+      const origById = {}; orig.players.forEach(p => { origById[p.id] = p; });
+      for (const np of _wizState.players) {
+        const op = origById[np.id];
+        if (op && (op.handicap ?? null) !== (np.handicap ?? null)) {
+          await db.from('flight_players').update({ handicap: np.handicap ?? 36 }).eq('id', op._fpId);
         }
       }
+      const hcpByPlayer = {}; _wizState.players.forEach(p => { hcpByPlayer[p.id] = p.handicap ?? 36; });
+      const c = _wizState.course || {};
+      await persistScrambleTeamHandicaps(
+        _wizState.teams.map(t => ({ id: t._teamId, member_ids: t.member_ids, team_handicap: (orig.teams || []).find(x => x._teamId === t._teamId)?.team_handicap })),
+        hcpByPlayer, c.slope, c.cr, c.par);
     }
     const nowAddon = {}; (_wizState.addons || []).forEach(a => { nowAddon[a.type] = a; });
     const origAddon = {}; (orig.addons || []).forEach(a => { origAddon[a.type] = a; });

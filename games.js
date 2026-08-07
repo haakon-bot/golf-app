@@ -344,6 +344,25 @@ function scrambleTeamHandicap(members, slope, cr, par, fractions) {
   return Math.round(hcps.reduce((s, h, i) => s + h * (f[i] ?? 0), 0));
 }
 
+// ÉN KILDE TIL SANNHET: utled lag-HCP på nytt fra medlemmenes spiller-HCP +
+// gjeldende tee (slope/CR/par) via WHS-brøken, og persister endringene til
+// game_teams. Brukes av BÅDE tee-bytte (scoring) og oppsett-redigering
+// (wizard) — spiller-HCP + tee er de rå inndataene, lag-HCP er alltid utledet.
+//   teams: game_teams-rader (må ha id + member_ids [+ team_handicap for diff])
+//   hcpByPlayer: { player_id: spiller-HCP }
+// → [{ id, team_handicap }] med de nye verdiene (også de uendrede).
+async function persistScrambleTeamHandicaps(teams, hcpByPlayer, slope, cr, par) {
+  const results = [];
+  for (const t of (teams || [])) {
+    const members = (t.member_ids || []).map(id => ({ handicap: hcpByPlayer[id] ?? 36 }));
+    const th = members.length ? scrambleTeamHandicap(members, slope, cr, par) : (t.team_handicap ?? null);
+    const cur = t.team_handicap != null ? Number(t.team_handicap) : null;
+    if (th !== cur) await db.from('game_teams').update({ team_handicap: th }).eq('id', t.id);
+    results.push({ id: t.id, team_handicap: th });
+  }
+  return results;
+}
+
 // Ekstra slag laget får på ett hull gitt lag-HCP fordelt over 18 hull etter SI.
 function _teamExtraStrokes(teamHcp, strokeIndex) {
   if (!strokeIndex || teamHcp == null) return 0;
