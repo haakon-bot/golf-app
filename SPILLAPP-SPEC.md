@@ -74,13 +74,20 @@ kvoten strammer seg, automatisk straff når den er matematisk umulig.
 Full gjennomgang av alle spill (hovedspill, tilleggsspill, varianter,
 meta-krav) før flere spill implementeres. Egen spilliste-økt.
 
-### §2.5 Faste regler (låst 6. aug 2026)
-- **Ett spill = én flight, maks 4 spillere.** Effektivt tak =
+### §2.5 Faste regler (revidert 7. aug 2026)
+- **Maks 4 spillere per FLIGHT.** Effektivt tak per flight =
   min(4, spillets `meta.maxSpillere`) — spill kan være strengere
-  (matchplay 2, wolf nøyaktig 4), aldri over 4.
-- **Ingen skins/spill på tvers av flighter.** Det finnes ingen felles
-  oversikt på tvers, så det tillates ikke. Turnering med livescore er
-  et separat, senere konsept (andre elementer enn skins).
+  (matchplay 2, wolf nøyaktig 4), aldri over 4 i én flight.
+- **En konkurranse = én runde med flere flighter.** Runden er
+  konkurranse-laget; flightene ligger under. En gjeng >4 fordeles på
+  flere flighter under samme runde.
+- **Felles resultat på tvers:** hovedspillets leaderboard og
+  totalvinner går på tvers av alle flighter (individuell stableford
+  aggregeres; scramble-lag rangeres samlet). **Skins er per-flight**
+  (ingen felles skins-pott på tvers).
+- Tidligere «ett spill = én flight» (låst 6. aug) var et selvpålagt
+  gjerde, ikke fundamentet — datamodellen bar alltid multi-flight
+  (runde → mange flighter; games/scores på runde-nivå).
 
 ### §2.6 Redigere oppsett på en aktiv runde
 Grunnregel: **en endring som ikke går opp mot allerede tastet score
@@ -96,6 +103,52 @@ skal flagges og nektes/forklares — aldri stille ødelegge score.**
   én-advarsel som klikkes vekk på autopilot).
 - **Tilleggsspill:** fritt av/på/beløp — beregnes av eksisterende
   brutto, ingenting ødelegges.
+
+### §2.7 Multi-flight-konkurranse: del og bli med (besluttet 7. aug 2026)
+Formål: en fast gjeng spiller sammen og mot hverandre også når de er
+>4, fordelt på flere flighter under én felles konkurranse (= runde).
+Datamodellen bærer dette allerede; dette er en MIDDELS påbygging, ikke
+et nytt turneringslag.
+
+**Beslutninger:**
+1. **Login vs gjest:** login (lett, ingen tung profil/statistikk) for
+   den som oppretter/styrer. Gjest (`is_guest`) = for å bli med i én
+   konkurranse.
+2. **Multi-flight i wizarden:** arrangøren fordeler alle spillere på
+   flere flighter (maks 4 per flight).
+3. **Deling — én kort join-kode** (`rounds.join_code`): arrangøren
+   trykker «Del», får én kode/lenke, deler i gruppechat. Hver spiller
+   åpner den, ser konkurransen, **velger seg selv** fra oppsett-lista →
+   rutes automatisk til sin flights scoring. Flight-tilhørighet ligger
+   i oppsettet, IKKE i lenken. Vern: valgt navn gråes ut for andre
+   («allerede med»). Feil navn: **selv-slipp før score er tastet**,
+   arrangør-reset etter. Ikke på lista → «legg meg til som gjest»
+   (navn + HCP → velg flight (maks 4) → `is_guest`-profil + claimet
+   flight_player → rutes til scoring).
+4. **Redigering:** alle i en flight kan taste; kan ikke redigere andre
+   flighters tall. Ingen lagleder-rolle.
+5. **Gjest taster BÅDE score og utslag** for sin flight. Når utslags-
+   logging (§2.3/E) bygges må den respektere samme «bli med»-tilgang.
+6. **Live:** polling nå, men **runde-spesifikk** (join-kode/round-id i
+   URL, ikke alltid nyeste aktive), intervall strammet ~5–8s. Ekte
+   sanntid (Supabase realtime) er senere polering.
+7. **Resultat:** felles live-leaderboard på tvers underveis OG én felles
+   totalvinner på tvers til slutt.
+
+**Inkrement-rekkefølge:** G1 (multi-flight i wizard, individuelt) →
+G1b (scramble på tvers) → G2 (runde-spesifikk live) → G3 (del + bli-med/
+claim; `flight_players.claimed_at`) → G4 (gjest-join) → G5 (tverr-flight
+totalvinner/oppgjør, verifiser). Deretter §2 E (utslag) → F (hjemskjerm).
+
+**Claim/identitet:** `flight_players.claimed_at` (persistert → gråing på
+tvers via polling). Enhets-lokal identitet (localStorage) så gjest uten
+login kan taste for sin flight; `canEdit` utvides til å godta claimet
+identitet ved siden av innlogget profil.
+
+**S1 — server-side håndheving (eget punkt, blokkerer ikke):** RLS på
+`scores` UPDATE=true i dag; per-flight-gating er kun UI. Server-side
+«kun egen flight» kolliderer med gjest-modellen (ingen `auth.uid()`).
+Kjøres UI-gating for vennegjengen nå; S1 besluttes når flyten er ekte.
 
 ---
 
