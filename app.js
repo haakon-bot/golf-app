@@ -19,13 +19,13 @@ async function init() {
         showPending(currentProfile.display_name);
       } else {
         showApp();
-        if (location.hash === '#live') {
+        if (_isLiveHash()) {
           setTimeout(() => { showPage('live'); }, 400);
         }
       }
     } else showLogin();
   } else {
-    if (location.hash === '#live') {
+    if (_isLiveHash()) {
       showPublicLive();
     } else {
       showLogin();
@@ -66,20 +66,34 @@ function showLoginFromPublic() {
   document.getElementById('loginPage').style.display = 'flex';
 }
 let _publicLiveInterval = null;
+let _publicLiveRoundId = null;
+// #live (nyeste aktive) eller #live=<roundId> (spesifikk runde) — §2.7.
+function _isLiveHash() { return (location.hash || '').startsWith('#live'); }
+function _liveHashRoundId() { const m = (location.hash || '').match(/^#live=(.+)$/); return m ? decodeURIComponent(m[1]) : null; }
 async function showPublicLive() {
+  _publicLiveRoundId = _liveHashRoundId();
   document.getElementById('loginPage').style.display = 'none';
   document.getElementById('appShell').style.display = 'none';
   document.getElementById('publicLivePage').style.display = 'block';
   await renderPublicLive();
-  if (!_publicLiveInterval) _publicLiveInterval = setInterval(renderPublicLive, 20000);
+  if (!_publicLiveInterval) _publicLiveInterval = setInterval(renderPublicLive, 6000);
 }
 async function renderPublicLive() {
   const statusEl = document.getElementById('publicLiveStatus');
   const contentEl = document.getElementById('publicLiveContent');
-  const { data: active } = await db.from('rounds')
-    .select('*, courses(name, holes), tee_sets(name, slope), flights(id, name, flight_players(id, player_id, handicap, profiles(display_name)))')
-    .eq('status', 'active').order('created_at', { ascending: false });
-  if (!active?.length) {
+  const embed = '*, courses(name, holes), tee_sets(name, slope), flights(id, name, flight_players(id, player_id, handicap, profiles(display_name)))';
+  // Runde-spesifikk (§2.7): #live=<id> viser DEN runden (også ferdig).
+  // Uten id: nyeste aktive (bakoverkompatibelt).
+  let round = null;
+  if (_publicLiveRoundId) {
+    const { data } = await db.from('rounds').select(embed).eq('id', _publicLiveRoundId).single();
+    round = data || null;
+  }
+  if (!round) {
+    const { data: active } = await db.from('rounds').select(embed).eq('status', 'active').order('created_at', { ascending: false });
+    round = active?.[0] || null;
+  }
+  if (!round) {
     statusEl.textContent = 'Ingen aktive runder akkurat nå';
     contentEl.innerHTML = `<div style="text-align:center; padding:60px 20px; color:var(--cream-dim);">
       <div style="font-size:48px; margin-bottom:16px;">⛳</div>
@@ -88,8 +102,7 @@ async function renderPublicLive() {
     </div>`;
     return;
   }
-  const round = active[0];
-  statusEl.textContent = '🟢 Live · ' + round.courses?.name + ' · ' + round.date;
+  statusEl.textContent = `${round.status === 'active' ? '🟢 Live' : '✅ Ferdig'} · ${round.courses?.name} · ${round.date}`;
   const { data: scores } = await db.from('scores').select('*').eq('round_id', round.id);
   const { data: holes } = await db.from('holes').select('*').eq('course_id', round.course_id).order('hole_number');
   const allFP = (round.flights || []).flatMap(f => f.flight_players || []);

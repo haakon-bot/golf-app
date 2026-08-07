@@ -211,7 +211,8 @@ function doShareRound() {
 }
 
 function shareLiveLink(roundId, courseName) {
-  const url = `${location.origin}${location.pathname}#live`;
+  // Runde-spesifikk lenke (§2.7) — to samtidige konkurranser kolliderer ikke.
+  const url = `${location.origin}${location.pathname}${roundId ? '#live=' + roundId : '#live'}`;
   const text = `🏌️ ${courseName || 'Golfrunde'} er i gang – følg med live!\n${url}`;
   if (navigator.share) {
     navigator.share({ title: 'The Fantastic FORE! – Live', text, url })
