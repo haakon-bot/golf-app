@@ -671,6 +671,13 @@ async function showRoundSummary(roundId) {
     window._currentSummaryPlayer = null;
     if (allFP[0]) showSummaryPlayer(allFP[0].player_id);
   }
+  // G5: sammenlagt tvers-flight-stilling + totalvinner (individuelt hovedspill).
+  const standingsEl = document.getElementById('summaryStandings');
+  if (standingsEl) {
+    const html = scrambleRow ? '' : _renderSummaryStandings(round, sc, filteredHoles, fullCoursePar);
+    standingsEl.style.display = html ? 'block' : 'none';
+    standingsEl.innerHTML = html || '';
+  }
   // Skins summary — delegeres til skins-modulen i motoren.
   const skinsSummaryEl = document.getElementById('skinsSummary');
   if (skinsSummaryEl) {
@@ -681,6 +688,48 @@ async function showRoundSummary(roundId) {
     skinsSummaryEl.style.display = html ? 'block' : 'none';
     skinsSummaryEl.innerHTML = html || '';
   }
+}
+// Sammenlagt netto-stableford på tvers av ALLE flighter → én rangering +
+// totalvinner (§2.7 #7, G5). Uavgjort = delt plassering/delt vinner.
+function _renderSummaryStandings(round, sc, holes, fullCoursePar) {
+  const slope = round.tee_sets?.slope, cr = round.tee_sets?.course_rating;
+  const flightName = {};
+  (round.flights || []).forEach(f => (f.flight_players || []).forEach(fp => { flightName[fp.player_id] = f.name; }));
+  const allFP = (round.flights || []).flatMap(f => f.flight_players || []);
+  let rows = allFP.map(fp => {
+    const hcp = _playingHcp(fp.handicap, slope, cr, fullCoursePar);
+    let pts = 0, thru = 0;
+    (holes || []).forEach(h => {
+      const s = sc[fp.player_id]?.[h.hole_number];
+      if (s > 0 && h.par && h.stroke_index) { pts += calcStableford(s, h.par, hcp, h.stroke_index, 18); thru++; }
+    });
+    return { name: fp.profiles?.display_name || '?', flight: flightName[fp.player_id] || '', pts, thru };
+  }).filter(r => r.thru > 0);
+  if (!rows.length) return '';
+  rows.sort((a, b) => b.pts - a.pts || a.name.localeCompare(b.name));
+  let place = 0, prev = null;                    // konkurranse-rangering 1,2,2,4
+  rows = rows.map((r, i) => { if (r.pts !== prev) { place = i + 1; prev = r.pts; } return { ...r, place }; });
+  const topPts = rows[0].pts;
+  const winners = rows.filter(r => r.pts === topPts);
+  const multiFlight = (round.flights || []).length > 1;
+  const head = winners.length === 1
+    ? `🏆 ${winners[0].name}${multiFlight ? ` <span style="color:var(--cream-dim);font-size:12px;">(${winners[0].flight})</span>` : ''} — ${topPts}p`
+    : `🏆 Delt: ${winners.map(w => w.name).join(', ')} — ${topPts}p`;
+  const rowsHtml = rows.map(r => {
+    const win = r.pts === topPts;
+    return `<tr style="border-bottom:1px solid rgba(255,255,255,0.05);${win ? 'background:rgba(201,168,76,0.08);' : ''}">
+      <td style="padding:7px 10px;color:${win ? 'var(--gold)' : 'var(--cream-dim)'};font-size:13px;width:34px;">${r.place}${win ? ' 🏆' : ''}</td>
+      <td style="padding:7px 10px;color:var(--cream);font-size:14px;">${r.name}</td>
+      ${multiFlight ? `<td style="padding:7px 10px;color:var(--cream-dim);font-size:11px;">${r.flight}</td>` : ''}
+      <td style="padding:7px 10px;text-align:right;color:var(--cream-dim);font-size:11px;">${r.thru} hull</td>
+      <td style="padding:7px 10px;text-align:right;font-family:'Playfair Display',serif;font-size:16px;color:${win ? 'var(--gold)' : 'var(--cream)'};">${r.pts}p</td>
+    </tr>`;
+  }).join('');
+  return `<div style="background:rgba(201,168,76,0.06);border:1px solid rgba(201,168,76,0.25);border-radius:12px;padding:16px;">
+    <div style="font-size:11px;color:var(--gold);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px;">Sammenlagt${multiFlight ? ' · på tvers av flighter' : ''}</div>
+    <div style="font-family:'Playfair Display',serif;font-size:18px;color:var(--gold-light);margin-bottom:12px;">${head}</div>
+    <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><tbody>${rowsHtml}</tbody></table></div>
+  </div>`;
 }
 function showSummaryPlayer(playerId, btn) {
   if (btn) {
