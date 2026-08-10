@@ -399,31 +399,44 @@ const TeamBuilder = {
 
   setCourse(slope, cr, par) { this._course = { slope, cr, par }; this.render(); },
 
+  _max: 4,   // maks spillere per lag (WHS-brøk definert for ≤4)
+  _counts() { return Array.from({ length: this._numTeams }, (_, t) => this._players.filter(x => this._assign[x.id] === t).length); },
+  _smallestOpen() {
+    const c = this._counts(); let min = -1;
+    for (let t = 0; t < this._numTeams; t++) if (c[t] < this._max && (min < 0 || c[t] < c[min])) min = t;
+    if (min < 0) { this._numTeams++; return this._numTeams - 1; }   // alle fulle → nytt lag
+    return min;
+  },
+
   setNumTeams(n) {
-    this._numTeams = Math.max(1, Math.min(4, n | 0));
-    Object.keys(this._assign).forEach(id => { if (this._assign[id] >= this._numTeams) this._assign[id] = this._numTeams - 1; });
+    const minT = Math.max(1, Math.ceil((this._players.length || 1) / this._max));   // nok lag til at ingen > 4
+    this._numTeams = Math.max(minT, n | 0);
+    // flytt spillere ut av fjernede lag til minste åpne
+    this._players.forEach(p => { if (this._assign[p.id] == null || this._assign[p.id] >= this._numTeams) this._assign[p.id] = this._smallestOpen(); });
     this.render();
   },
 
-  // Oppdater spillerlista (f.eks. når avkrysning i flighten endres). Beholder
-  // eksisterende lag-plassering; nye spillere fordeles round-robin.
+  // Oppdater spillerlista. Sikrer nok lag (maks 4/lag, auto-nudge), beholder
+  // eksisterende plassering, legger nye på minste åpne lag (balansert).
   setPlayers(players) {
     this._players = players || [];
-    // Fjern fordeling for spillere som er tatt bort først.
     Object.keys(this._assign).forEach(id => { if (!this._players.find(p => p.id === id)) delete this._assign[id]; });
-    // Nye spillere: legg på det minste laget nå (balansert — robust når spillere
-    // legges til én og én, i motsetning til naiv round-robin som klumper på lag 1).
+    const need = Math.max(1, Math.ceil(this._players.length / this._max));
+    if (this._numTeams < need) this._numTeams = need;
     this._players.forEach(p => {
-      if (this._assign[p.id] != null) return;
-      const counts = Array.from({ length: this._numTeams }, (_, t) => this._players.filter(x => this._assign[x.id] === t).length);
-      let min = 0;
-      for (let t = 1; t < this._numTeams; t++) if (counts[t] < counts[min]) min = t;
-      this._assign[p.id] = min;
+      const cur = this._assign[p.id];
+      if (cur != null && cur < this._numTeams) return;
+      this._assign[p.id] = this._smallestOpen();
     });
     this.render();
   },
 
-  assign(pid, team) { this._assign[pid] = team; this.render(); },
+  assign(pid, team) {
+    const c = this._counts();
+    if (this._assign[pid] !== team && c[team] >= this._max) return;   // fullt lag → avvis
+    this._assign[pid] = team;
+    this.render();
+  },
 
   // → [{ name, member_ids, members, team_handicap }] for hvert lag.
   getTeams() {
@@ -448,25 +461,31 @@ const TeamBuilder = {
       return;
     }
     const teams = this.getTeams();
-    const teamPickerBtns = [2, 3, 4].map(n => `<button type="button" onclick="TeamBuilder.setNumTeams(${n})" style="flex:1;padding:6px;border-radius:6px;cursor:pointer;font-size:13px;border:1px solid ${this._numTeams === n ? 'var(--gold)' : 'rgba(255,255,255,0.12)'};background:${this._numTeams === n ? 'rgba(201,168,76,0.18)' : 'transparent'};color:${this._numTeams === n ? 'var(--gold)' : 'var(--cream-dim)'};">${n} lag</button>`).join('');
-    const teamCards = teams.map(t => `<div style="flex:1;min-width:90px;text-align:center;padding:8px;border-radius:8px;background:rgba(0,0,0,0.25);border:1px solid rgba(201,168,76,0.2);">
+    const counts = this._counts();
+    const minT = Math.max(2, Math.ceil(this._players.length / this._max));
+    const stepBtn = (delta, disabled, label) => `<button type="button" ${disabled ? 'disabled' : `onclick="TeamBuilder.setNumTeams(${this._numTeams + delta})"`} style="width:30px;height:30px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:transparent;color:${disabled ? 'rgba(255,255,255,0.2)' : 'var(--gold)'};font-size:16px;cursor:${disabled ? 'default' : 'pointer'};">${label}</button>`;
+    const teamPicker = `<div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:10px;">
+      ${stepBtn(-1, this._numTeams <= minT, '−')}<span style="font-size:13px;color:var(--cream);min-width:52px;text-align:center;">${this._numTeams} lag</span>${stepBtn(1, this._numTeams >= this._players.length, '+')}
+    </div>`;
+    const teamCards = teams.map(t => `<div style="flex:1;min-width:84px;text-align:center;padding:8px;border-radius:8px;background:rgba(0,0,0,0.25);border:1px solid ${t.member_ids.length > this._max ? 'rgba(192,57,43,0.4)' : 'rgba(201,168,76,0.2)'};">
       <div style="font-size:11px;color:var(--gold-light);">${t.name}</div>
       <div style="font-family:'Playfair Display',serif;font-size:20px;color:var(--gold);">${t.team_handicap != null ? t.team_handicap : '–'}</div>
-      <div style="font-size:9px;color:var(--cream-dim);">lag-HCP · ${t.member_ids.length} sp.</div>
+      <div style="font-size:9px;color:var(--cream-dim);">lag-HCP · ${t.member_ids.length}/${this._max}</div>
     </div>`).join('');
     const rows = this._players.map(p => {
       const seg = [];
       for (let t = 0; t < this._numTeams; t++) {
         const on = this._assign[p.id] === t;
-        seg.push(`<button type="button" onclick="TeamBuilder.assign('${p.id}',${t})" style="min-width:34px;padding:5px 8px;border:1px solid ${on ? 'var(--gold)' : 'rgba(255,255,255,0.12)'};background:${on ? 'rgba(201,168,76,0.2)' : 'transparent'};color:${on ? 'var(--gold)' : 'var(--cream-dim)'};font-size:12px;cursor:pointer;${t === 0 ? 'border-radius:6px 0 0 6px;' : t === this._numTeams - 1 ? 'border-radius:0 6px 6px 0;' : ''}">${t + 1}</button>`);
+        const full = !on && counts[t] >= this._max;
+        seg.push(`<button type="button" ${full ? 'disabled' : `onclick="TeamBuilder.assign('${p.id}',${t})"`} style="min-width:32px;padding:5px 8px;margin:2px;border:1px solid ${on ? 'var(--gold)' : 'rgba(255,255,255,0.12)'};border-radius:6px;background:${on ? 'rgba(201,168,76,0.2)' : 'transparent'};color:${on ? 'var(--gold)' : full ? 'rgba(255,255,255,0.2)' : 'var(--cream-dim)'};font-size:12px;cursor:${full ? 'not-allowed' : 'pointer'};">${t + 1}</button>`);
       }
       return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;">
         <span style="font-size:13px;color:var(--cream);">${p.name} <span style="color:var(--cream-dim);font-size:11px;">(${p.handicap ?? '–'})</span></span>
-        <div style="display:flex;">${seg.join('')}</div>
+        <div style="display:flex;flex-wrap:wrap;justify-content:flex-end;">${seg.join('')}</div>
       </div>`;
     }).join('');
     this._c.innerHTML = `
-      <div style="display:flex;gap:6px;margin-bottom:10px;">${teamPickerBtns}</div>
+      ${teamPicker}
       <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">${teamCards}</div>
       <div>${rows}</div>`;
     if (this._onChange) this._onChange(this.getTeams(), this._assign);

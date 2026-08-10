@@ -220,8 +220,8 @@ function _wizValidateStep(i) {
     const need = g?.meta.minSpillere || 1;
     if (_wizState.players.length < need) return { ok: false, warning: `Velg minst ${need} spiller${need > 1 ? 'e' : ''}.` };
     if (_wizIsTeamGame()) {
-      if (_wizState.players.length > _wizMaxPlayers()) return { ok: false, warning: `Maks ${_wizMaxPlayers()} spillere i et lagspill (én flight).` };
       const teams = (_wizState.teams || []).filter(t => t.member_ids.length);
+      if (teams.some(t => t.member_ids.length > _wizMaxPlayers())) return { ok: false, warning: `Maks ${_wizMaxPlayers()} spillere per lag — legg til flere lag.` };
       const vt = g.validate ? g.validate({ teams }) : { ok: true };
       if (!vt.ok) return vt;
     } else if (!_wizEditRoundId) {
@@ -477,7 +477,6 @@ async function wizAddGuest() {
   const name = (document.getElementById('wizGuestName')?.value || '').trim();
   const hcpRaw = document.getElementById('wizGuestHcp')?.value;
   if (!name) { _wizGuestAlert('Skriv inn et navn.'); return; }
-  if (_wizIsTeamGame() && _wizState.players.length >= _wizMaxPlayers()) { _wizGuestAlert(`Lagspillet er fullt (maks ${_wizMaxPlayers()} spillere i én flight).`); return; }
   const hcp = parseFloat(hcpRaw);
   const handicap = isNaN(hcp) ? 54 : hcp;
   const id = crypto.randomUUID();
@@ -604,13 +603,8 @@ function wizTogglePlayer(id) {
     _wizState.players.splice(i, 1);
     delete _wizState.teamAssign[id];
   } else {
-    // Lagspill (scramble) = én flight → tak på totalen. Individuelt = multi-
-    // flight → ingen tak på totalen (FlightBuilder håndhever maks 4 per flight).
-    if (_wizIsTeamGame() && _wizState.players.length >= _wizMaxPlayers()) {
-      _wizWarning = `Maks ${_wizMaxPlayers()} spillere i et lagspill (én flight).`;
-      renderWizard();
-      return;
-    }
+    // Ingen tak på totalen: individuelt fordeles på flighter, scramble på lag —
+    // begge byggerne håndhever maks 4 per gruppe (FlightBuilder/TeamBuilder).
     const p = (_wizAllPlayers || []).find(x => x.id === id);
     if (!p) return;
     _wizState.players.push({ id: p.id, name: (p.display_name || '?').split(' ')[0], handicap: p.handicap ?? 36 });
