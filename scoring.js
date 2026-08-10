@@ -5,6 +5,9 @@ let roundScores = {};
 let roundHoles = [];
 let roundFlights = [];
 let _fullCoursePar = 72; // full 18-hole par, set when opening a round
+// Min identitet i denne runden: innlogget profil ELLER enhets-claim (gjest
+// uten login, §2.7 G4). Styrer isParticipant + canEdit per flight.
+let _myRoundPlayerId = null;
 // Lag-scoring (scramble, §3.2/§5.1): lag-rader og lag-scores holdes adskilt
 // fra spillerscores så personlig statistikk ikke forurenses.
 let roundTeams = [];        // game_teams for scramble-hovedspillet
@@ -77,7 +80,14 @@ async function openRound(roundId) {
   const teeBtnEl = document.getElementById('scTeeBtn');
   if (teeBtnEl) teeBtnEl.textContent = round.tee_sets?.name ? `Tee: ${round.tee_sets.name} ✏️` : '';
 
-  const isParticipant = roundFlights.some(f => f.flight_players?.some(fp => fp.player_id === currentProfile?.id));
+  // Identitet: innlogget, ellers enhets-claim (gjest via #join → localStorage).
+  _myRoundPlayerId = currentProfile?.id || (() => {
+    const fpId = localStorage.getItem('fore_me_' + round.id);
+    if (!fpId) return null;
+    const fp = (round.flights || []).flatMap(f => f.flight_players || []).find(x => x.id === fpId);
+    return fp?.player_id || null;
+  })();
+  const isParticipant = roundFlights.some(f => f.flight_players?.some(fp => fp.player_id === _myRoundPlayerId));
   const finishBtn = document.getElementById('scFinishBtn');
   const nextBottom = document.getElementById('scNextHoleBottom');
   if (finishBtn) finishBtn.style.display = isParticipant ? 'inline-block' : 'none';
@@ -96,8 +106,8 @@ async function closeScoringScreen() {
     if (!ok) return;
   }
   document.getElementById('scoringScreen').style.display = 'none';
-  loadRounds();
-  loadDashboard();
+  if (currentProfile) { loadRounds(); loadDashboard(); }
+  else if (typeof showJoinPage === 'function') { showJoinPage(); }   // gjest → tilbake til bli-med
 }
 function renderScoringHole() {
   const holeData = roundHoles.find(h => h.hole_number === currentHole) || { par: null, stroke_index: null };
@@ -168,7 +178,7 @@ function renderPlayerInputs(holeData) {
   const _rSlope = currentRound?.tee_sets?.slope, _rCr = currentRound?.tee_sets?.course_rating;
   let html = '';
   roundFlights.forEach(flight => {
-    const canEdit = flight.flight_players?.some(fp => fp.player_id === currentProfile?.id);
+    const canEdit = flight.flight_players?.some(fp => fp.player_id === _myRoundPlayerId);
     html += `<div style="margin-bottom:16px;">
       <div style="font-size:11px; color:var(--cream-dim); letter-spacing:1.5px; text-transform:uppercase; margin-bottom:8px;">${flight.name}</div>`;
     (flight.flight_players || []).forEach(fp => {
@@ -231,7 +241,7 @@ function _memberFirstName(playerId) {
 function renderTeamInputs(holeData) {
   let html = '';
   roundTeams.forEach(team => {
-    const canEdit = (team.member_ids || []).includes(currentProfile?.id);
+    const canEdit = (team.member_ids || []).includes(_myRoundPlayerId);
     const teamHcp = team.team_handicap != null ? Number(team.team_handicap) : 0;
     const strokes = roundTeamScores[team.id]?.[currentHole] || 0;
     const extra = _teamExtraStrokes(teamHcp, holeData.stroke_index);

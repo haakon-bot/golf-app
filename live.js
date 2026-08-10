@@ -282,11 +282,11 @@ async function renderJoinPage() {
       const mine = myFpId === fp.id;
       const taken = !!fp.claimed_at && !mine;
       const style = taken ? 'opacity:0.4;' : '';
-      const right = mine ? `<span style="font-size:11px;color:var(--green-light);">✓ deg</span>`
+      const right = mine ? `<span style="font-size:11px;color:var(--green-light);">✓ deg — trykk for å taste</span>`
         : taken ? `<span style="font-size:11px;color:var(--cream-dim);">allerede med</span>`
         : `<span style="font-size:12px;color:var(--gold);">Velg →</span>`;
-      const onclick = (taken || mine) ? '' : `onclick="claimSelf('${fp.id}','${round.id}')"`;
-      return `<div ${onclick} style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-radius:10px;background:rgba(0,0,0,0.2);border:1px solid ${mine ? 'var(--green-light)' : 'rgba(255,255,255,0.08)'};margin-bottom:6px;cursor:${(taken || mine) ? 'default' : 'pointer'};${style}-webkit-tap-highlight-color:transparent;">
+      const onclick = taken ? '' : `onclick="claimSelf('${fp.id}','${round.id}')"`;
+      return `<div ${onclick} style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-radius:10px;background:rgba(0,0,0,0.2);border:1px solid ${mine ? 'var(--green-light)' : 'rgba(255,255,255,0.08)'};margin-bottom:6px;cursor:${taken ? 'default' : 'pointer'};${style}-webkit-tap-highlight-color:transparent;">
         <span style="font-size:14px;color:var(--cream);">${name}</span>${right}
       </div>`;
     }).join('');
@@ -295,7 +295,54 @@ async function renderJoinPage() {
       ${rows || '<div style="font-size:12px;color:var(--cream-dim);">Ingen spillere.</div>'}
     </div>`;
   }).join('');
-  contentEl.innerHTML = `<div style="font-size:13px;color:var(--cream-dim);margin-bottom:16px;text-align:center;">Finn navnet ditt og trykk «Velg» — du rutes til din flight.</div>${flightHtml}`;
+  // «Legg meg til som gjest» — for de som ikke står på lista (§2.7).
+  const inp = 'padding:9px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.35);color:var(--cream);font-size:14px;font-family:\'DM Sans\',sans-serif;';
+  const flightOpts = flights.map(f => {
+    const count = (f.flight_players || []).length; const full = count >= 4;
+    return `<option value="${f.id}" ${full ? 'disabled' : ''}>${f.name} (${count}/4)${full ? ' — full' : ''}</option>`;
+  }).join('');
+  const addGuest = `<div style="margin-top:20px;padding-top:18px;border-top:1px solid rgba(255,255,255,0.08);">
+    <button onclick="document.getElementById('joinGuestForm').style.display='block';this.style.display='none';" style="background:none;border:1px dashed rgba(201,168,76,0.4);color:var(--gold);border-radius:8px;padding:11px 14px;cursor:pointer;font-size:13px;width:100%;-webkit-tap-highlight-color:transparent;">Jeg står ikke på lista →</button>
+    <div id="joinGuestForm" style="display:none;margin-top:12px;padding:14px;border-radius:10px;background:rgba(0,0,0,0.2);border:1px solid rgba(255,255,255,0.08);">
+      <div id="joinGuestAlert"></div>
+      <div style="display:flex;gap:8px;margin-bottom:8px;">
+        <input id="joinGuestName" placeholder="Navn" style="flex:2;min-width:0;${inp}">
+        <input id="joinGuestHcp" type="number" step="0.1" min="-10" max="54" placeholder="HCP" style="flex:1;min-width:0;${inp}text-align:center;">
+      </div>
+      <select id="joinGuestFlight" style="width:100%;margin-bottom:10px;${inp}"><option value="">Velg flight…</option>${flightOpts}</select>
+      <button onclick="joinAddGuest('${round.id}')" style="width:100%;background:var(--gold);border:none;color:var(--green-deep);border-radius:8px;padding:11px;cursor:pointer;font-weight:600;font-size:14px;">Bli med som gjest</button>
+      <div style="font-size:11px;color:var(--cream-dim);margin-top:8px;">Gjest uten innlogging — du taster for din flight.</div>
+    </div>
+  </div>`;
+  contentEl.innerHTML = `<div style="font-size:13px;color:var(--cream-dim);margin-bottom:16px;text-align:center;">Finn navnet ditt og trykk «Velg» — du rutes til din flight.</div>${flightHtml}${addGuest}`;
+}
+function _joinGuestAlert(msg) {
+  const el = document.getElementById('joinGuestAlert');
+  if (el) el.innerHTML = msg ? `<div style="color:#e8a070;font-size:12px;margin-bottom:8px;">${msg}</div>` : '';
+}
+async function joinAddGuest(roundId) {
+  const name = (document.getElementById('joinGuestName')?.value || '').trim();
+  const flightId = document.getElementById('joinGuestFlight')?.value;
+  const hcp = parseFloat(document.getElementById('joinGuestHcp')?.value);
+  if (!name) { _joinGuestAlert('Skriv inn navn.'); return; }
+  if (!flightId) { _joinGuestAlert('Velg hvilken flight du spiller i.'); return; }
+  const handicap = isNaN(hcp) ? 54 : hcp;
+  const id = crypto.randomUUID();
+  const username = 'guest_' + id.replace(/-/g, '').slice(0, 8);
+  try {
+    const { data: r } = await db.from('rounds').select('tee_set_id').eq('id', roundId).single();
+    const { error: pe } = await db.from('profiles').insert({ id, username, display_name: name, handicap, is_guest: true, is_approved: true });
+    if (pe) throw pe;
+    const { data: fp, error: fe } = await db.from('flight_players').insert({ flight_id: flightId, player_id: id, handicap, tee_set_id: r?.tee_set_id, claimed_at: new Date().toISOString() }).select().single();
+    if (fe) throw fe;
+    localStorage.setItem('fore_me_' + roundId, fp.id);
+    if (_joinInterval) { clearInterval(_joinInterval); _joinInterval = null; }
+    document.getElementById('joinPage').style.display = 'none';
+    if (currentProfile) showApp();
+    openRound(roundId);
+  } catch (e) {
+    _joinGuestAlert('Kunne ikke bli med: ' + (e.message || 'ukjent feil'));
+  }
 }
 function _joinMsg(title, sub) {
   return `<div style="text-align:center;padding:50px 20px;color:var(--cream-dim);"><div style="font-size:40px;margin-bottom:12px;">⛳</div><div style="font-size:16px;color:var(--cream);">${title}</div><div style="font-size:13px;margin-top:8px;">${sub}</div></div>`;
@@ -304,17 +351,11 @@ async function claimSelf(fpId, roundId) {
   try {
     await db.from('flight_players').update({ claimed_at: new Date().toISOString() }).eq('id', fpId);
   } catch (e) { /* claimed_at kan mangle før migrering — fortsett likevel */ }
-  localStorage.setItem('fore_me_' + roundId, fpId);   // enhets-identitet (også for gjest, G4)
+  localStorage.setItem('fore_me_' + roundId, fpId);   // enhets-identitet (også gjest u/login)
   if (_joinInterval) { clearInterval(_joinInterval); _joinInterval = null; }
-  if (currentProfile) {
-    document.getElementById('joinPage').style.display = 'none';
-    showApp();
-    openRound(roundId);
-  } else {
-    // Gjest uten innlogging: full gjeste-tasting kommer i G4.
-    document.getElementById('joinContent').innerHTML = _joinMsg('Du er med! ✓', 'Gjeste-tasting uten innlogging kommer straks. Logg inn for å taste nå.') +
-      `<div style="text-align:center;margin-top:16px;"><button onclick="showLoginFromPublic()" class="btn btn-outline" style="font-size:13px;padding:10px 24px;">Logg inn</button></div>`;
-  }
+  document.getElementById('joinPage').style.display = 'none';
+  if (currentProfile) showApp();          // innlogget: full app-shell under scoring
+  openRound(roundId);                     // gjest: scoring-overlay direkte (canEdit via localStorage)
 }
 function toggleLiveScorecardRow(playerId) {
   const target = document.getElementById('lvsc-' + playerId);
