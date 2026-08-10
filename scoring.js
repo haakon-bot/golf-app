@@ -80,12 +80,17 @@ async function openRound(roundId) {
   const teeBtnEl = document.getElementById('scTeeBtn');
   if (teeBtnEl) teeBtnEl.textContent = round.tee_sets?.name ? `Tee: ${round.tee_sets.name} ✏️` : '';
 
-  // Identitet: innlogget, ellers enhets-claim (gjest via #join → localStorage).
-  _myRoundPlayerId = currentProfile?.id || (() => {
+  // Identitet i denne runden: et EKSPLISITT valg («velg deg selv» via #join,
+  // lagret i localStorage) vinner over innlogget profil — slik at hvis du velger
+  // deg i flight 2, taster du i flight 2 (ikke innloggings-flighten din). Faller
+  // tilbake på innlogget profil når du ikke har valgt deg selv (§2.7).
+  _myRoundPlayerId = (() => {
     const fpId = localStorage.getItem('fore_me_' + round.id);
-    if (!fpId) return null;
-    const fp = (round.flights || []).flatMap(f => f.flight_players || []).find(x => x.id === fpId);
-    return fp?.player_id || null;
+    if (fpId) {
+      const fp = (round.flights || []).flatMap(f => f.flight_players || []).find(x => x.id === fpId);
+      if (fp?.player_id) return fp.player_id;
+    }
+    return currentProfile?.id || null;
   })();
   const isParticipant = roundFlights.some(f => f.flight_players?.some(fp => fp.player_id === _myRoundPlayerId));
   const finishBtn = document.getElementById('scFinishBtn');
@@ -180,7 +185,7 @@ function renderPlayerInputs(holeData) {
   roundFlights.forEach(flight => {
     const canEdit = flight.flight_players?.some(fp => fp.player_id === _myRoundPlayerId);
     html += `<div style="margin-bottom:16px;">
-      <div style="font-size:11px; color:var(--cream-dim); letter-spacing:1.5px; text-transform:uppercase; margin-bottom:8px;">${flight.name}</div>`;
+      <div style="font-size:11px; color:var(--cream-dim); letter-spacing:1.5px; text-transform:uppercase; margin-bottom:8px;">${flight.name}${canEdit ? ' · <span style="color:var(--green-light);">din flight</span>' : ' <span style="color:rgba(255,255,255,0.3);">· kun visning</span>'}</div>`;
     (flight.flight_players || []).forEach(fp => {
       const player = fp.profiles;
       const strokes = roundScores[fp.player_id]?.[currentHole] || 0;
