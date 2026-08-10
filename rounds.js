@@ -559,6 +559,13 @@ async function wizNullPlayerScore(playerId) {
   delete _wizPlayerScoreCount[playerId];
   _wizRenderChips();
 }
+// Tildelte slag for én spiller: spillende HCP fordelt over 18 etter SI, filtrert
+// på aktive hull (samme kanon som resten). null hvis bane/tee ikke valgt ennå.
+function _wizPlayerAllotted(handicap) {
+  const c = _wizState.course;
+  if (!c || !c.slope || handicap == null) return null;
+  return _activeStrokes(_playingHcp(handicap, c.slope, c.cr, c.par), c.activeHoles || []);
+}
 function _wizRenderChips() {
   const el = document.getElementById('wizChips');
   if (!el) return;
@@ -576,7 +583,10 @@ function _wizRenderChips() {
     if (sel) {
       const hcp = `<input type="number" step="0.1" min="-10" max="54" value="${sel.handicap ?? ''}" onchange="wizSetPlayerHcp('${p.id}', this.value)" title="HCP for dette spillet" style="width:52px; padding:3px 5px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.35); color:var(--cream); font-size:12px; text-align:center;">`;
       const nullBtn = scored ? `<button onclick="wizNullPlayerScore('${p.id}')" title="Tøm alle hull for å kunne fjerne spilleren" style="background:none; border:1px solid rgba(192,57,43,0.35); color:#e8a070; border-radius:6px; padding:3px 7px; cursor:pointer; font-size:10px; -webkit-tap-highlight-color:transparent;">Nullstill</button>` : '';
-      right = hcp + nullBtn;
+      // Tildelte slag per spiller — kun individuelt (i lagkonkurranser er slag et lag-tall).
+      const allot = (!_wizIsTeamGame()) ? _wizPlayerAllotted(sel.handicap) : null;
+      const slagBadge = (allot != null) ? `<span title="Tildelte slag" style="font-size:11px; color:var(--green-light); white-space:nowrap;">${allot} slag</span>` : '';
+      right = hcp + slagBadge + nullBtn;
     } else {
       right = `<span style="font-size:11px; color:var(--cream-dim);">${p.handicap ?? '–'}</span>`;
     }
@@ -619,7 +629,8 @@ function wizSetPlayerHcp(id, val) {
   if (!p) return;
   const n = parseFloat(val);
   p.handicap = isNaN(n) ? null : n;
-  if (_wizIsTeamGame()) _wizMountTeams();   // lag-HCP + tildelte slag endres
+  if (_wizIsTeamGame()) _wizMountTeams();    // lag-HCP + tildelte slag endres
+  else _wizRenderChips();                     // oppdater tildelte-slag-badge per spiller
 }
 function _wizMountTeams() {
   const c = _wizState.course || {};
