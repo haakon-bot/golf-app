@@ -270,7 +270,7 @@ async function renderJoinPage() {
   const contentEl = document.getElementById('joinContent');
   if (!code) { contentEl.innerHTML = _joinMsg('Mangler kode', 'Lenken må inneholde en kode.'); return; }
   const { data: round, error } = await db.from('rounds')
-    .select('id, join_code, date, status, courses(name), flights(id, name, flight_players(id, player_id, claimed_at, profiles(display_name)))')
+    .select('id, join_code, date, status, created_by, courses(name), flights(id, name, flight_players(id, player_id, claimed_at, profiles(display_name)))')
     .eq('join_code', code).single();
   if (error || !round) { statusEl.textContent = ''; contentEl.innerHTML = _joinMsg('Fant ikke spillet', 'Sjekk koden, eller be arrangøren dele på nytt.'); return; }
   statusEl.textContent = `${round.courses?.name || ''} · ${round.date}`;
@@ -314,7 +314,42 @@ async function renderJoinPage() {
       <div style="font-size:11px;color:var(--cream-dim);margin-top:8px;">Gjest uten innlogging — du taster for din flight.</div>
     </div>
   </div>`;
-  contentEl.innerHTML = `<div style="font-size:13px;color:var(--cream-dim);margin-bottom:16px;text-align:center;">Finn navnet ditt og trykk «Velg» — du rutes til din flight.</div>${flightHtml}${addGuest}`;
+  // Arrangør-reset: frigi alle valg (mot fastlåste feilvalg).
+  const isOrganizer = currentProfile && round.created_by === currentProfile.id;
+  const resetBtn = isOrganizer ? `<div style="margin-top:18px;text-align:center;">
+    <button onclick="joinResetClaims('${round.id}')" style="background:none;border:1px solid rgba(192,57,43,0.35);color:#e8a070;border-radius:8px;padding:9px 14px;cursor:pointer;font-size:12px;-webkit-tap-highlight-color:transparent;">↩ Frigi alle valg (arrangør)</button>
+  </div>` : '';
+  contentEl.innerHTML = `<div style="font-size:13px;color:var(--cream-dim);margin-bottom:16px;text-align:center;">Finn navnet ditt og trykk «Velg» — du rutes til din flight.</div>${flightHtml}${addGuest}${resetBtn}`;
+}
+// Har den claimede flight_player-raden allerede score? (låser bytte etter tasting)
+async function _fpHasScore(roundId, fpId) {
+  try {
+    const { data: fp } = await db.from('flight_players').select('player_id').eq('id', fpId).single();
+    if (!fp?.player_id) return false;
+    const { data } = await db.from('scores').select('id').eq('round_id', roundId).eq('player_id', fp.player_id).limit(1);
+    return !!(data && data.length);
+  } catch (e) { return false; }
+}
+// Bytt av spiller er tillatt FØR du har tastet: frigi forrige claim, ta ny.
+// Har du tastet, er identiteten låst (arrangøren må frigi). Returnerer false = blokkert.
+async function _releasePrevClaim(roundId, newFpId, alertFn) {
+  const prevFpId = localStorage.getItem('fore_me_' + roundId);
+  if (!prevFpId || prevFpId === newFpId) return true;
+  if (await _fpHasScore(roundId, prevFpId)) {
+    (alertFn || alert)('Du har allerede tastet i denne runden — arrangøren må frigi deg for å bytte spiller.');
+    return false;
+  }
+  try { await db.from('flight_players').update({ claimed_at: null }).eq('id', prevFpId); } catch (e) {}
+  return true;
+}
+async function joinResetClaims(roundId) {
+  if (!confirm('Frigi alle spiller-valg? Alle må da velge seg selv på nytt.')) return;
+  try {
+    const { data: flights } = await db.from('flights').select('id').eq('round_id', roundId);
+    const ids = (flights || []).map(f => f.id);
+    if (ids.length) await db.from('flight_players').update({ claimed_at: null }).in('flight_id', ids);
+  } catch (e) {}
+  renderJoinPage();
 }
 function _joinGuestAlert(msg) {
   const el = document.getElementById('joinGuestAlert');
@@ -326,6 +361,8 @@ async function joinAddGuest(roundId) {
   const hcp = parseFloat(document.getElementById('joinGuestHcp')?.value);
   if (!name) { _joinGuestAlert('Skriv inn navn.'); return; }
   if (!flightId) { _joinGuestAlert('Velg hvilken flight du spiller i.'); return; }
+  // Å legge seg til som gjest bytter identitet — blokkert hvis du alt har tastet.
+  if (!(await _releasePrevClaim(roundId, null, _joinGuestAlert))) return;
   const handicap = isNaN(hcp) ? 54 : hcp;
   const id = crypto.randomUUID();
   const username = 'guest_' + id.replace(/-/g, '').slice(0, 8);
@@ -348,6 +385,8 @@ function _joinMsg(title, sub) {
   return `<div style="text-align:center;padding:50px 20px;color:var(--cream-dim);"><div style="font-size:40px;margin-bottom:12px;">⛳</div><div style="font-size:16px;color:var(--cream);">${title}</div><div style="font-size:13px;margin-top:8px;">${sub}</div></div>`;
 }
 async function claimSelf(fpId, roundId) {
+  // Bytt av spiller: frigi forrige valg først (blokkert hvis du alt har tastet).
+  if (!(await _releasePrevClaim(roundId, fpId))) { renderJoinPage(); return; }
   try {
     await db.from('flight_players').update({ claimed_at: new Date().toISOString() }).eq('id', fpId);
   } catch (e) { /* claimed_at kan mangle før migrering — fortsett likevel */ }
