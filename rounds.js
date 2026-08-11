@@ -83,15 +83,22 @@ async function loadDashboard() {
     if (!recent?.length) {
       recentEl.innerHTML = '<div style="text-align:center; padding:40px 20px; color:var(--cream-dim); font-size:14px;">Ingen runder spilt ennå</div>';
     } else {
+      const isAdmin = currentProfile?.is_admin;
       recentEl.innerHTML = recent.map(r => {
         const rPlayers = (r.flights || []).flatMap(f => f.flight_players || []);
         const playerNames = rPlayers.map(fp => fp.profiles?.display_name?.split(' ')[0] || '?').join(' · ');
-        return `<div style="padding:14px 18px; background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.06); border-radius:12px; margin-bottom:8px; cursor:pointer; transition:border-color 0.2s;" onclick="showPage('rounds');" onmouseover="this.style.borderColor='rgba(201,168,76,0.25)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.06)'">
-          <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:4px;">
-            <div style="font-size:15px; color:var(--cream); font-weight:500;">${r.courses?.name || '–'}</div>
-            <div style="font-size:12px; color:var(--cream-dim);">${r.date}</div>
+        const delBtn = isAdmin
+          ? `<button onclick="event.stopPropagation(); deleteRound('${r.id}')" style="background:none; border:1px solid rgba(192,57,43,0.4); color:var(--danger); border-radius:6px; padding:6px 10px; cursor:pointer; font-size:14px; flex-shrink:0;" title="Slett runde">🗑</button>`
+          : '';
+        return `<div style="display:flex; align-items:center; gap:10px; padding:14px 18px; background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.06); border-radius:12px; margin-bottom:8px;">
+          <div onclick="showRoundSummary('${r.id}')" style="flex:1; min-width:0; cursor:pointer;">
+            <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:4px;">
+              <div style="font-size:15px; color:var(--cream); font-weight:500;">${r.courses?.name || '–'}</div>
+              <div style="font-size:12px; color:var(--cream-dim);">${r.date}</div>
+            </div>
+            <div style="font-size:12px; color:var(--cream-dim);">${playerNames || 'Ingen spillere registrert'}</div>
           </div>
-          <div style="font-size:12px; color:var(--cream-dim);">${playerNames || 'Ingen spillere registrert'}</div>
+          ${delBtn}
         </div>`;
       }).join('');
     }
