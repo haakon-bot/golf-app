@@ -13,6 +13,7 @@ let _myRoundPlayerId = null;
 let roundTeams = [];        // game_teams for scramble-hovedspillet
 let roundTeamScores = {};   // team_id → hull → slag
 let _scrambleGameRow = null;
+let roundEvents = [];       // game_events (drive_used …) for utslags-logging (E)
 async function deleteRound(roundId) {
   const confirmed = await showConfirm('Slette denne runden? Dette sletter alle scores og kan ikke angres.');
   if (!confirmed) return;
@@ -49,6 +50,8 @@ async function openRound(roundId) {
   }
   const { data: holes } = await db.from('holes').select('*').eq('course_id', round.course_id).order('hole_number');
   const { data: scores } = await db.from('scores').select('*').eq('round_id', roundId);
+  const { data: events } = await db.from('game_events').select('*').eq('round_id', roundId);
+  roundEvents = events || [];
   currentRound = round;
   const holeRange = round.hole_range || 'all';
   const allHoles = holes || [];
@@ -231,10 +234,9 @@ function renderPlayerInputs(holeData) {
 }
 
 // ── Lag-scoring (scramble) ──────────────────────────────────────────────
-// ctx til spillmotoren. events tom i increment 1 (utslags-tracker kommer i
-// increment 2) — compute takler det (kvote dvaler når countingDrives er av).
+// ctx til spillmotoren. events = game_events (drive_used) → §11.3-kvote/straff.
 function _scrambleCtx() {
-  return { round: currentRound, holes: roundHoles, teamScores: roundTeamScores, teams: roundTeams, events: [], fullCoursePar: _fullCoursePar };
+  return { round: currentRound, holes: roundHoles, teamScores: roundTeamScores, teams: roundTeams, events: roundEvents, fullCoursePar: _fullCoursePar };
 }
 function _memberFirstName(playerId) {
   for (const f of roundFlights) {
@@ -257,7 +259,8 @@ function renderTeamInputs(holeData) {
     const memberNames = (team.member_ids || []).map(_memberFirstName).join(', ');
     const strokesLabel = extra > 0 ? `<span style="color:var(--green-light); font-size:11px;">${extra === 1 ? '+1 slag' : `+${extra} slag`}</span>` : '';
     html += `
-    <div style="display:flex; align-items:center; gap:12px; padding:12px; background:rgba(0,0,0,0.2); border-radius:10px; margin-bottom:8px; border:1px solid rgba(255,255,255,0.06);">
+    <div style="display:flex; flex-direction:column; padding:12px; background:rgba(0,0,0,0.2); border-radius:10px; margin-bottom:8px; border:1px solid rgba(255,255,255,0.06);">
+     <div style="display:flex; align-items:center; gap:12px;">
       <div style="width:36px; height:36px; border-radius:50%; background:var(--green-mid); border:2px solid var(--gold-dim); display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0;">⛳</div>
       <div style="flex:1;">
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
@@ -273,9 +276,53 @@ function renderTeamInputs(holeData) {
         <button onclick="adjustTeamScore('${team.id}', 1)" style="width:48px; height:48px; border-radius:50%; background:var(--green-mid); border:none; color:var(--cream); font-size:24px; cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1; touch-action:manipulation; -webkit-tap-highlight-color:transparent; user-select:none;">+</button>
       </div>` : `
       <div style="font-family:'Playfair Display',serif; font-size:32px; color:${scoreColor}; min-width:36px; text-align:center;">${strokes || '–'}</div>`}
+     </div>
+     ${_driveBlock(team, canEdit)}
     </div>`;
   });
   document.getElementById('scPlayerScores').innerHTML = html;
+}
+// Utslags-logging (E, §2.3/§11.3) — vises kun når «tellende utslag» > 0.
+// Ett tapp per hull: hvem sitt utslag ble brukt. Kvote per spiller + eskalering.
+function _driveBlock(team, canEdit) {
+  const cfg = _scrambleGameRow?.config || {};
+  if (!cfg.countingDrives) return '';
+  const gid = _scrambleGameRow.id;
+  const min = cfg.minDrivesPerPlayer || 1;
+  const latest = latestDriveByHole(roundEvents, { gameId: gid, teamId: team.id });
+  const cur = latest[currentHole];
+  const counts = driveCountsByPlayer(roundEvents, { gameId: gid, teamId: team.id });
+  const btns = (team.member_ids || []).map(pid => {
+    const nm = _memberFirstName(pid);
+    const on = cur === pid;
+    const base = `padding:7px 12px;border-radius:8px;font-size:13px;border:1px solid ${on ? 'var(--gold)' : 'rgba(255,255,255,0.15)'};background:${on ? 'rgba(201,168,76,0.2)' : 'transparent'};color:${on ? 'var(--gold)' : 'var(--cream-dim)'};`;
+    return canEdit
+      ? `<button onclick="logDrive('${team.id}','${pid}')" style="${base}cursor:pointer;-webkit-tap-highlight-color:transparent;">${on ? '✓ ' : ''}${nm}</button>`
+      : `<span style="${base}">${on ? '✓ ' : ''}${nm}</span>`;
+  }).join('');
+  const quota = (team.member_ids || []).map(pid => {
+    const used = counts[pid] || 0; const ok = used >= min;
+    return `<span style="color:${ok ? 'var(--green-light)' : '#e8a070'};">${_memberFirstName(pid)} ${used}/${min}${ok ? ' ✓' : ' ⚠'}</span>`;
+  }).join(' · ');
+  const holesLeft = Math.max(0, (roundHoles.length || 18) - Object.keys(latest).length);
+  const remainingSum = (team.member_ids || []).reduce((s, pid) => s + Math.max(0, min - (counts[pid] || 0)), 0);
+  let warn = '';
+  if (remainingSum > holesLeft) warn = `<div style="font-size:11px;color:#e8a070;margin-top:4px;">⚠ Kvoten kan ikke nås — ${remainingSum - holesLeft} straffeslag legges til laget.</div>`;
+  else if (holesLeft > 0 && remainingSum === holesLeft) warn = `<div style="font-size:11px;color:var(--gold-light);margin-top:4px;">⚠ Alle ${holesLeft} gjenværende hull må brukes til å nå kvoten.</div>`;
+  return `<div style="margin-top:10px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.06);">
+    <div style="font-size:10px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">Hvem sitt utslag? · hull ${currentHole}</div>
+    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px;">${btns}</div>
+    <div style="font-size:11px; color:var(--cream-dim);">Kvote (${min}/spiller): ${quota}</div>${warn}
+  </div>`;
+}
+async function logDrive(teamId, playerId) {
+  if (!_scrambleGameRow) return;
+  const row = { game_id: _scrambleGameRow.id, round_id: currentRound.id, hole_number: currentHole, team_id: teamId, player_id: playerId, event_type: 'drive_used', payload: {} };
+  await db.from('game_events').insert(row);
+  roundEvents.push({ ...row, created_at: new Date().toISOString() });   // umiddelbar UI-oppdatering
+  const holeData = roundHoles.find(h => h.hole_number === currentHole) || { par: null, stroke_index: null };
+  renderTeamInputs(holeData);
+  renderScrambleTracker();
 }
 let _adjustTeamLock = false;
 async function adjustTeamScore(teamId, delta) {
@@ -628,6 +675,7 @@ async function showRoundSummary(roundId) {
   if (error || !round) { document.getElementById('summaryTitle').textContent = 'Feil ved lasting'; return; }
   const { data: scores } = await db.from('scores').select('*').eq('round_id', roundId);
   const { data: holes } = await db.from('holes').select('*').eq('course_id', round.course_id).order('hole_number');
+  const { data: summaryEvents } = await db.from('game_events').select('*').eq('round_id', roundId);
   const sc = {};
   const teamScores = {};
   (scores || []).forEach(s => {
@@ -654,7 +702,7 @@ async function showRoundSummary(roundId) {
   const scrambleSummaryEl = document.getElementById('scrambleSummary');
   if (scrambleSummaryEl) {
     const html = scrambleRow ? getGame('scramble').summaryUI({
-      round, holes: filteredHoles, teamScores, teams: scrambleRow.game_teams || [], events: [], fullCoursePar,
+      round, holes: filteredHoles, teamScores, teams: scrambleRow.game_teams || [], events: summaryEvents || [], fullCoursePar,
     }) : '';
     scrambleSummaryEl.style.display = html ? 'block' : 'none';
     scrambleSummaryEl.innerHTML = html || '';

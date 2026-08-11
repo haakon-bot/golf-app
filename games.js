@@ -320,10 +320,23 @@ function driveEvents(events, { gameId = null, teamId = null } = {}) {
 }
 
 // Antall registrerte utslag per spiller (player_id → count) for gitt filter.
+// game_events er append-only → et hull kan ha flere drive_used (rettelser).
+// Siste (nyeste created_at) gjelder. → { hole_number: player_id }.
+function latestDriveByHole(events, filter = {}) {
+  const tmp = {};
+  driveEvents(events, filter).forEach(e => {
+    const h = e.hole_number, ts = e.created_at || '';
+    if (!tmp[h] || ts >= tmp[h].ts) tmp[h] = { pid: e.player_id, ts };
+  });
+  const out = {};
+  Object.keys(tmp).forEach(h => { out[h] = tmp[h].pid; });
+  return out;
+}
+// Antall registrerte utslag per spiller (dedupet på hull → siste valg gjelder).
 function driveCountsByPlayer(events, filter = {}) {
   const counts = {};
-  driveEvents(events, filter).forEach(e => {
-    if (e.player_id) counts[e.player_id] = (counts[e.player_id] || 0) + 1;
+  Object.values(latestDriveByHole(events, filter)).forEach(pid => {
+    if (pid) counts[pid] = (counts[pid] || 0) + 1;
   });
   return counts;
 }
