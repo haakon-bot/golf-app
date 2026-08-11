@@ -114,8 +114,7 @@ async function _fetchAndComputeStats() {
         }
 
         if (holesPlayed >= 9) {
-          // Normalize 9-hole rounds to 18-hole equivalent: fill unplayed holes with netto par,
-          // matching the same logic as calculateEstimatedHCP in profile.js.
+          // Normalize 9-hole rounds to 18-hole equivalent: fill unplayed holes with netto par.
           let normalizedTotal = roundTotal;
           const is9Hole = round.hole_range === 'front9' || round.hole_range === 'back9';
           if (is9Hole) {
@@ -257,14 +256,6 @@ function _renderSesong(el, data) {
 }
 
 // ── HEAD-TO-HEAD ──
-
-function _h2hHcpChange(diffs, cutoffStr) {
-  if (!diffs?.length) return null;
-  const current = diffs[0]?.hcp_after;
-  const old = diffs.find(d => d.date <= cutoffStr)?.hcp_after;
-  if (current == null || old == null) return null;
-  return parseFloat((current - old).toFixed(1));
-}
 
 async function initH2hTab() {
   if (_h2hInitialized) return;
@@ -436,13 +427,9 @@ async function _loadAndRenderH2h() {
     const sharedIds = sharedRounds.map(r => r.id);
     const courseIds = [...new Set(sharedRounds.map(r => r.course_id).filter(Boolean))];
 
-    const cutoff12mStr = (() => { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return d.toISOString().split('T')[0]; })();
-
-    const [{ data: scores }, { data: holes }, { data: p1Diffs }, { data: p2Diffs }] = await Promise.all([
+    const [{ data: scores }, { data: holes }] = await Promise.all([
       db.from('scores').select('round_id, player_id, hole_number, strokes').in('round_id', sharedIds),
       courseIds.length ? db.from('holes').select('course_id, hole_number, par, stroke_index').in('course_id', courseIds) : { data: [] },
-      db.from('score_differentials').select('date, hcp_after').eq('player_id', p1Id).order('date', { ascending: false }),
-      db.from('score_differentials').select('date, hcp_after').eq('player_id', p2Id).order('date', { ascending: false }),
     ]);
 
     const scoreMap = {};
@@ -555,11 +542,6 @@ async function _loadAndRenderH2h() {
     const p2AvgStrokes = p2HolesTotal > 0 ? Math.round(p2StrokesTotal / p2HolesTotal * 18) : null;
     const favCourse = Object.entries(courseCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '–';
 
-    const p1HcpChange = _h2hHcpChange(p1Diffs, cutoff12mStr);
-    const p2HcpChange = _h2hHcpChange(p2Diffs, cutoff12mStr);
-    const hcpChangeDefined = p1HcpChange !== null && p2HcpChange !== null;
-    const fmtHcpChange = v => v === null ? '–' : (v > 0 ? `+${v.toFixed(1)}` : v.toFixed(1));
-
     const p1Info = players.find(p => p.id === p1Id);
     const p2Info = players.find(p => p.id === p2Id);
     const p1Name = p1Info?.display_name ?? '–';
@@ -594,8 +576,7 @@ async function _loadAndRenderH2h() {
           ${[3, 4, 5].map(par => _h2hParSection(par, parStats.p1[par], parStats.p2[par])).join('')}
         </div>
         <div style="background:rgba(0,0,0,0.2);border:1px solid rgba(255,255,255,0.07);border-radius:12px;overflow:hidden;">
-          ${_h2hStatRow(fmtHcpChange(p1HcpChange), 'HCP ± 12 mnd', fmtHcpChange(p2HcpChange), hcpChangeDefined && p1HcpChange < p2HcpChange, hcpChangeDefined && p2HcpChange < p1HcpChange)}
-          ${_h2hStatRow(p1Info?.handicap ?? '–', 'Nåværende HCP', p2Info?.handicap ?? '–', false, false)}
+          ${_h2hStatRow(p1Info?.handicap ?? '–', 'HCP', p2Info?.handicap ?? '–', false, false)}
           <div style="padding:13px 16px;border-top:1px solid rgba(255,255,255,0.05);display:flex;align-items:center;gap:8px;">
             <div style="font-size:12px;color:var(--cream-dim);flex-shrink:0;white-space:nowrap;">Favorittbane</div>
             <div style="flex:1;text-align:right;font-size:14px;color:var(--cream);font-weight:500;">${favCourse}</div>
