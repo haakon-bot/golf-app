@@ -429,10 +429,7 @@ document.addEventListener('visibilitychange', () => {
       if (activePage === 'dashboard') loadDashboard();
       else if (activePage === 'rounds') loadRounds();
       else if (activePage === 'live') loadLivePage();
-      else if (activePage === 'profile') {
-        if (document.getElementById('statsKpis')) loadAndRenderDifferentials();
-        else loadProfilePage();
-      }
+      else if (activePage === 'profile') loadProfilePage();
     }, 500);
   }
 });

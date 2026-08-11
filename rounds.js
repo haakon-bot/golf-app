@@ -120,17 +120,6 @@ async function loadDashboard() {
     } else {
       badge.style.display = 'none';
     }
-
-    // HCP-motivasjon
-    const motivEl = document.getElementById('dashMotivation');
-    if (motivEl && currentProfile) {
-      const { data: myDiffs } = await db.from('score_differentials')
-        .select('date, differential, source').eq('player_id', currentProfile.id)
-        .order('date', { ascending: false });
-      const motiv = _calcHcpMotivation(myDiffs || [], 113, 72, 72, currentProfile?.handicap ?? null);
-      motivEl.innerHTML = _renderMotivBanner(motiv);
-    }
-
   } finally {
     _dashboardLoading = false;
   }
@@ -629,6 +618,11 @@ function wizSetPlayerHcp(id, val) {
   if (!p) return;
   const n = parseFloat(val);
   p.handicap = isNaN(n) ? null : n;
+  // Din egen HCP: lagre også på profilen så den er riktig til neste gang.
+  if (currentProfile && id === currentProfile.id) {
+    currentProfile.handicap = p.handicap;
+    db.from('profiles').update({ handicap: p.handicap }).eq('id', id).then(() => {}, () => {});
+  }
   if (_wizIsTeamGame()) _wizMountTeams();    // lag-HCP + tildelte slag endres
   else _wizRenderChips();                     // oppdater tildelte-slag-badge per spiller
 }

@@ -109,7 +109,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.157</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.158</span></div>
     <div style="display:flex; align-items:center; gap:4px;">
       <button id="topbarRefreshBtn" onclick="forceUpdate()" title="Oppdater app" style="background:none;border:none;color:var(--cream-dim);cursor:pointer;padding:8px;font-size:22px;opacity:0.45;-webkit-tap-highlight-color:transparent;line-height:1;"><i class="ti ti-refresh"></i></button>
       <button onclick="openDrawer()" title="Meny" style="background:none;border:none;color:var(--cream-dim);cursor:pointer;padding:8px;font-size:24px;-webkit-tap-highlight-color:transparent;line-height:1;"><i class="ti ti-menu-2"></i></button>
@@ -172,7 +172,6 @@
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px;">
       <button onclick="showPage('live')" class="shortcut-card"><i class="ti ti-broadcast"></i><span>Live</span></button>
     </div>
-    <div id="dashMotivation" style="margin-bottom:16px;"></div>
     <div style="font-size:11px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:12px;">Sist spilt</div>
     <div id="dashRecentRounds"></div>
   </div>
@@ -361,13 +360,6 @@
       <div id="summaryContent"></div>
       <div id="scrambleSummary" style="display:none;margin-top:16px;"></div>
       <div id="skinsSummary" style="display:none;margin-top:16px;"></div>
-      <hr class="divider">
-      <h3 style="font-family:'Playfair Display',serif; font-size:16px; color:var(--cream-dim); margin-bottom:12px;">Golfbox-overføring</h3>
-      <div style="display:flex; gap:8px; margin-bottom:16px;">
-        <button class="tab active" id="golfboxTableBtn" onclick="showGolfboxMode('table')">Tabellvisning</button>
-        <button class="tab" id="golfboxSpeakBtn" onclick="showGolfboxMode('speak')">Les opp</button>
-      </div>
-      <div id="golfboxContent"></div>
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="closeModal('modalRoundSummary')">Lukk</button>
       </div>
@@ -546,49 +538,6 @@
     <button onclick="closeModal('modalShareRound')" class="btn btn-outline" style="width:100%; font-size:14px;">
       Fortsett til scoring
     </button>
-  </div>
-</div>
-<!-- MODAL: Golfbox Import -->
-<div class="modal-overlay" id="modalGolfboxImport" style="display:none;" onclick="closeModalOnOverlay(event,'modalGolfboxImport')">
-  <div class="modal" style="max-width:520px;" onclick="event.stopPropagation()">
-    <h2>📷 Importer fra Golfbox</h2>
-    <div id="gbImportAlert"></div>
-    <div id="gbStep1">
-      <div style="background:rgba(201,168,76,0.08); border:1px solid rgba(201,168,76,0.2); border-radius:10px; padding:16px; margin-bottom:20px;">
-        <p style="font-size:13px; color:var(--cream); font-weight:500; margin-bottom:8px;">Slik gjør du det:</p>
-        <ol style="font-size:13px; color:var(--cream-dim); padding-left:18px; line-height:1.8; margin:0;">
-          <li>Åpne <strong style="color:var(--cream);">Golfbox</strong> og gå til score-tabellen din</li>
-          <li>Ta bilde av <strong style="color:var(--cream);">score-tabellen</strong></li>
-          <li>Scroll ned og ta <strong style="color:var(--cream);">flere bilder</strong> til du har minst <strong style="color:var(--cream);">20 runder</strong> synlig</li>
-          <li>Last opp bildene under</li>
-        </ol>
-      </div>
-      <label style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; border:2px dashed rgba(201,168,76,0.3); border-radius:12px; padding:24px 20px; text-align:center; cursor:pointer; background:rgba(0,0,0,0.1); margin-bottom:14px;">
-        <div style="font-size:36px;">📷</div>
-        <div style="color:var(--cream); font-size:14px; font-weight:500;">Velg bilder</div>
-        <div style="color:var(--cream-dim); font-size:12px;">PNG, JPG – velg gjerne flere</div>
-        <input type="file" id="gbImportFileInput" accept="image/png,image/jpeg,image/jpg,image/heic,image/heif" multiple style="display:none;" onchange="handleGolfboxFiles(this)">
-      </label>
-      <div id="gbFileList" style="margin-bottom:14px;"></div>
-      <button class="btn" id="gbAnalyzeBtn" onclick="analyzeGolfboxImages()" style="display:none; width:100%; margin-bottom:4px;">🔍 Analyser med Claude</button>
-      <div class="modal-actions" style="margin-top:16px;">
-        <button class="btn btn-outline" onclick="closeModal('modalGolfboxImport')">Avbryt</button>
-      </div>
-    </div>
-    <div id="gbStep2" style="display:none;">
-      <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
-        <button onclick="document.getElementById('gbStep1').style.display='block';document.getElementById('gbStep2').style.display='none';" style="background:none;border:none;color:var(--gold);cursor:pointer;font-size:22px;">←</button>
-        <div>
-          <h3 id="gbPreviewCount" style="font-family:'Playfair Display',serif; color:var(--cream); font-size:17px;"></h3>
-          <p style="font-size:12px; color:var(--cream-dim);">Sjekk at dataene ser riktige ut – fjern feil med ✕</p>
-        </div>
-      </div>
-      <div id="gbPreviewList" style="max-height:300px; overflow-y:auto; margin-bottom:16px;"></div>
-      <div class="modal-actions">
-        <button class="btn btn-outline" onclick="closeModal('modalGolfboxImport')">Avbryt</button>
-        <button class="btn" id="gbSaveBtn" onclick="saveGolfboxHistory()">Lagre historikk</button>
-      </div>
-    </div>
   </div>
 </div>
 <script src="games.js" defer></script>

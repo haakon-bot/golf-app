@@ -799,7 +799,6 @@ async function showRoundSummary(roundId) {
     ).join('');
     document.getElementById('summaryTabs').innerHTML = tabs;
     window._summaryData = { round, holes: filteredHoles, sc, allFP, totalHoles, fullCoursePar };
-    window._currentSummaryPlayer = null;
     if (allFP[0]) showSummaryPlayer(allFP[0].player_id);
   }
   // G5: sammenlagt tvers-flight-stilling + totalvinner (individuelt hovedspill).
@@ -953,100 +952,4 @@ function showSummaryPlayer(playerId, btn) {
       <tbody>${rows}</tbody>
     </table>
   `;
-  window._currentSummaryPlayer = { fp, playerScores, holes, round, totalHoles };
-  const activeMode = document.getElementById('golfboxTableBtn')?.classList.contains('active') ? 'table' : 'speak';
-  showGolfboxMode(activeMode);
-}
-function showGolfboxMode(mode) {
-  const tableBtn = document.getElementById('golfboxTableBtn');
-  const speakBtn = document.getElementById('golfboxSpeakBtn');
-  if (tableBtn) tableBtn.classList.toggle('active', mode === 'table');
-  if (speakBtn) speakBtn.classList.toggle('active', mode === 'speak');
-  const el = document.getElementById('golfboxContent');
-  if (!el) return;
-  if (!window._currentSummaryPlayer) {
-    el.innerHTML = '<p style="color:var(--cream-dim);font-size:14px;">Ingen spillerdata. Velg en spiller over.</p>';
-    return;
-  }
-  const { playerScores, holes } = window._currentSummaryPlayer;
-  if (!holes || !holes.length) {
-    el.innerHTML = '<p style="color:var(--cream-dim);font-size:14px;">Ingen hull-data registrert for denne banen.</p>';
-    return;
-  }
-  if (mode === 'table') {
-    const rows = holes.map(h => {
-      const s = playerScores[h.hole_number];
-      const scoreColor = s ? getScoreColor(s, h.par) : 'var(--cream-dim)';
-      return `<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
-        <td style="padding:10px 12px; color:var(--cream-dim); font-size:14px;">Hull ${h.hole_number} <span style="font-size:11px;">(Par ${h.par})</span></td>
-        <td style="padding:10px 12px; text-align:right; font-family:'Playfair Display',serif; font-size:22px; color:${scoreColor};">${s || '–'}</td>
-      </tr>`;
-    }).join('');
-    el.innerHTML = `
-      <p style="font-size:13px; color:var(--cream-dim); margin-bottom:12px;">Les av og tast inn i Golfbox/Gimmie:</p>
-      <table style="width:100%; border-collapse:collapse; background:rgba(0,0,0,0.2); border-radius:8px; overflow:hidden;">${rows}</table>`;
-  } else {
-    el.innerHTML = `
-      <p style="font-size:13px; color:var(--cream-dim); margin-bottom:12px;">Trykk på hullet for å lese opp:</p>
-      <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
-        ${holes.map(h => {
-          const s = playerScores[h.hole_number];
-          return `<button onclick="speakHole(${h.hole_number}, ${s||0}, ${h.par})" style="padding:10px 14px; background:rgba(0,0,0,0.2); border:1px solid ${s ? 'rgba(201,168,76,0.3)' : 'rgba(255,255,255,0.1)'}; border-radius:8px; color:${s ? 'var(--gold-light)' : 'var(--cream-dim)'}; cursor:pointer; font-family:'DM Sans',sans-serif; font-size:14px;">
-            Hull ${h.hole_number}: <strong>${s || '–'}</strong>
-          </button>`;
-        }).join('')}
-      </div>
-      <button id="speakAllBtn" onclick="speakAllHoles()" style="width:100%; padding:12px; background:var(--green-mid); border:1px solid rgba(201,168,76,0.3); color:var(--gold-light); border-radius:8px; cursor:pointer; font-family:'DM Sans',sans-serif; font-size:14px; touch-action:manipulation; -webkit-tap-highlight-color:transparent;">
-        🔊 Les opp alle hull
-      </button>`;
-  }
-}
-let _isSpeaking = false;
-
-function speakHole(hole, strokes, par) {
-  if (!strokes) { alert(`Hull ${hole}: ikke registrert`); return; }
-  window.speechSynthesis.cancel();
-  const msg = new SpeechSynthesisUtterance(`Hull ${hole}, ${strokes} slag, ${getScoreName(strokes, par).replace(/[🏆🦅🐦]/g, '')}`);
-  msg.lang = 'no-NO';
-  window.speechSynthesis.speak(msg);
-}
-
-function speakAllHoles() {
-  const btn = document.getElementById('speakAllBtn');
-  if (_isSpeaking) {
-    _isSpeaking = false;
-    window.speechSynthesis.cancel();
-    if (btn) { btn.textContent = '🔊 Les opp alle hull'; btn.style.background = 'var(--green-mid)'; }
-    return;
-  }
-  const { playerScores, holes } = window._currentSummaryPlayer;
-  const items = holes.map(h => {
-    const s = playerScores[h.hole_number];
-    return s ? { text: `Hull ${h.hole_number}, ${s} slag`, hole: h.hole_number } : null;
-  }).filter(Boolean);
-  if (!items.length) return;
-  _isSpeaking = true;
-  if (btn) { btn.textContent = '⏹ Stopp'; btn.style.background = 'var(--danger)'; }
-  window.speechSynthesis.cancel();
-  let i = 0;
-  function speakNext() {
-    if (!_isSpeaking || i >= items.length) {
-      _isSpeaking = false;
-      if (btn) { btn.textContent = '🔊 Les opp alle hull'; btn.style.background = 'var(--green-mid)'; }
-      return;
-    }
-    const msg = new SpeechSynthesisUtterance(items[i].text);
-    msg.lang = 'no-NO';
-    msg.rate = 0.9;
-    msg.onend = () => {
-      i++;
-      setTimeout(speakNext, 300); // liten pause mellom hull
-    };
-    msg.onerror = () => {
-      i++;
-      setTimeout(speakNext, 300);
-    };
-    window.speechSynthesis.speak(msg);
-  }
-  speakNext();
 }
