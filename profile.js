@@ -54,18 +54,25 @@ async function loadProfilePage() {
     </div>
     <div style="text-align:center;padding:22px;background:rgba(201,168,76,0.06);border:1px solid rgba(201,168,76,0.25);border-radius:14px;margin-bottom:20px;">
       <div style="font-size:11px;color:var(--gold);text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">Handicap</div>
-      <div style="font-family:'Playfair Display',serif;font-size:52px;color:var(--gold-light);line-height:1;">${p.handicap ?? '–'}</div>
-      <div style="font-size:12px;color:var(--cream-dim);margin-top:8px;">Tallet du taster selv. Rediger under «Rediger profil» eller i rundeoppsettet.</div>
+      <div id="hcpDisplay">
+        <button onclick="toggleHcpEdit(true)" style="background:none;border:none;cursor:pointer;color:var(--gold-light);font-family:'Playfair Display',serif;line-height:1;display:inline-flex;align-items:center;gap:12px;-webkit-tap-highlight-color:transparent;padding:0;">
+          <span style="font-size:52px;">${p.handicap ?? '–'}</span>
+          <i class="ti ti-pencil" style="font-size:20px;color:var(--cream-dim);"></i>
+        </button>
+        <div style="font-size:12px;color:var(--cream-dim);margin-top:8px;">Trykk på tallet for å endre. Justeres også i rundeoppsettet.</div>
+      </div>
+      <div id="hcpEdit" style="display:none;">
+        <div id="hcpAlert"></div>
+        <input type="number" id="editHcp" value="${p.handicap ?? ''}" step="0.1" min="-10" max="54" inputmode="decimal" style="width:130px;text-align:center;font-family:'Playfair Display',serif;font-size:32px;color:var(--gold-light);background:rgba(0,0,0,0.25);border:1px solid rgba(201,168,76,0.35);border-radius:10px;padding:8px 0;">
+        <div style="display:flex;gap:8px;justify-content:center;margin-top:14px;">
+          <button class="btn btn-auto" onclick="saveHcpInline()">Lagre</button>
+          <button class="btn btn-outline btn-auto" onclick="toggleHcpEdit(false)">Avbryt</button>
+        </div>
+      </div>
     </div>
     <div style="display:flex;flex-direction:column;gap:2px;">
       ${_makeCollapsibleHTML('secRunder', '<i class="ti ti-clipboard-list" style="font-size:15px;vertical-align:-2px;margin-right:6px;"></i>Mine runder', `
         <div id="alleRunderList"><div class="loading"><div class="spinner"></div></div></div>
-      `)}
-      ${_makeCollapsibleHTML('secEditProfile', '<i class="ti ti-pencil" style="font-size:15px;vertical-align:-2px;margin-right:6px;"></i>Rediger profil', `
-        <div id="profileAlert"></div>
-        <div class="form-group"><label>Visningsnavn</label><input type="text" id="editDisplayName" value="${p.display_name || ''}"></div>
-        <div class="form-group"><label>Handicap (HCP)</label><input type="number" id="editHcp" value="${p.handicap ?? ''}" step="0.1" min="-10" max="54"></div>
-        <button class="btn btn-auto" onclick="saveProfile()">Lagre endringer</button>
       `)}
       ${_makeCollapsibleHTML('secPassword', '<i class="ti ti-lock" style="font-size:15px;vertical-align:-2px;margin-right:6px;"></i>Bytt passord', `
         <p style="font-size:13px;color:var(--cream-dim);margin-bottom:16px;">Logg inn med nytt passord neste gang.</p>
@@ -118,15 +125,24 @@ async function changePassword() {
   document.getElementById('newPassword2').value = '';
 }
 
-async function saveProfile() {
-  const displayName = document.getElementById('editDisplayName').value.trim();
-  const hcpVal = document.getElementById('editHcp').value;
-  const handicap = hcpVal === '' ? null : parseFloat(hcpVal);
-  if (!displayName) { showAlert('profileAlert', 'Visningsnavn kan ikke være tomt', 'error'); return; }
-  const { error } = await db.from('profiles').update({ display_name: displayName, handicap }).eq('id', currentProfile.id);
-  if (error) { showAlert('profileAlert', 'Feil: ' + error.message, 'error'); return; }
-  currentProfile.display_name = displayName;
+// HCP redigeres direkte på tallet i visningen (blyant) — ingen egen profil-fane.
+function toggleHcpEdit(editing) {
+  const disp = document.getElementById('hcpDisplay');
+  const edit = document.getElementById('hcpEdit');
+  if (!disp || !edit) return;
+  disp.style.display = editing ? 'none' : 'block';
+  edit.style.display = editing ? 'block' : 'none';
+  if (editing) { const i = document.getElementById('editHcp'); if (i) { i.focus(); i.select(); } }
+}
+
+async function saveHcpInline() {
+  const val = document.getElementById('editHcp').value;
+  const handicap = val === '' ? null : parseFloat(val);
+  if (handicap !== null && (isNaN(handicap) || handicap < -10 || handicap > 54)) {
+    showAlert('hcpAlert', 'HCP må være mellom -10 og 54', 'error'); return;
+  }
+  const { error } = await db.from('profiles').update({ handicap }).eq('id', currentProfile.id);
+  if (error) { showAlert('hcpAlert', 'Feil: ' + error.message, 'error'); return; }
   currentProfile.handicap = handicap;
-  showAlert('profileAlert', '✅ Lagret!', 'success');
-  setTimeout(() => loadProfilePage(), 700);
+  loadProfilePage();
 }
