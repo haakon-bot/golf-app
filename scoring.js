@@ -247,7 +247,11 @@ function _memberFirstName(playerId) {
 }
 function renderTeamInputs(holeData) {
   let html = '';
-  roundTeams.forEach(team => {
+  // Registrer kun eget lag — man trenger ikke se andre lags kort her (de vises
+  // på ledertavla). Ikke-deltaker (uten lag) ser alle, kun visning.
+  const myTeams = roundTeams.filter(t => (t.member_ids || []).includes(_myRoundPlayerId));
+  const teamsToShow = myTeams.length ? myTeams : roundTeams;
+  teamsToShow.forEach(team => {
     const canEdit = (team.member_ids || []).includes(_myRoundPlayerId);
     const teamHcp = team.team_handicap != null ? Number(team.team_handicap) : 0;
     const strokes = roundTeamScores[team.id]?.[currentHole] || 0;
@@ -266,6 +270,7 @@ function renderTeamInputs(holeData) {
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
           <div style="font-size:14px;color:var(--cream);font-weight:500;">${team.name}</div>
           <div style="font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(201,168,76,0.15);color:var(--gold-dim);white-space:nowrap;">HCP ${team.team_handicap ?? '–'}</div>
+          <div style="font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(82,183,136,0.15);color:var(--green-light);white-space:nowrap;">Tildelte slag her: ${extra}</div>
         </div>
         <div style="font-size:11px;color:var(--cream-dim);">${memberNames} ${strokesLabel} ${strokes > 0 ? `· <span style="color:${scoreColor}">${scoreName}</span> · netto ${net} · ${stableford}p` : ''}</div>
       </div>
@@ -557,7 +562,52 @@ function _scorecardInlineHtml(fp, scores, holes, round, fullCoursePar) {
     </table>
   </div>`;
 }
+// Scramble-ledertavle: alle lag med plassering, score, thru, og tellende utslag
+// per spiller (så alle ser hvor andre lag ligger og hvem som mangler utslag).
+function _renderScrambleLeaderboard() {
+  const data = getGame('scramble').compute(_scrambleCtx());
+  const el = document.getElementById('leaderboardContent');
+  if (!data || !data.teams.length) { el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--cream-dim);">Ingen lag ennå.</div>'; return; }
+  const cfg = _scrambleGameRow.config || {};
+  const showDrives = !!cfg.countingDrives;
+  const min = cfg.minDrivesPerPlayer || 1;
+  const gid = _scrambleGameRow.id;
+  const scoring = data.scoring;
+  const scoreLbl = scoring === 'stableford' ? 'Poeng' : scoring === 'slag' ? 'Slag' : 'Netto';
+  el.innerHTML = data.teams.map((r, i) => {
+    const lead = i === 0 && r.thru > 0;
+    const vsPar = r.totalGross ? r.totalNet - r.totalPar : null;
+    const main = scoring === 'stableford' ? `${r.totalSf}p` : scoring === 'slag' ? `${r.totalGross || '–'}` : _fmtVsPar(vsPar);
+    const mainColor = scoring === 'netto' ? _vsParColor(vsPar) : (lead ? 'var(--gold)' : 'var(--cream)');
+    const members = (r.team.member_ids || []).map(_memberFirstName).join(', ');
+    let drives = '';
+    if (showDrives) {
+      const counts = driveCountsByPlayer(roundEvents, { gameId: gid, teamId: r.team.id });
+      const per = (r.team.member_ids || []).map(pid => {
+        const u = counts[pid] || 0; const ok = u >= min;
+        return `<span style="color:${ok ? 'var(--green-light)' : '#e8a070'};">${_memberFirstName(pid)} ${u}/${min}</span>`;
+      }).join(' · ');
+      const pen = r.penalty ? ` · <span style="color:#e8a070;">+${r.penalty} straff</span>` : '';
+      drives = `<div style="font-size:11px;color:var(--cream-dim);margin-top:6px;">🏌️ Utslag: ${per}${pen}</div>`;
+    }
+    return `<div style="border-bottom:1px solid rgba(255,255,255,0.05);padding:12px 16px;${lead ? 'background:rgba(201,168,76,0.07);' : ''}">
+      <div style="display:grid;grid-template-columns:24px 1fr auto;align-items:center;gap:10px;">
+        <div style="font-size:14px;color:${lead ? 'var(--gold)' : 'var(--cream-dim)'};text-align:center;">${i + 1}</div>
+        <div>
+          <div style="font-size:14px;color:var(--cream);font-weight:${lead ? '600' : '400'};">${r.team.name} <span style="font-size:11px;color:var(--cream-dim);">· HCP ${r.teamHcp ?? '–'}</span></div>
+          <div style="font-size:11px;color:var(--cream-dim);">${members} · thru ${r.thru}</div>
+        </div>
+        <div style="text-align:right;min-width:52px;">
+          <div style="font-size:10px;color:var(--cream-dim);">${scoreLbl}</div>
+          <div style="font-family:'Playfair Display',serif;font-size:18px;font-weight:600;color:${mainColor};">${main}</div>
+        </div>
+      </div>
+      ${drives}
+    </div>`;
+  }).join('');
+}
 function showLeaderboard() {
+  if (_scrambleGameRow) { _renderScrambleLeaderboard(); openModal('modalLeaderboard'); return; }
   const allFP = roundFlights.flatMap(f => f.flight_players || []);
   const standings = allFP.map(fp => {
     const phcp = _playingHcp(fp.handicap, currentRound?.tee_sets?.slope, currentRound?.tee_sets?.course_rating, _fullCoursePar);
