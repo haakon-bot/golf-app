@@ -562,6 +562,36 @@ function _scorecardInlineHtml(fp, scores, holes, round, fullCoursePar) {
     </table>
   </div>`;
 }
+// Fullt scorekort for ett lag (per hull: brutto/netto/stab) — vises ved trykk.
+function _teamScorecardHtml(r) {
+  let tg = 0, tn = 0, ts = 0;
+  const th = 'padding:4px 6px;text-align:center;color:var(--cream-dim);font-size:10px;font-weight:400;';
+  const rows = r.holeResults.map(h => {
+    const played = h.gross > 0;
+    if (played) { tg += h.gross; tn += h.net; ts += h.sf; }
+    const color = played ? getScoreColor(h.gross, h.par) : 'var(--cream-dim)';
+    return `<tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
+      <td style="padding:4px 6px;color:var(--gold-dim);">${h.holeNumber}</td>
+      <td style="padding:4px 6px;text-align:center;color:var(--cream-dim);">${h.par ?? '–'}</td>
+      <td style="padding:4px 6px;text-align:center;color:var(--cream-dim);font-size:11px;">${h.si ?? '–'}</td>
+      <td style="padding:4px 6px;text-align:center;color:${color};font-family:'Playfair Display',serif;">${played ? h.gross : '–'}</td>
+      <td style="padding:4px 6px;text-align:center;color:var(--cream);">${played ? h.net : '–'}</td>
+      <td style="padding:4px 6px;text-align:center;color:var(--gold);">${played ? h.sf + 'p' : '–'}</td>
+    </tr>`;
+  }).join('');
+  return `<div style="overflow-x:auto;padding:6px 0;"><table style="width:100%;border-collapse:collapse;font-size:12px;">
+    <thead><tr style="border-bottom:1px solid rgba(255,255,255,0.1);"><th style="${th}text-align:left;">Hull</th><th style="${th}">Par</th><th style="${th}">SI</th><th style="${th}">Brutto</th><th style="${th}">Netto</th><th style="${th}">Stab</th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr style="border-top:1px solid rgba(255,255,255,0.12);font-weight:600;"><td colspan="3" style="padding:6px;color:var(--cream-dim);">Totalt</td><td style="padding:6px;text-align:center;color:var(--cream);">${tg || '–'}</td><td style="padding:6px;text-align:center;color:var(--cream);">${tn || '–'}</td><td style="padding:6px;text-align:center;color:var(--gold);">${ts}p</td></tr></tfoot>
+  </table></div>`;
+}
+function toggleTeamScorecard(teamId) {
+  const target = document.getElementById('lbteam-' + teamId);
+  if (!target) return;
+  const isOpen = target.style.display !== 'none';
+  document.querySelectorAll('[id^="lbteam-"]').forEach(e => { e.style.display = 'none'; });
+  if (!isOpen) target.style.display = 'block';
+}
 // Scramble-ledertavle: alle lag med plassering, score, thru, og tellende utslag
 // per spiller (så alle ser hvor andre lag ligger og hvem som mangler utslag).
 function _renderScrambleLeaderboard() {
@@ -590,7 +620,8 @@ function _renderScrambleLeaderboard() {
       const pen = r.penalty ? ` · <span style="color:#e8a070;">+${r.penalty} straff</span>` : '';
       drives = `<div style="font-size:11px;color:var(--cream-dim);margin-top:6px;">🏌️ Utslag: ${per}${pen}</div>`;
     }
-    return `<div style="border-bottom:1px solid rgba(255,255,255,0.05);padding:12px 16px;${lead ? 'background:rgba(201,168,76,0.07);' : ''}">
+    return `<div style="border-bottom:1px solid rgba(255,255,255,0.05);${lead ? 'background:rgba(201,168,76,0.07);' : ''}">
+      <div onclick="toggleTeamScorecard('${r.team.id}')" style="padding:12px 16px;cursor:pointer;-webkit-tap-highlight-color:transparent;">
       <div style="display:grid;grid-template-columns:24px 1fr auto;align-items:center;gap:10px;">
         <div style="font-size:14px;color:${lead ? 'var(--gold)' : 'var(--cream-dim)'};text-align:center;">${i + 1}</div>
         <div>
@@ -603,6 +634,8 @@ function _renderScrambleLeaderboard() {
         </div>
       </div>
       ${drives}
+      </div>
+      <div id="lbteam-${r.team.id}" style="display:none;padding:0 16px 12px;background:rgba(0,0,0,0.15);">${_teamScorecardHtml(r)}</div>
     </div>`;
   }).join('');
 }
