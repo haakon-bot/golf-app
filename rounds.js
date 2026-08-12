@@ -218,7 +218,7 @@ function _wizValidateStep(i) {
     if (_wizIsTeamGame()) {
       const teams = (_wizState.teams || []).filter(t => t.member_ids.length);
       if (teams.some(t => t.member_ids.length > _wizMaxPlayers())) return { ok: false, warning: `Maks ${_wizMaxPlayers()} spillere per lag — legg til flere lag.` };
-      const vt = g.validate ? g.validate({ teams }) : { ok: true };
+      const vt = g.validate ? g.validate({ teams, config: _wizState.config, totalHoles: _wizState.course?.holeCount || 18 }) : { ok: true };
       if (!vt.ok) return vt;
     } else if (!_wizEditRoundId) {
       // Individuelt multi-flight: maks 4 per flight (FlightBuilder skal hindre
@@ -305,7 +305,79 @@ function wizSetDrives(val) {
   const n = Math.max(0, Math.min(9, parseInt(val) || 0));
   _wizState.config.countingDrives = n > 0;
   _wizState.config.minDrivesPerPlayer = n > 0 ? n : 1;
-  // Ingen re-render: kontrollen bor i steg 3 (ville re-mountet TeamBuilder).
+  // Ingen full re-render (ville re-mountet TeamBuilder) — oppdater kun kvote-panelet.
+  _wizRenderPerTeamDrives(_wizState.teams);
+}
+function wizSetPerTeamDrives(checked) {
+  _wizState.config.perTeamDrives = !!checked;
+  if (checked && !_wizState.config.teamMinDrives) _wizState.config.teamMinDrives = {};
+  _wizRenderPerTeamDrives(_wizState.teams);
+}
+function wizSetTeamMinDrives(teamName, val) {
+  const n = Math.max(1, Math.min(9, parseInt(val) || 1));
+  _wizState.config.teamMinDrives = _wizState.config.teamMinDrives || {};
+  _wizState.config.teamMinDrives[teamName] = n;
+  _wizRenderPerTeamDrives(_wizState.teams);
+}
+// Delt oppsett-blokk for tellende utslag (brukes i opprett OG redigering).
+function _wizDriveControlsHTML() {
+  const cfg = _wizState.config || {};
+  const numStyle = 'width:56px; padding:6px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.35); color:var(--cream); font-size:13px; text-align:center;';
+  const selStyle = 'padding:6px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.35); color:var(--cream); font-size:13px;';
+  const penaltyOpts = ['warn','Kun varsling','stroke','Straffeslag','out','Ute av premie'].reduce((a,_,i,arr)=>{ if(i%2)return a; const v=arr[i],l=arr[i+1]; const sel=(cfg.penaltyMode||'stroke')===v?'selected':''; return a+`<option value="${v}" ${sel}>${l}</option>`; },'');
+  return `<div style="margin-top:18px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.08);">
+      <label style="display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:13px; color:var(--cream);">
+        <span>Tellende utslag / spiller <span style="color:var(--cream-dim); font-size:11px;">(0 = av)</span></span>
+        <input type="number" min="0" max="9" value="${cfg.countingDrives ? (cfg.minDrivesPerPlayer || 1) : 0}" onchange="wizSetDrives(this.value)" style="${numStyle}">
+      </label>
+      <label style="display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:13px; color:var(--cream); margin-top:10px;">
+        <span>Ved brudd på minstekvoten</span>
+        <select onchange="wizSetConfig('penaltyMode', this.value)" style="${selStyle}">${penaltyOpts}</select>
+      </label>
+      <label style="display:flex; align-items:center; gap:8px; font-size:13px; color:var(--cream); margin-top:10px; cursor:pointer;">
+        <input type="checkbox" ${cfg.perTeamDrives ? 'checked' : ''} onchange="wizSetPerTeamDrives(this.checked)" style="width:16px; height:16px;">
+        <span>Ulik minstekvote per lag</span>
+      </label>
+      <div id="wizPerTeamDrives" style="margin-top:8px;"></div>
+      <div id="wizDrivesWarn" style="margin-top:8px;"></div>
+      <div style="font-size:11px; color:var(--cream-dim); margin-top:8px; line-height:1.5;">Minimum = hvor mange ganger hver spillers utslag minst må brukes — det er selve utfordringen. «Straffeslag» = 1 slag per manglende utslag, «Ute av premie» = laget diskes. Trackeren viser kvoten live når dere registrerer score.</div>
+    </div>`;
+}
+// Per-lag minstekvote-input (når «ulik kvote per lag» er på) + LIVE gjennomførbarhet:
+// min × antall spillere må få plass i antall hull (9 eller 18). Oppdaterer egne
+// containere uten å re-mounte TeamBuilder.
+function _wizRenderPerTeamDrives(teams) {
+  const box = document.getElementById('wizPerTeamDrives');
+  const warnEl = document.getElementById('wizDrivesWarn');
+  const cfg = _wizState.config || {};
+  const holes = _wizState.course?.holeCount || 18;
+  const nonEmpty = (teams || []).filter(t => (t.member_ids || []).length);
+  if (box) {
+    if (cfg.countingDrives && cfg.perTeamDrives && nonEmpty.length) {
+      box.innerHTML = nonEmpty.map(t => {
+        const cur = (cfg.teamMinDrives || {})[t.name] ?? (cfg.minDrivesPerPlayer || 1);
+        return `<label style="display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:12px; color:var(--cream-dim); padding:4px 0;">
+          <span>${t.name} <span style="color:rgba(255,255,255,0.35);">· ${t.member_ids.length} spillere</span></span>
+          <input type="number" min="1" max="9" value="${cur}" onchange="wizSetTeamMinDrives('${t.name.replace(/'/g, "\\'")}', this.value)" style="width:56px; padding:6px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.35); color:var(--cream); font-size:13px; text-align:center;">
+        </label>`;
+      }).join('');
+    } else box.innerHTML = '';
+  }
+  if (warnEl) {
+    let msg = '';
+    if (cfg.countingDrives) {
+      for (const t of nonEmpty) {
+        const size = t.member_ids.length;
+        const min = scrambleMinDrives(cfg, t);
+        if (min * size > holes) {
+          const maxOk = Math.floor(holes / size);
+          msg = `⚠️ ${t.name}: ${min} × ${size} spillere = ${min * size} tellende utslag, men runden har bare ${holes} hull. Sett kvoten til maks ${maxOk} for dette laget.`;
+          break;
+        }
+      }
+    }
+    warnEl.innerHTML = msg ? `<div style="background:rgba(232,160,112,0.12); border:1px solid rgba(232,160,112,0.4); color:#e8a070; font-size:12px; padding:8px 12px; border-radius:8px; line-height:1.4;">${msg}</div>` : '';
+  }
 }
 
 // ── Steg 2: Bane & hull (lett read-only plukker) ──────────────────────────
@@ -413,7 +485,8 @@ function _wizStepPlayers() {
     return `<div>
       <label style="font-size:12px; text-transform:uppercase; letter-spacing:1px; color:var(--cream-dim); display:block; margin-bottom:8px;">Lag <span style="text-transform:none; letter-spacing:0; color:rgba(255,255,255,0.35);">· sammensetning låst</span></label>
       <div id="wizEditTeams"></div>
-      <div style="margin-top:14px; font-size:11px; color:var(--cream-dim); line-height:1.5;">Lag-sammensetning er låst når spillet er i gang (lag-score ville blitt meningsløs ved bytte). Du kan justere lag-HCP og tilleggsspill.</div>
+      <div style="margin-top:14px; font-size:11px; color:var(--cream-dim); line-height:1.5;">Lag-sammensetning er låst når spillet er i gang (lag-score ville blitt meningsløs ved bytte). Du kan justere lag-HCP, tellende utslag og tilleggsspill.</div>
+      ${_wizDriveControlsHTML()}
     </div>`;
   }
   const teamSection = team ? `
@@ -423,19 +496,7 @@ function _wizStepPlayers() {
     </div>
     <div id="wizTeamFairness" style="margin-top:10px;"></div>
     <div id="wizTeamBuilder" style="margin-top:12px;"></div>
-    <div style="margin-top:18px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.08);">
-      <label style="display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:13px; color:var(--cream);">
-        <span>Tellende utslag / spiller <span style="color:var(--cream-dim); font-size:11px;">(0 = av)</span></span>
-        <input type="number" min="0" max="9" value="${_wizState.config?.countingDrives ? (_wizState.config.minDrivesPerPlayer || 1) : 0}" onchange="wizSetDrives(this.value)" style="width:56px; padding:6px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.35); color:var(--cream); font-size:13px; text-align:center;">
-      </label>
-      <label style="display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:13px; color:var(--cream); margin-top:10px;">
-        <span>Ved brudd på minstekvoten</span>
-        <select onchange="wizSetConfig('penaltyMode', this.value)" style="padding:6px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.35); color:var(--cream); font-size:13px;">
-          ${['warn','Kun varsling','stroke','Straffeslag','out','Ute av premie'].reduce((a,_,i,arr)=>{ if(i%2)return a; const v=arr[i],l=arr[i+1]; const sel=(_wizState.config?.penaltyMode||'stroke')===v?'selected':''; return a+`<option value="${v}" ${sel}>${l}</option>`; },'')}
-        </select>
-      </label>
-      <div style="font-size:11px; color:var(--cream-dim); margin-top:8px; line-height:1.5;">Minimum = hvor mange ganger hver spillers utslag minst må brukes — det er selve utfordringen. «Straffeslag» = 1 slag per manglende utslag, «Ute av premie» = laget diskes. Trackeren viser kvoten live når dere registrerer score.</div>
-    </div>` : '';
+    ${_wizDriveControlsHTML()}` : '';
   // Individuelt (opprett): fordel spillere på flighter (maks 4/flight). §2.5/§2.7.
   const flightSection = (!team && !_wizEditRoundId) ? `
     <div style="margin-top:24px;">
@@ -495,7 +556,7 @@ async function wizAddGuest() {
   else if (!_wizEditRoundId) _wizMountFlights();
 }
 function _wizAfterPlayers() {
-  if (_wizEditRoundId && _wizIsTeamGame()) { _wizRenderEditTeams(); return; }
+  if (_wizEditRoundId && _wizIsTeamGame()) { _wizRenderEditTeams(); _wizRenderPerTeamDrives(_wizState.teams); return; }
   _wizRenderChips();
   if (_wizIsTeamGame()) _wizMountTeams();               // scramble opprett (én flight + lag)
   else if (!_wizEditRoundId) _wizMountFlights();        // individuelt opprett: multi-flight
@@ -655,6 +716,7 @@ function _wizTeamsChanged(teams, assign) {
   _wizState.teamAssign = { ...assign };
   _wizState.numTeams = TeamBuilder._numTeams;
   _wizRenderFairness(teams);
+  _wizRenderPerTeamDrives(teams);
 }
 // Tildelte slag for et lag = lag-HCP fordelt over 18 hull etter SI, filtrert
 // på aktive hull (kanonisk per CLAUDE.md). _activeStrokes bor i scoring.js.
@@ -891,6 +953,7 @@ async function openEditGame(roundId) {
       players: players.map(p => ({ id: p.id, handicap: p.handicap, _fpId: p._fpId })),
       addons: addons.map(a => ({ type: a.type, config: { ...a.config } })),
       teams: teams.map(t => ({ _teamId: t._teamId, team_handicap: t.team_handicap })),
+      mainConfig: { ...(main?.config || {}) },
     },
   };
   const scr = document.getElementById('newGameScreen');
@@ -951,6 +1014,10 @@ async function wizardSave() {
       const oa = origAddon[na.type];
       if (!oa) await db.from('games').insert({ round_id: rid, game_type: na.type, is_main: false, config: na.config || {} });
       else if (JSON.stringify(oa.config) !== JSON.stringify(na.config)) await db.from('games').update({ config: na.config || {} }).eq('round_id', rid).eq('game_type', na.type).eq('is_main', false);
+    }
+    // Hovedspillets config (f.eks. scramble tellende utslag/straffemodus/per-lag-kvote).
+    if (JSON.stringify(orig.mainConfig || {}) !== JSON.stringify(_wizState.config || {})) {
+      await db.from('games').update({ config: _wizState.config || {} }).eq('round_id', rid).eq('is_main', true);
     }
   } catch (e) {
     if (btn) { btn.disabled = false; btn.textContent = 'Lagre endringer'; }

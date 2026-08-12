@@ -614,9 +614,19 @@ function scrambleGame(round) {
 // Kvote/straff (§11.3). Fullt beregnbart fra drive_used-hendelser. DORMANT i
 // increment 1: config.countingDrives er av → returnerer null (ingen straff)
 // til tracker-UI-et i increment 2 begynner å logge utslag.
+// Minstekvote for et lag: global standard, eller lag-spesifikk override når
+// «ulik kvote per lag» er på (config.teamMinDrives keyet på lagnavn).
+function scrambleMinDrives(config, team) {
+  const per = (config && config.teamMinDrives) || {};
+  if (config && config.perTeamDrives && team && team.name != null && per[team.name] != null) {
+    return Math.max(1, parseInt(per[team.name]) || 1);
+  }
+  return (config && config.minDrivesPerPlayer) || 1;
+}
+
 function _scrambleQuota(config, team, events, thru, totalHoles) {
   if (!config || !config.countingDrives) return null;
-  const min = config.minDrivesPerPlayer || 1;
+  const min = scrambleMinDrives(config, team);
   const mode = config.penaltyMode || 'stroke';         // 'warn' | 'stroke' | 'out'
   const used = driveCountsByPlayer(events, { teamId: team.id });
   const byPlayer = {};
@@ -676,11 +686,26 @@ const ScrambleGame = {
     </div>`;
   },
 
-  // ctx = { flights, teams } — advarer om rare kombinasjoner (§2).
+  // ctx = { teams, config, totalHoles } — advarer om rare kombinasjoner (§2).
   validate(ctx) {
     const teams = (ctx.teams || []).filter(t => (t.member_ids || []).length);
     if (teams.length < 1) return { ok: false, warning: 'Scramble krever minst ett lag med spillere.' };
     if (teams.length === 1) return { ok: false, warning: 'Scramble trenger minst to lag for en kamp.' };
+    // Tellende utslag: minstekvoten (min × antall spillere) må få plass innenfor
+    // antall hull som spilles — ellers er den umulig å oppfylle. Tar hensyn til
+    // 9-hulls runder (totalHoles) og lag-spesifikke kvoter.
+    const cfg = ctx.config || {};
+    if (cfg.countingDrives) {
+      const holes = ctx.totalHoles || 18;
+      for (const t of teams) {
+        const size = (t.member_ids || []).length;
+        const min = scrambleMinDrives(cfg, t);
+        if (size > 0 && min * size > holes) {
+          const maxOk = Math.floor(holes / size);
+          return { ok: false, warning: `${t.name || 'Laget'}: ${min} tellende utslag × ${size} spillere = ${min * size}, men runden har bare ${holes} hull. Sett minstekvoten til maks ${maxOk} for dette laget.` };
+        }
+      }
+    }
     return { ok: true };
   },
 
