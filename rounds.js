@@ -307,9 +307,6 @@ function wizSetDrives(val) {
   _wizState.config.minDrivesPerPlayer = n > 0 ? n : 1;
   // Ingen re-render: kontrollen bor i steg 3 (ville re-mountet TeamBuilder).
 }
-function wizSetMaxDrives(val) {
-  _wizState.config.maxDrivesPerPlayer = Math.max(0, Math.min(18, parseInt(val) || 0));
-}
 
 // ── Steg 2: Bane & hull (lett read-only plukker) ──────────────────────────
 async function _wizLoadCourses() {
@@ -432,16 +429,12 @@ function _wizStepPlayers() {
         <input type="number" min="0" max="9" value="${_wizState.config?.countingDrives ? (_wizState.config.minDrivesPerPlayer || 1) : 0}" onchange="wizSetDrives(this.value)" style="width:56px; padding:6px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.35); color:var(--cream); font-size:13px; text-align:center;">
       </label>
       <label style="display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:13px; color:var(--cream); margin-top:10px;">
-        <span>Maks utslag / spiller <span style="color:var(--cream-dim); font-size:11px;">(0 = ingen grense)</span></span>
-        <input type="number" min="0" max="18" value="${_wizState.config?.maxDrivesPerPlayer || 0}" onchange="wizSetMaxDrives(this.value)" style="width:56px; padding:6px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.35); color:var(--cream); font-size:13px; text-align:center;">
-      </label>
-      <label style="display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:13px; color:var(--cream); margin-top:10px;">
-        <span>Ved brudd på kvoten</span>
+        <span>Ved brudd på minstekvoten</span>
         <select onchange="wizSetConfig('penaltyMode', this.value)" style="padding:6px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.35); color:var(--cream); font-size:13px;">
           ${['warn','Kun varsling','stroke','Straffeslag','out','Ute av premie'].reduce((a,_,i,arr)=>{ if(i%2)return a; const v=arr[i],l=arr[i+1]; const sel=(_wizState.config?.penaltyMode||'stroke')===v?'selected':''; return a+`<option value="${v}" ${sel}>${l}</option>`; },'')}
         </select>
       </label>
-      <div style="font-size:11px; color:var(--cream-dim); margin-top:8px; line-height:1.5;">Minimum = hvor mange ganger hver spillers utslag minst må brukes; maks setter et tak. «Straffeslag» = 1 slag per manglende/overskytende utslag, «Ute av premie» = laget diskes. Trackeren viser kvoten live når dere registrerer score.</div>
+      <div style="font-size:11px; color:var(--cream-dim); margin-top:8px; line-height:1.5;">Minimum = hvor mange ganger hver spillers utslag minst må brukes — det er selve utfordringen. «Straffeslag» = 1 slag per manglende utslag, «Ute av premie» = laget diskes. Trackeren viser kvoten live når dere registrerer score.</div>
     </div>` : '';
   // Individuelt (opprett): fordel spillere på flighter (maks 4/flight). §2.5/§2.7.
   const flightSection = (!team && !_wizEditRoundId) ? `
