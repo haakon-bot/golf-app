@@ -617,19 +617,26 @@ function scrambleGame(round) {
 function _scrambleQuota(config, team, events, thru, totalHoles) {
   if (!config || !config.countingDrives) return null;
   const min = config.minDrivesPerPlayer || 1;
+  const max = config.maxDrivesPerPlayer || 0;          // 0 = ingen grense
+  const mode = config.penaltyMode || 'stroke';         // 'warn' | 'stroke' | 'out'
   const used = driveCountsByPlayer(events, { teamId: team.id });
   const byPlayer = {};
-  let remainingSum = 0;
+  let remainingSum = 0, overSum = 0;
   (team.member_ids || []).forEach(pid => {
     const u = used[pid] || 0;
     const rem = Math.max(0, min - u);
-    byPlayer[pid] = { used: u, min, remaining: rem };
+    const over = max > 0 ? Math.max(0, u - max) : 0;    // utslag over taket
+    byPlayer[pid] = { used: u, min, max, remaining: rem, over };
     remainingSum += rem;
+    overSum += over;
   });
   const holesLeft = Math.max(0, totalHoles - thru);
-  // §11.3.2: 1 straffeslag per utslag som ikke lenger kan nås innen kvoten.
-  const penalty = Math.max(0, remainingSum - holesLeft);
-  return { min, byPlayer, remainingSum, holesLeft, impossible: penalty > 0, penalty };
+  // §11.3.2: manglende utslag som ikke lenger kan nås innen kvoten, + utslag over tak.
+  const minImpossible = Math.max(0, remainingSum - holesLeft);
+  const violations = minImpossible + overSum;
+  const penalty = mode === 'stroke' ? violations : 0;   // 1 slag per brudd
+  const out = mode === 'out' && violations > 0;         // ute av premie
+  return { min, max, mode, byPlayer, remainingSum, overSum, holesLeft, minImpossible, impossible: minImpossible > 0, violations, penalty, out };
 }
 
 const ScrambleGame = {
@@ -649,7 +656,7 @@ const ScrambleGame = {
   // er nøyaktig det compute leser — ingen oversettelse. «Tellende utslag»
   // uttrykkes i UI som ett tall (0 = av) som mapper på countingDrives+min.
   defaultConfig() {
-    return { scoring: 'netto', countingDrives: false, minDrivesPerPlayer: 1, fractionMode: 'whs' };
+    return { scoring: 'netto', countingDrives: false, minDrivesPerPlayer: 1, maxDrivesPerPlayer: 0, penaltyMode: 'stroke', fractionMode: 'whs' };
   },
 
   // Konfig-kontroller (scoring + tellende utslag). Lag-byggeren mountes separat
@@ -666,7 +673,7 @@ const ScrambleGame = {
       </label>
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--cream-dim);cursor:pointer;">
         <input type="checkbox" id="scrambleCountDrives" ${config.countingDrives ? 'checked' : ''} style="width:16px;height:16px;">
-        <span>Tellende utslag (utslags-tracker kommer)</span>
+        <span>Tellende utslag</span>
         <input type="number" id="scrambleMinDrives" value="${config.minDrivesPerPlayer || 1}" min="1" max="6" style="width:52px;padding:4px 6px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.3);color:var(--cream);font-size:13px;text-align:center;">
         <span>min/spiller</span>
       </label>
@@ -710,10 +717,11 @@ const ScrambleGame = {
       });
       const quota = _scrambleQuota(config, team, ctx.events, thru, totalHoles);
       const penalty = quota ? quota.penalty : 0;
-      return { team, teamHcp, holeResults, totalGross, totalNet: totalNet + penalty, totalSf, totalPar, thru, quota, penalty };
+      return { team, teamHcp, holeResults, totalGross, totalNet: totalNet + penalty, totalSf, totalPar, thru, quota, penalty, out: quota ? quota.out : false };
     });
     const val = r => scoring === 'stableford' ? r.totalSf : scoring === 'slag' ? r.totalGross : r.totalNet;
     results.sort((a, b) => {
+      if (a.out !== b.out) return a.out ? 1 : -1;   // ute av premie sorteres sist
       if (!a.thru && !b.thru) return 0;
       if (!a.thru) return 1;
       if (!b.thru) return -1;
@@ -734,7 +742,8 @@ const ScrambleGame = {
       const main = scoring === 'stableford' ? `${r.totalSf}p`
         : scoring === 'slag' ? `${r.totalGross || '–'}`
         : (vsPar == null ? '–' : vsPar === 0 ? 'E' : vsPar > 0 ? `+${vsPar}` : `${vsPar}`);
-      const quotaLine = r.quota ? `<div style="font-size:9px;color:${r.quota.impossible ? '#f09595' : 'var(--cream-dim)'};">${r.penalty ? `+${r.penalty} straff` : 'kvote ok'}</div>` : '';
+      const q = r.quota;
+      const quotaLine = q ? `<div style="font-size:9px;color:${r.out || q.impossible || q.overSum ? '#f09595' : 'var(--cream-dim)'};">${r.out ? '⚠ ute av premie' : r.penalty ? `+${r.penalty} straff` : q.violations ? '⚠ kvotebrudd' : 'kvote ok'}</div>` : '';
       return `<div style="flex-shrink:0;text-align:center;padding:7px 12px;border-radius:8px;border:1px solid ${lead ? 'rgba(201,168,76,0.4)' : 'rgba(255,255,255,0.07)'};background:${lead ? 'rgba(201,168,76,0.15)' : 'rgba(0,0,0,0.2)'};">
         <div style="font-size:10px;color:var(--cream-dim);">${r.team.name} · HCP ${r.teamHcp ?? '–'}</div>
         <div style="font-family:'Playfair Display',serif;font-size:18px;color:${lead ? 'var(--gold)' : 'var(--cream)'};">${main}</div>
@@ -773,7 +782,7 @@ const ScrambleGame = {
     const totals = data.teams.map((r, i) => `<div style="flex:1;min-width:90px;text-align:center;padding:10px;background:${i === 0 && r.thru > 0 ? 'rgba(201,168,76,0.15)' : 'rgba(0,0,0,0.2)'};border-radius:8px;border:1px solid ${i === 0 && r.thru > 0 ? 'rgba(201,168,76,0.3)' : 'rgba(255,255,255,0.07)'};">
       <div style="font-size:11px;color:var(--cream-dim);">${r.team.name} · HCP ${r.teamHcp ?? '–'}</div>
       <div style="font-family:'Playfair Display',serif;font-size:22px;color:${i === 0 && r.thru > 0 ? 'var(--gold)' : 'var(--cream)'};">${val(r)}</div>
-      <div style="font-size:11px;color:var(--cream-dim);">${r.totalGross || '–'} slag${r.penalty ? ` · +${r.penalty} straff` : ''}</div>
+      <div style="font-size:11px;color:var(--cream-dim);">${r.totalGross || '–'} slag${r.penalty ? ` · +${r.penalty} straff` : ''}${r.out ? ' · <span style="color:#e8a070;">⚠ ute av premie</span>' : ''}</div>
     </div>`).join('');
     return `<div style="background:rgba(201,168,76,0.06);border:1px solid rgba(201,168,76,0.25);border-radius:12px;padding:16px;">
       <div style="font-size:11px;color:var(--gold);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:14px;">⛳ Scramble · ${scoreLabel}</div>

@@ -293,10 +293,11 @@ function _driveBlock(team, canEdit) {
   const cfg = _scrambleGameRow?.config || {};
   if (!cfg.countingDrives) return '';
   const gid = _scrambleGameRow.id;
-  const min = cfg.minDrivesPerPlayer || 1;
   const latest = latestDriveByHole(roundEvents, { gameId: gid, teamId: team.id });
   const cur = latest[currentHole];
-  const counts = driveCountsByPlayer(roundEvents, { gameId: gid, teamId: team.id });
+  // Delt kvotelogikk med motoren (§11.3): min/maks/straffemodus i ett.
+  const q = _scrambleQuota(cfg, team, roundEvents, Object.keys(latest).length, roundHoles.length || 18);
+  const min = q.min, max = q.max;
   const btns = (team.member_ids || []).map(pid => {
     const nm = _memberFirstName(pid);
     const on = cur === pid;
@@ -305,19 +306,24 @@ function _driveBlock(team, canEdit) {
       ? `<button onclick="logDrive('${team.id}','${pid}')" style="${base}cursor:pointer;-webkit-tap-highlight-color:transparent;">${on ? '✓ ' : ''}${nm}</button>`
       : `<span style="${base}">${on ? '✓ ' : ''}${nm}</span>`;
   }).join('');
+  const cap = max > 0 ? `${min}–${max}` : `${min}+`;
   const quota = (team.member_ids || []).map(pid => {
-    const used = counts[pid] || 0; const ok = used >= min;
-    return `<span style="color:${ok ? 'var(--green-light)' : '#e8a070'};">${_memberFirstName(pid)} ${used}/${min}${ok ? ' ✓' : ' ⚠'}</span>`;
+    const bp = q.byPlayer[pid] || { used: 0, remaining: min, over: 0 };
+    const overMax = bp.over > 0;
+    const okMin = bp.remaining === 0;
+    const color = (overMax || !okMin) ? '#e8a070' : 'var(--green-light)';
+    const mark = overMax ? ' ⛔' : okMin ? ' ✓' : ' ⚠';
+    return `<span style="color:${color};">${_memberFirstName(pid)} ${bp.used}/${cap}${mark}</span>`;
   }).join(' · ');
-  const holesLeft = Math.max(0, (roundHoles.length || 18) - Object.keys(latest).length);
-  const remainingSum = (team.member_ids || []).reduce((s, pid) => s + Math.max(0, min - (counts[pid] || 0)), 0);
+  const modeLabel = q.mode === 'out' ? 'laget havner ute av premie' : q.mode === 'warn' ? 'kun varsling' : 'straffeslag legges til laget';
   let warn = '';
-  if (remainingSum > holesLeft) warn = `<div style="font-size:11px;color:#e8a070;margin-top:4px;">⚠ Kvoten kan ikke nås — ${remainingSum - holesLeft} straffeslag legges til laget.</div>`;
-  else if (holesLeft > 0 && remainingSum === holesLeft) warn = `<div style="font-size:11px;color:var(--gold-light);margin-top:4px;">⚠ Alle ${holesLeft} gjenværende hull må brukes til å nå kvoten.</div>`;
+  if (q.overSum > 0) warn += `<div style="font-size:11px;color:#e8a070;margin-top:4px;">⛔ ${q.overSum} utslag over maks (${max}/spiller) — ${modeLabel}.</div>`;
+  if (q.minImpossible > 0) warn += `<div style="font-size:11px;color:#e8a070;margin-top:4px;">⚠ Minstekvoten kan ikke nås — ${q.minImpossible} manglende utslag, ${modeLabel}.</div>`;
+  else if (q.holesLeft > 0 && q.remainingSum === q.holesLeft) warn += `<div style="font-size:11px;color:var(--gold-light);margin-top:4px;">⚠ Alle ${q.holesLeft} gjenværende hull må brukes for å nå minstekvoten.</div>`;
   return `<div style="margin-top:10px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.06);">
     <div style="font-size:10px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">Hvem sitt utslag? · hull ${currentHole}</div>
     <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px;">${btns}</div>
-    <div style="font-size:11px; color:var(--cream-dim);">Kvote (${min}/spiller): ${quota}</div>${warn}
+    <div style="font-size:11px; color:var(--cream-dim);">Kvote (${cap}/spiller): ${quota}</div>${warn}
   </div>`;
 }
 async function logDrive(teamId, playerId) {
