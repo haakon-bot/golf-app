@@ -149,6 +149,7 @@ function renderScoringHole() {
   renderMiniLeaderboard();
   renderScrambleTracker();
   renderSkinsTracker();
+  renderGameTrackers();
 }
 function renderHoleStats() {
   const allFP = roundFlights.flatMap(f => f.flight_players || []);
@@ -387,7 +388,7 @@ function renderTeamMiniLeaderboard() {
     </div>`;
   }).join('');
 }
-// _playingHcp og calcStableford bor nå i games.js (spillmotoren, delte helpers).
+// _playingHcp og calcStableford bor nå i games-core.js (spillmotoren, delte helpers).
 // Counts extra strokes from fullHCP that land on the given active holes (full 18-hole distribution).
 function _activeStrokes(fullHCP, activeHoles) {
   return (activeHoles || []).reduce((sum, hole) => {
@@ -499,7 +500,7 @@ function renderMiniLeaderboard() {
     </div>
   `).join('');
 }
-// toggleSkinsAmount + skins-beregning/-rendring bor nå i games.js (skins-modulen).
+// toggleSkinsAmount + skins-beregning/-rendring bor nå i game-skins.js (skins-modulen).
 // Tynn wrapper: bygg ctx og la motoren rendre tracker-stripa.
 function renderSkinsTracker() {
   const strip = document.getElementById('scSkinsStrip');
@@ -509,6 +510,21 @@ function renderSkinsTracker() {
     round: currentRound, holes: roundHoles, scores: roundScores,
     flights: roundFlights, fullCoursePar: _fullCoursePar,
   });
+  strip.style.display = html ? 'block' : 'none';
+  el.innerHTML = html || '';
+}
+// Generisk tracker for øvrige spill (quota o.l.). Skins og scramble har egne
+// stripe-mekanismer; alt annet med trackerUI rendres her.
+const _HANDLED_TRACKERS = ['skins', 'scramble', 'stableford'];
+function renderGameTrackers() {
+  const strip = document.getElementById('scGamesStrip');
+  const el = document.getElementById('scGames');
+  if (!strip || !el) return;
+  const ctx = { round: currentRound, holes: roundHoles, scores: roundScores, flights: roundFlights, fullCoursePar: _fullCoursePar };
+  const html = (currentRound?.games || [])
+    .filter(g => !_HANDLED_TRACKERS.includes(g.game_type))
+    .map(g => { const m = getGame(g.game_type); return (m && m.trackerUI) ? m.trackerUI(ctx) : ''; })
+    .filter(Boolean).join('');
   strip.style.display = html ? 'block' : 'none';
   el.innerHTML = html || '';
 }
@@ -820,6 +836,18 @@ async function showRoundSummary(roundId) {
     });
     skinsSummaryEl.style.display = html ? 'block' : 'none';
     skinsSummaryEl.innerHTML = html || '';
+  }
+  // Øvrige spill (quota, nassau, …): generisk summary-rendering via motoren.
+  const sideEl = document.getElementById('sideGamesSummary');
+  if (sideEl) {
+    const sideCtx = { round, holes: filteredHoles, scores: sc, teamScores, teams: (scrambleRow?.game_teams) || [], events: summaryEvents || [], flights: round.flights || [], fullCoursePar };
+    const handled = ['skins', 'scramble', 'stableford'];
+    const html = (round.games || [])
+      .filter(g => !handled.includes(g.game_type))
+      .map(g => { const m = getGame(g.game_type); return (m && m.summaryUI) ? m.summaryUI(sideCtx) : ''; })
+      .filter(Boolean).join('<div style="height:12px;"></div>');
+    sideEl.style.display = html ? 'block' : 'none';
+    sideEl.innerHTML = html || '';
   }
   // Oppgjøret (§8): nett ut penger på tvers av alle spill med settle().
   const settlementEl = document.getElementById('settlementSummary');

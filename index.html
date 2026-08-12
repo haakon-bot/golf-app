@@ -109,7 +109,7 @@
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <div class="topbar">
-    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.167</span></div>
+    <div class="topbar-logo">⛳ The Fantastic <span>FORE!</span> <span style="font-size:10px; color:var(--cream-dim); font-family:'DM Sans',sans-serif; font-weight:400; margin-left:6px; letter-spacing:0;">v1.169</span></div>
     <div style="display:flex; align-items:center; gap:4px;">
       <button id="topbarRefreshBtn" onclick="forceUpdate()" title="Oppdater app" style="background:none;border:none;color:var(--cream-dim);cursor:pointer;padding:8px;font-size:22px;opacity:0.45;-webkit-tap-highlight-color:transparent;line-height:1;"><i class="ti ti-refresh"></i></button>
       <button onclick="openDrawer()" title="Meny" style="background:none;border:none;color:var(--cream-dim);cursor:pointer;padding:8px;font-size:24px;-webkit-tap-highlight-color:transparent;line-height:1;"><i class="ti ti-menu-2"></i></button>
@@ -289,6 +289,10 @@
       <div style="font-size:10px;color:var(--gold);letter-spacing:2px;text-transform:uppercase;margin-bottom:6px;">💰 Skins</div>
       <div id="scSkins" style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;"></div>
     </div>
+    <!-- Generisk spill-tracker for øvrige spill (quota o.l.) -->
+    <div id="scGamesStrip" style="padding:0 16px 8px;display:none;">
+      <div id="scGames" style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;"></div>
+    </div>
     <!-- Neste hull-knapp stor nederst + diskret avslutt -->
     <div style="padding:12px 16px 8px;">
       <button id="scNextHoleBottom" onclick="changeHole(1)" style="width:100%; padding:18px; background:var(--gold); border:none; color:var(--green-deep); border-radius:10px; font-size:17px; font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif; -webkit-tap-highlight-color:transparent; touch-action:manipulation;">Neste hull →</button>
@@ -345,6 +349,7 @@
       <div id="summaryContent"></div>
       <div id="scrambleSummary" style="display:none;margin-top:16px;"></div>
       <div id="skinsSummary" style="display:none;margin-top:16px;"></div>
+      <div id="sideGamesSummary" style="display:none;margin-top:16px;"></div>
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="closeModal('modalRoundSummary')">Lukk</button>
       </div>
@@ -525,7 +530,12 @@
     </button>
   </div>
 </div>
-<script src="games.js" defer></script>
+<script src="games-core.js" defer></script>
+<script src="game-stableford.js" defer></script>
+<script src="game-skins.js" defer></script>
+<script src="game-scramble.js" defer></script>
+<script src="game-quota.js" defer></script>
+<script src="game-nassau.js" defer></script>
 <script src="app.js" defer></script>
 <script src="stats.js" defer></script>
 <script src="courses.js" defer></script>

@@ -281,17 +281,24 @@ function _wizStepGame() {
 // Variantvalg per hovedspill (kun scramble har noen nå). Skriver rett i
 // _wizState.config uten re-render (bevarer fokus i input).
 function _wizVariantUI(type) {
-  if (type !== 'scramble') return '';
   const c = _wizState.config || {};
-  const selStyle = 'padding:6px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.35);color:var(--cream);font-size:13px;';
-  const opt = (v, l) => `<option value="${v}" ${c.scoring === v ? 'selected' : ''}>${l}</option>`;
-  // Kun scoring her. «Tellende utslag» settes i steg 3 — det avhenger av lag/
-  // flighter som ikke er satt opp ennå.
-  return `<div onclick="event.stopPropagation();" style="margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.08);">
-    <label style="display:flex; justify-content:space-between; align-items:center; font-size:13px; color:var(--cream);">Scoring
-      <select onchange="wizSetConfig('scoring', this.value)" style="${selStyle}">${opt('netto', 'Netto (mot par)')}${opt('slag', 'Brutto slag')}${opt('stableford', 'Stableford')}</select>
-    </label>
-  </div>`;
+  const numStyle = 'width:64px;padding:6px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.35);color:var(--cream);font-size:13px;text-align:center;';
+  const wrap = inner => `<div onclick="event.stopPropagation();" style="margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.08); display:flex; flex-direction:column; gap:8px;">${inner}</div>`;
+  if (type === 'scramble') {
+    const selStyle = 'padding:6px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.35);color:var(--cream);font-size:13px;';
+    const opt = (v, l) => `<option value="${v}" ${c.scoring === v ? 'selected' : ''}>${l}</option>`;
+    // Kun scoring her. «Tellende utslag» settes i steg 3 — det avhenger av lag/flighter.
+    return wrap(`<label style="display:flex; justify-content:space-between; align-items:center; font-size:13px; color:var(--cream);">Scoring
+      <select onchange="wizSetConfig('scoring', this.value)" style="${selStyle}">${opt('netto', 'Netto (mot par)')}${opt('slag', 'Brutto slag')}${opt('stableford', 'Stableford')}</select></label>`);
+  }
+  if (type === 'quota') {
+    return wrap(`
+      <label style="display:flex; justify-content:space-between; align-items:center; font-size:13px; color:var(--cream);"><span>Mål-basis <span style="color:var(--cream-dim);font-size:11px;">(standard 36)</span></span>
+        <input type="number" min="18" max="54" value="${c.base ?? 36}" onchange="wizSetConfig('base', parseInt(this.value)||36)" style="${numStyle}"></label>
+      <label style="display:flex; justify-content:space-between; align-items:center; font-size:13px; color:var(--cream);"><span>Innsats <span style="color:var(--cream-dim);font-size:11px;">(kr, 0 = av)</span></span>
+        <input type="number" min="0" max="1000" value="${c.amount ?? 0}" onchange="wizSetConfig('amount', parseInt(this.value)||0)" style="${numStyle}"></label>`);
+  }
+  return '';
 }
 function wizSelectGame(type) {
   _wizState.mainGame = type;
@@ -815,6 +822,10 @@ function _wizAddonSettingUI(type, config) {
   if (type === 'skins') {
     return `<label style="display:flex; align-items:center; justify-content:space-between; font-size:13px; color:var(--cream);">Kr per skin
       <input type="number" min="1" max="500" value="${config.amount ?? 50}" onchange="wizSetAddonConfig('skins','amount', parseInt(this.value)||0)" style="${inp}"></label>`;
+  }
+  if (type === 'nassau') {
+    return `<label style="display:flex; align-items:center; justify-content:space-between; font-size:13px; color:var(--cream);">Innsats per segment (kr)
+      <input type="number" min="1" max="1000" value="${config.amount ?? 50}" onchange="wizSetAddonConfig('nassau','amount', parseInt(this.value)||0)" style="${inp}"></label>`;
   }
   return '';
 }

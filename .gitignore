@@ -18,7 +18,12 @@
 !profile.js
 !scoring.js
 !stats.js
-!games.js
+!games-core.js
+!game-stableford.js
+!game-skins.js
+!game-scramble.js
+!game-quota.js
+!game-nassau.js
 # Prosjektdokumentasjon (fasit for retning/arkitektur — skal ligge i repoet)
 !SPILLAPP-SPEC.md
 !CLAUDE.md
