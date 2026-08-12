@@ -265,6 +265,29 @@ const SkinsGame = {
     });
     return sections.join('');
   },
+
+  // Oppgjøret (§8): «lik pott» — per flight deles totalpotten (alle skins × kr)
+  // likt av spillerne; hver spiller får vunnet − andel. Netto per spiller.
+  settle(ctx) {
+    const data = SkinsGame.compute(ctx);
+    if (!data || !data.flights.length) return null;
+    const amount = data.amount;
+    const perPlayer = {};
+    let any = false;
+    for (const { flight, skinsByPlayer } of data.flights) {
+      const fps = flight.flight_players || [];
+      if (fps.length < 2) continue;
+      const totalSkins = fps.reduce((s, fp) => s + (skinsByPlayer[fp.player_id] || 0), 0);
+      if (totalSkins === 0) continue;         // ingen skins avgjort → ingen penger
+      any = true;
+      const ante = (totalSkins * amount) / fps.length;
+      for (const fp of fps) {
+        const won = (skinsByPlayer[fp.player_id] || 0) * amount;
+        perPlayer[fp.player_id] = (perPlayer[fp.player_id] || 0) + (won - ante);
+      }
+    }
+    return any ? { type: 'skins', label: 'Skins · lik pott', amount, perPlayer } : null;
+  },
 };
 registerGame(SkinsGame);
 
@@ -614,6 +637,32 @@ function scrambleGame(round) {
 // Kvote/straff (§11.3). Fullt beregnbart fra drive_used-hendelser. DORMANT i
 // increment 1: config.countingDrives er av → returnerer null (ingen straff)
 // til tracker-UI-et i increment 2 begynner å logge utslag.
+// ── Oppgjøret (§8) ────────────────────────────────────────────────────────
+// Nett ut netto-saldoer til færrest mulig betalinger (grådig min-cash-flow).
+// perPlayer: { playerId: nettokr } (positiv = skal ha, negativ = skylder).
+// Runder til hele kroner og balanserer avrundingsrest mot største bidrag så
+// summen alltid blir 0. Returnerer [{ from, to, amount }].
+function netSettlements(perPlayer) {
+  const rounded = Object.keys(perPlayer || {}).map(id => ({ id, amt: Math.round(perPlayer[id] || 0) }));
+  const residual = rounded.reduce((s, r) => s + r.amt, 0);
+  if (residual !== 0 && rounded.length) {
+    const k = rounded.reduce((a, b) => Math.abs(b.amt) > Math.abs(a.amt) ? b : a);
+    k.amt -= residual;                       // hold totalsummen på 0
+  }
+  const creditors = rounded.filter(r => r.amt > 0).sort((a, b) => b.amt - a.amt);
+  const debtors = rounded.filter(r => r.amt < 0).map(r => ({ id: r.id, amt: -r.amt })).sort((a, b) => b.amt - a.amt);
+  const tx = [];
+  let i = 0, j = 0;
+  while (i < debtors.length && j < creditors.length) {
+    const pay = Math.min(debtors[i].amt, creditors[j].amt);
+    if (pay > 0) tx.push({ from: debtors[i].id, to: creditors[j].id, amount: pay });
+    debtors[i].amt -= pay; creditors[j].amt -= pay;
+    if (debtors[i].amt === 0) i++;
+    if (creditors[j].amt === 0) j++;
+  }
+  return tx;
+}
+
 // Minstekvote for et lag: global standard, eller lag-spesifikk override når
 // «ulik kvote per lag» er på (config.teamMinDrives keyet på lagnavn).
 function scrambleMinDrives(config, team) {

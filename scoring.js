@@ -821,6 +821,72 @@ async function showRoundSummary(roundId) {
     skinsSummaryEl.style.display = html ? 'block' : 'none';
     skinsSummaryEl.innerHTML = html || '';
   }
+  // Oppgjøret (§8): nett ut penger på tvers av alle spill med settle().
+  const settlementEl = document.getElementById('settlementSummary');
+  if (settlementEl) {
+    const html = _renderSettlement(round, sc, filteredHoles, fullCoursePar, allFP);
+    settlementEl.style.display = html ? 'block' : 'none';
+    settlementEl.innerHTML = html || '';
+  }
+}
+
+// ── Oppgjøret (§8) ──
+// Samler bidrag fra alle spill med settle(), netter ut til færrest betalinger,
+// og bygger en delbar tekst. Viser modellen per spill («Skins · lik pott»).
+let _settlementShareText = '';
+function _renderSettlement(round, sc, holes, fullCoursePar, allFP) {
+  const nameById = {};
+  allFP.forEach(fp => { nameById[fp.player_id] = fp.profiles?.display_name?.split(' ')[0] || '?'; });
+  const perGame = [];
+  const total = {};
+  for (const g of (round.games || [])) {
+    const mod = getGame(g.game_type);
+    if (!mod || typeof mod.settle !== 'function') continue;
+    const ctx = { round, holes, scores: sc, flights: round.flights || [], fullCoursePar };
+    const res = mod.settle(ctx);
+    if (!res || !res.perPlayer) continue;
+    perGame.push(res);
+    for (const [pid, amt] of Object.entries(res.perPlayer)) total[pid] = (total[pid] || 0) + amt;
+  }
+  if (!perGame.length) return '';
+  const tx = netSettlements(total);
+  const fmt = a => `${a > 0 ? '+' : ''}${a}`;
+  const gameRows = perGame.map(res => {
+    const cells = Object.entries(res.perPlayer)
+      .map(([pid, amt]) => ({ name: nameById[pid] || '?', amt: Math.round(amt) }))
+      .sort((a, b) => b.amt - a.amt)
+      .map(e => `<span style="color:${e.amt > 0 ? 'var(--green-light)' : e.amt < 0 ? '#e8a070' : 'var(--cream-dim)'};">${e.name} ${fmt(e.amt)}</span>`).join(' · ');
+    return `<div style="font-size:12px;color:var(--cream-dim);margin-bottom:6px;"><span style="color:var(--gold-dim);">${res.label}:</span> ${cells}</div>`;
+  }).join('');
+  const payRows = tx.length
+    ? tx.map(t => `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:rgba(0,0,0,0.2);border:1px solid rgba(255,255,255,0.07);border-radius:10px;margin-bottom:6px;">
+        <div style="font-size:14px;color:var(--cream);">${nameById[t.from] || '?'} <span style="color:var(--cream-dim);">→</span> ${nameById[t.to] || '?'}</div>
+        <div style="font-family:'Playfair Display',serif;font-size:17px;color:var(--gold-light);">${t.amount} kr</div>
+      </div>`).join('')
+    : `<div style="font-size:13px;color:var(--cream-dim);">Ingen penger å gjøre opp — alt går i null.</div>`;
+  const lines = [`💰 Oppgjøret · ${(round.courses?.name || '').trim()} ${round.date || ''}`.trim()];
+  perGame.forEach(res => {
+    const parts = Object.entries(res.perPlayer).map(([pid, amt]) => `${nameById[pid] || '?'} ${fmt(Math.round(amt))}`);
+    lines.push(`${res.label}: ${parts.join(', ')}`);
+  });
+  if (tx.length) { lines.push('Betalinger:'); tx.forEach(t => lines.push(`  ${nameById[t.from]} → ${nameById[t.to]}: ${t.amount} kr`)); }
+  else lines.push('Alt går i null.');
+  _settlementShareText = lines.join('\n');
+  return `<div style="background:rgba(201,168,76,0.06);border:1px solid rgba(201,168,76,0.25);border-radius:12px;padding:16px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <div style="font-size:11px;color:var(--gold);text-transform:uppercase;letter-spacing:1.5px;">💰 Oppgjøret</div>
+      <button onclick="shareSettlement()" style="background:none;border:1px solid rgba(201,168,76,0.35);color:var(--gold);border-radius:8px;padding:6px 12px;cursor:pointer;font-size:12px;-webkit-tap-highlight-color:transparent;">Del ↗</button>
+    </div>
+    ${gameRows}
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.08);">${payRows}</div>
+  </div>`;
+}
+async function shareSettlement() {
+  const text = _settlementShareText || '';
+  if (!text) return;
+  try { if (navigator.share) { await navigator.share({ text }); return; } } catch (e) { if (e.name === 'AbortError') return; }
+  try { await navigator.clipboard.writeText(text); alert('Oppgjøret er kopiert — lim inn i gruppechatten.'); }
+  catch (e) { alert(text); }
 }
 // Sammenlagt netto-stableford på tvers av ALLE flighter → én rangering +
 // totalvinner (§2.7 #7, G5). Uavgjort = delt plassering/delt vinner.
