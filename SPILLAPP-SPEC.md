@@ -4,6 +4,32 @@
 
 ---
 
+## STATUS pr. 13. august 2026 (koden er fasit)
+
+Dette dokumentet ble til FØR mye ble bygget. Denne blokken beskriver hva som
+faktisk er bygget og live (v1.169+). Resten av spec'en er dels historikk,
+dels backlog — les den med denne blokken som fasit.
+
+**Bygget & live:**
+- **Spillmotoren (§3):** ferdig, men SPLITTET fra `games.js` til `games-core.js`
+  + `game-*.js` (én fil per spill). Kontrakten tar `ctx`-objekt, ikke løse
+  argumenter, og har fått `defaultConfig()` + `settle(ctx)` (§8).
+- **Spill (§5):** Stableford, Skins, Scramble, Quota, Nassau er registrert og
+  live. Skins er migrert inn (rounds.skins_amount dvalende).
+  IKKE bygget: Wolf (§5.2), Matchplay (§5.6), Mulligans/Gilligans (§5.7),
+  Kølle-lodd (§5.8).
+- **§2-flyten:** 4-stegs wizarden (Velg spill → Bane & hull → Spillere & lag →
+  Krydder) er bygget, inkl. hjemskjerm med «Start et spill» + hamburger (§2 F).
+- **Multi-flight (§2.7):** G1–G4 bygget; G5 (tverr-flight totalvinner + oppgjør)
+  verifisert korrekt for individuelle spill. Se «Avvik» under for scramble (G1b).
+- **Oppgjøret (§8):** bygget (generisk `settle()` + netting).
+- **Statistikk (§9):** individuell stats-side er BYGGET (ikke lenger «kommer
+  snart»). Sesong-leaderboard + head-to-head er fortsatt «kommer snart».
+
+**Kjente avvik doc↔kode er merket inline under med `⚠️ STATUS`.**
+
+---
+
 ## 1. Retning og prinsipper
 
 FORE! blir en **spill- og konkurranseapp** for vennegjengen — à la Golf GameBook, men med gjengens egne spill, statistikk og humor.
@@ -28,9 +54,10 @@ hamburger-menyen. Språket i appen er «spill», ikke «runder».
 - Dominerende CTA: «Start et spill»
 - Under: pågående spill (fortsett med ett tapp) og siste oppgjør
 - Hamburger-meny: baner (adm.), spillere (adm.), historikk,
-  innstillinger — og «Statistikk» + «Leaderboard» som synlige
-  «kommer snart»-punkter (bygges senere, jf. v2: sesong-leaderboard
-  og rival-statistikk)
+  innstillinger — og «Statistikk».
+  ⚠️ STATUS (13. aug): Statistikk-siden ER bygget (egen bunn-nav-fane +
+  hamburger-punkt), ikke lenger «kommer snart». Det som fortsatt står som
+  «kommer snart» er Sesong-leaderboard og Head-to-head (v2).
 
 ### §2.2 Trinnvis oppsett — rekkefølgen er bindende
 Hvert steg produserer det neste steg trenger. Ingen «alt i ett bilde».
@@ -83,8 +110,10 @@ meta-krav) før flere spill implementeres. Egen spilliste-økt.
   flere flighter under samme runde.
 - **Felles resultat på tvers:** hovedspillets leaderboard og
   totalvinner går på tvers av alle flighter (individuell stableford
-  aggregeres; scramble-lag rangeres samlet). **Skins er per-flight**
-  (ingen felles skins-pott på tvers).
+  aggregeres; scramble-lag rangeres samlet). **Skins OG Nassau er
+  per-flight** (besluttet 13. aug 2026): begge spilles alltid innad i én
+  firer, potten lukkes per flight, ingen felles pott på tvers. Andre
+  penge-sidespill vurderes per spill.
 - Tidligere «ett spill = én flight» (låst 6. aug) var et selvpålagt
   gjerde, ikke fundamentet — datamodellen bar alltid multi-flight
   (runde → mange flighter; games/scores på runde-nivå).
@@ -139,6 +168,37 @@ et nytt turneringslag.
 G1b (scramble på tvers) → G2 (runde-spesifikk live) → G3 (del + bli-med/
 claim; `flight_players.claimed_at`) → G4 (gjest-join) → G5 (tverr-flight
 totalvinner/oppgjør, verifiser). Deretter §2 E (utslag) → F (hjemskjerm).
+
+⚠️ STATUS (13. aug): ✅ G1, G2, G3, G4 bygget & live. ✅ G5 verifisert korrekt
+for individuelle spill (sammenlagt-standings på tvers + oppgjør nettet på tvers;
+skins holdt per-flight). ✅ §2 F (hjemskjerm) bygget.
+⏳ §2 E (utslag) DELVIS: drive_used-logging for scramble finnes på scoring-
+skjermen, MEN E i planen var bredere — §11.3-kvote/straff-håndheving og at
+utslags-tasting respekterer bli-med-tilgang for gjester (§2.7 pkt 5). Ikke ferdig.
+🔨 G1b BESLUTTET & DESIGN LÅST (13.–17. aug), ikke bygget ennå. Regel:
+**ETT LAG = ÉN FLIGHT** → flere lag = flere flighter, som spiller mot hverandre
+på tvers (Lag A i Flight 1, Lag B i Flight 2). Aldri to lag i samme flight, aldri
+ett lag splittet, aldri tilbake til single-flight-alle-sammen. Låst design:
+
+1. **Schema (A):** ny kolonne `game_teams.flight_id` (liten migrering). Appen
+   skal VITE sikkert hvilket lag som er i hvilken flight — ikke utlede fra
+   medlemsoverlapp — så deling/gjeste-join på ulike telefoner ruter riktig.
+2. **Wizard-save:** for scramble lager save én flight per lag (flight.name =
+   lagnavn), lagets medlemmer som `flight_players`, `game_teams.member_ids` =
+   samme, og setter `game_teams.flight_id`. Lag-tildelingen ER flight-tildelingen
+   (ingen egen FlightBuilder for scramble).
+3. **Live:** gjenbruk `ScrambleGame.compute(ctx)` i live.js → lag-rader (navn,
+   lag-HCP, netto/par, thru) rangert samlet på tvers. Score-avledet birdie/eagle-
+   feed blir tom for scramble (lag-scores har ingen player_id) — akseptabelt.
+4. **Join/claim (G3/G4):** hver taster KUN for sin egen flight/lag; enhver
+   claimet lag-medlem kan redigere den delte lag-scoren. Ingen som taster for
+   mer enn sin egen flight.
+5. **Bakoverkompat:** gamle single-flight-scramble-runder er urørt (ingen
+   historikk-migrering); kun nye runder får ett-lag-per-flight-strukturen.
+
+Dagens kode tvinger fortsatt scramble til én flight — dette er arbeidet som
+gjenstår. Ny migreringsfil (`game_teams.flight_id`) må `git add`-es manuelt +
+kjøres i Supabase FØR deploy.
 
 **Claim/identitet:** `flight_players.claimed_at` (persistert → gråing på
 tvers via polling). Enhets-lokal identitet (localStorage) så gjest uten
@@ -201,21 +261,30 @@ Delt ball-spill (scramble, foursome, greensome) scorer på `team_id`. **Bonus:**
 
 ### 3.3 Spillmodul-mønsteret
 
-Hvert spill er én JS-modul med samme kontrakt:
+Hvert spill er én JS-modul med samme kontrakt.
+
+⚠️ STATUS (13. aug): den bygde kontrakten avviker fra skissen under — `compute`,
+`trackerUI`, `summaryUI` og `settle` tar ETT `ctx`-objekt (ikke løse argumenter),
+og modulen har fått `defaultConfig()` + `settle(ctx)`. Faktisk kontrakt:
 
 ```js
 {
   type: 'scramble',
-  meta: { navn, beskrivelse, minSpillere, maxSpillere, kreverLag, kreverIndividuellScore },
+  meta: { navn, beskrivelse, minSpillere, maxSpillere, kreverLag,
+          kreverIndividuellScore, roles:['main'|'addon'], status:'ready' },
+  defaultConfig()      // seed for games.config (wizarden bygger videre)
   setupUI(config)      // rendrer oppsettvalgene
-  validate(oppsett)    // varsler rare kombinasjoner
-  compute(scores, events, holes, config)  // → stilling/resultat
-  trackerUI(state)     // stripe på scoring-skjermen
-  summaryUI(state)     // seksjon i rundeoppsummeringen
+  validate(ctx)        // varsler rare kombinasjoner
+  compute(ctx)         // ctx = {round, holes, scores|teamScores, teams|flights, events, fullCoursePar} → stilling
+  trackerUI(ctx)       // stripe på scoring-skjermen
+  summaryUI(ctx)       // seksjon i rundeoppsummeringen
+  settle(ctx)          // valgfri: {type,label,amount?,perPlayer} for oppgjøret (§8), ellers null
 }
 ```
 
-**Skins migreres inn som første spill** (kolonnen `rounds.skins_amount` fases ut). Etter motoren er hvert nytt spill 50–150 linjer.
+**Skins ER migrert inn som første spill** (kolonnen `rounds.skins_amount` er
+dvalende, droppes senere). Modulene ligger i `game-*.js`, ikke `games.js`
+(splittet). Etter motoren er hvert nytt spill 50–150 linjer.
 
 **Rekkefølge (kritisk):** 1) tag `v1.94-hcp`, 2) bygg motor + migrer skins, 3) lag-støtte i scores, 4) spill for spill. Motoren FØR spill nr. 2 — ellers gjentas skins-hardkodingen 15 ganger.
 
@@ -239,6 +308,12 @@ Hvert spill deklarerer krav; appen filtrerer gyldige tillegg automatisk:
 ## 5. Spillene (v1)
 
 Mal per spill: **Oppsett** (valg før start) · **Underveis** (input per hull utover score) · **Beregning** · **Kantene** (9 hull, frafall, uavgjort, brutte regler).
+
+⚠️ STATUS (13. aug) — bygget vs ikke: ✅ 5.1 Scramble, ✅ 5.3 Skins, ✅ 5.4 Nassau,
+✅ 5.5 Quota, samt Stableford (default individuelt hovedspill, ikke egen §-oppføring).
+❌ IKKE bygget: 5.2 Wolf, 5.6 Matchplay, 5.7 Mulligans/Gilligans, 5.8 Kølle-lodd.
+For scramble er §11.3-kvote/straff bygget men avhenger av «tellende utslag» i
+oppsettet; utslags-tracker på scoring-skjermen (drive_used-logging) finnes.
 
 ### 5.1 Scramble / Texas scramble ⭐ (gjennomarbeidet eksempel)
 
@@ -303,11 +378,20 @@ Som i dag: stableford per hull, carryover, kronebeløp. Nytt: også lag-variant;
 
 ## 7. Live leaderboard og feed
 
-Dagens live-side utvides (poller 20 s, fungerer allerede):
+Beskriver det som FAKTISK er bygget (omskrevet 13. aug 2026; den tidligere
+`game_events`-feed-ambisjonen er lagt bort for nå).
 
-- Lag-visning med thru, poeng og status på kvoter/tokens
-- **Hendelses-feed** fra `game_events`: eagles, lodd-trekk, gilligans sendt, mulligans brukt
-- Offentlig #live-lenke som i dag
+- **Individuell tverr-flight-stilling:** aggregerer alle flighters spillere til
+  én felles live-stilling (stableford), thru per spiller.
+- **Score-avledet feed:** «Live feed» regnes ut fra `scores` — birdie/eagle/andre
+  utslagsgivende hull utledes av slag mot par (ikke fra `game_events`).
+- **Offentlig #live-lenke** som før; join-flyt (§2.7 G3/G4) med runde-spesifikk
+  URL. Join-siden poller ~6 s; hoved-live har manuell «Oppdater» + polling.
+
+**Ikke bygget (backlog):** lag-/scramble-visning i live hører til **G1b** (§2.7 —
+ett lag = én flight, vis lagene på tvers). En ekte `game_events`-hendelsesfeed
+(lodd-trekk, gilligans, mulligans) hører til når de event-drevne spillene bygges
+(spillmotor-sporet), ikke som en generell §7-jobb nå.
 
 ## 8. Oppgjøret
 
@@ -360,8 +444,8 @@ slik at oppgjørsskjermen alltid summerer til null.
 
 ## 12. Teknisk huskeliste
 
-- Tag `v1.94-hcp` FØR første sletting
-- Fjernes: Gimmie-import, differensial-logikk (profile.js), `rounds.skins_amount` (etter migrering)
-- Konsolider de 4 stableford-variantene til én funksjon i motoren
-- RLS/grants på nye tabeller (ses i sammenheng med grants-oppryddingen, frist okt 2026)
-- Supabase keep-alive workflow (`.github/workflows/keep-alive.yml`) — ligger klar, må committes
+- ✅ Tag `v1.94-hcp` finnes (gjort før sletting)
+- ✅ Fjernet: Gimmie-import + differensial-logikk (profile.js — bekreftet i fil-kommentar). `rounds.skins_amount` er migrert til games-rad, kolonnen er dvalende (drop gjenstår)
+- ✅ De 4 stableford-variantene er konsolidert til `calcStableford` i games-core.js
+- ✅ Supabase keep-alive workflow (`.github/workflows/keep-alive.yml`) er committet (i deploy.sh git-add-lista)
+- ⏳ Gjenstår: RLS/grants på nye tabeller (grants-oppryddingen, frist okt 2026); faktisk DROP av `rounds.skins_amount`
