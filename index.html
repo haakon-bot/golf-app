@@ -522,12 +522,12 @@
 <!-- MODAL: Ny turnering -->
 <div class="modal-overlay" id="modalCreateTournament" style="display:none;" onclick="closeModalOnOverlay(event,'modalCreateTournament')">
   <div class="modal" onclick="event.stopPropagation()">
-    <h2>Ny turnering</h2>
+    <h2 id="tournamentModalTitle">Ny turnering</h2>
     <div id="createTournamentAlert"></div>
     <div class="form-group"><label>Navn *</label><input type="text" id="newTournamentName" placeholder="f.eks. Golftur Spania sept 2026"></div>
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeModal('modalCreateTournament')">Avbryt</button>
-      <button class="btn" onclick="saveNewTournament()">Opprett</button>
+      <button class="btn" id="tournamentModalSaveBtn" onclick="saveNewTournament()">Opprett</button>
     </div>
   </div>
 </div>

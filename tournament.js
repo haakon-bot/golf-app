@@ -140,19 +140,49 @@ async function renderTournamentDetail(tournamentId) {
   el.innerHTML = _renderTournamentDetailHTML(t, data, { publicMode: false });
 }
 
+let _editingTournamentId = null;   // null = opprett ny, satt = redigerer eksisterende navn
+
 function openCreateTournamentModal() {
+  _editingTournamentId = null;
+  document.getElementById('tournamentModalTitle').textContent = 'Ny turnering';
+  document.getElementById('tournamentModalSaveBtn').textContent = 'Opprett';
   document.getElementById('newTournamentName').value = '';
+  document.getElementById('createTournamentAlert').innerHTML = '';
+  openModal('modalCreateTournament');
+}
+function openEditTournamentModal(id, currentName) {
+  _editingTournamentId = id;
+  document.getElementById('tournamentModalTitle').textContent = 'Endre navn';
+  document.getElementById('tournamentModalSaveBtn').textContent = 'Lagre';
+  document.getElementById('newTournamentName').value = currentName || '';
   document.getElementById('createTournamentAlert').innerHTML = '';
   openModal('modalCreateTournament');
 }
 async function saveNewTournament() {
   const name = document.getElementById('newTournamentName').value.trim();
   if (!name) { showAlert('createTournamentAlert', 'Skriv inn et navn.', 'error'); return; }
+  if (_editingTournamentId) {
+    const { error } = await db.from('tournaments').update({ name }).eq('id', _editingTournamentId);
+    if (error) { showAlert('createTournamentAlert', 'Kunne ikke lagre: ' + error.message, 'error'); return; }
+    closeModal('modalCreateTournament');
+    await fetchTournaments();
+    renderTournamentDetail(_editingTournamentId);
+    return;
+  }
   const { data, error } = await db.from('tournaments').insert({ name, created_by: currentProfile?.id || null }).select().single();
   if (error) { showAlert('createTournamentAlert', 'Kunne ikke opprette: ' + error.message, 'error'); return; }
   closeModal('modalCreateTournament');
   await fetchTournaments();
   renderTournamentDetail(data.id);
+}
+
+async function deleteTournamentPrompt(id, name) {
+  const ok = await showConfirm(`Slette turneringen «${name}»? Rundene beholdes, men mister koblingen til turneringen. Dette kan ikke angres.`, 'Slett');
+  if (!ok) return;
+  const { error } = await db.from('tournaments').delete().eq('id', id);
+  if (error) { alert('Kunne ikke slette: ' + error.message); return; }
+  await fetchTournaments();
+  renderTournamentList();
 }
 
 function shareTournamentLink(id, name) {
@@ -248,7 +278,11 @@ function _renderTournamentDetailHTML(t, data, opts) {
     ${opts.publicMode ? '' : `<button onclick="renderTournamentList()" style="background:none;border:none;color:var(--cream-dim);font-size:13px;cursor:pointer;margin-bottom:10px;padding:0;-webkit-tap-highlight-color:transparent;">← Alle turneringer</button>`}
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:16px;">
       <h1 style="font-family:'Playfair Display',serif;font-size:22px;color:var(--gold-light);margin:0;">🏆 ${t?.name || 'Turnering'}</h1>
-      ${!opts.publicMode && t ? `<button onclick="shareTournamentLink('${t.id}','${(t.name || '').replace(/'/g, '')}')" style="background:rgba(201,168,76,0.15);border:1px solid rgba(201,168,76,0.3);color:var(--gold);padding:8px 14px;border-radius:10px;cursor:pointer;font-size:12px;white-space:nowrap;-webkit-tap-highlight-color:transparent;">📤 Del</button>` : ''}
+      ${!opts.publicMode && t ? `<div style="display:flex;gap:8px;flex-shrink:0;">
+        <button onclick="openEditTournamentModal('${t.id}','${(t.name || '').replace(/'/g, '')}')" title="Endre navn" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);color:var(--cream-dim);padding:8px 10px;border-radius:10px;cursor:pointer;font-size:14px;-webkit-tap-highlight-color:transparent;">✏️</button>
+        <button onclick="deleteTournamentPrompt('${t.id}','${(t.name || '').replace(/'/g, '')}')" title="Slett turnering" style="background:rgba(226,75,74,0.1);border:1px solid rgba(226,75,74,0.3);color:#e8a0a0;padding:8px 10px;border-radius:10px;cursor:pointer;font-size:14px;-webkit-tap-highlight-color:transparent;">🗑</button>
+        <button onclick="shareTournamentLink('${t.id}','${(t.name || '').replace(/'/g, '')}')" style="background:rgba(201,168,76,0.15);border:1px solid rgba(201,168,76,0.3);color:var(--gold);padding:8px 14px;border-radius:10px;cursor:pointer;font-size:12px;white-space:nowrap;-webkit-tap-highlight-color:transparent;">📤 Del</button>
+      </div>` : ''}
     </div>
     <div style="font-size:11px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;">Sammenlagt · individuelt</div>
     <div style="background:rgba(0,0,0,0.2);border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,0.07);margin-bottom:10px;">
