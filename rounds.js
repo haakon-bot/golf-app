@@ -204,12 +204,18 @@ function wizardBack() {
   renderWizard();
 }
 function wizardNext() {
-  const v = _wizValidateStep(_wizStep);
-  if (!v.ok) { _wizWarning = v.warning; renderWizard(); return; }
-  _wizWarning = '';
-  if (_wizStep >= _wizSteps().length - 1) { _wizEditRoundId ? wizardSave() : wizardStart(); return; }
-  _wizStep++;
-  renderWizard();
+  try {
+    const v = _wizValidateStep(_wizStep);
+    if (!v.ok) { _wizWarning = v.warning; renderWizard(); return; }
+    _wizWarning = '';
+    if (_wizStep >= _wizSteps().length - 1) { _wizEditRoundId ? wizardSave() : wizardStart(); return; }
+    _wizStep++;
+    renderWizard();
+  } catch (e) {
+    console.error('wizardNext() feilet:', e);
+    _wizWarning = 'Noe gikk galt: ' + (e.message || e);
+    renderWizard();
+  }
 }
 function _wizValidateStep(i) {
   const key = _wizSteps()[i].key;
@@ -239,25 +245,39 @@ function _wizValidateStep(i) {
   return { ok: true };
 }
 function renderWizard() {
-  const steps = _wizSteps();
-  const editing = !!_wizEditRoundId;
-  const step = steps[_wizStep];
-  const isLast = _wizStep >= steps.length - 1;
-  document.getElementById('ngStepLabel').textContent = `${editing ? 'Rediger' : 'Steg ' + (_wizStep + 1) + ' av ' + steps.length} · ${step.label}`;
-  document.getElementById('ngBackBtn').textContent = _wizStep === 0 ? '✕' : '←';
-  document.getElementById('ngNextBtn').textContent = isLast ? (editing ? 'Lagre endringer' : 'Start spillet →') : 'Neste →';
-  document.getElementById('ngStepDots').innerHTML = steps.map((s, i) =>
-    `<div title="${s.label}" style="width:${i === _wizStep ? '24px' : '8px'}; height:8px; border-radius:4px; background:${i < _wizStep ? 'var(--gold-dim)' : i === _wizStep ? 'var(--gold)' : 'rgba(255,255,255,0.15)'}; transition:all 0.2s;"></div>`
-  ).join('');
-  // Låst-kontekst-banner i edit-modus (spilltype + bane/hull kan ikke endres).
-  const g = _wizState.mainGame ? getGame(_wizState.mainGame) : null;
-  const lockBanner = editing ? `<div style="background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:10px 14px; margin-bottom:14px; font-size:12px; color:var(--cream-dim);">🔒 ${g?.meta.navn || 'Spill'} · ${_wizState.courseName || ''} · ${_wizState.course?.holeCount || ''} hull <span style="color:rgba(255,255,255,0.35);">— spilltype og bane er låst i en aktiv runde</span></div>` : '';
-  const warn = _wizWarning ? `<div style="background:rgba(201,168,76,0.12); border:1px solid rgba(201,168,76,0.4); color:var(--gold-light); font-size:13px; padding:10px 14px; border-radius:8px; margin-bottom:14px;">⚠️ ${_wizWarning}</div>` : '';
-  const renderer = WIZARD_RENDERERS[step.key];
-  const el = document.getElementById('ngStepContent');
-  el.innerHTML = lockBanner + warn + (renderer ? renderer() : '');
-  el.parentElement.scrollTo?.(0, 0);
-  if (step.key === 'players') _wizAfterPlayers();   // mount chips/teams etter DOM finnes
+  // Hele funksjonen er pakket inn i try/catch (sept 2026): en kastet feil her
+  // gjorde tidligere at «Neste» så ut som den «hang» — ingen synlig feil, bare
+  // ingen reaksjon, siden onclick-handlere ikke fanger exceptions. Nå vises
+  // feilteksten i advarselsbanneret i stedet, så et ev. nytt tilfelle er
+  // lesbart og fiksbart i stedet for et uforklarlig «henger».
+  try {
+    const steps = _wizSteps();
+    const editing = !!_wizEditRoundId;
+    const step = steps[_wizStep];
+    const isLast = _wizStep >= steps.length - 1;
+    document.getElementById('ngStepLabel').textContent = `${editing ? 'Rediger' : 'Steg ' + (_wizStep + 1) + ' av ' + steps.length} · ${step.label}`;
+    document.getElementById('ngBackBtn').textContent = _wizStep === 0 ? '✕' : '←';
+    document.getElementById('ngNextBtn').textContent = isLast ? (editing ? 'Lagre endringer' : 'Start spillet →') : 'Neste →';
+    document.getElementById('ngStepDots').innerHTML = steps.map((s, i) =>
+      `<div title="${s.label}" style="width:${i === _wizStep ? '24px' : '8px'}; height:8px; border-radius:4px; background:${i < _wizStep ? 'var(--gold-dim)' : i === _wizStep ? 'var(--gold)' : 'rgba(255,255,255,0.15)'}; transition:all 0.2s;"></div>`
+    ).join('');
+    // Låst-kontekst-banner i edit-modus (spilltype + bane/hull kan ikke endres).
+    const g = _wizState.mainGame ? getGame(_wizState.mainGame) : null;
+    const lockBanner = editing ? `<div style="background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:10px 14px; margin-bottom:14px; font-size:12px; color:var(--cream-dim);">🔒 ${g?.meta.navn || 'Spill'} · ${_wizState.courseName || ''} · ${_wizState.course?.holeCount || ''} hull <span style="color:rgba(255,255,255,0.35);">— spilltype og bane er låst i en aktiv runde</span></div>` : '';
+    const warn = _wizWarning ? `<div style="background:rgba(201,168,76,0.12); border:1px solid rgba(201,168,76,0.4); color:var(--gold-light); font-size:13px; padding:10px 14px; border-radius:8px; margin-bottom:14px;">⚠️ ${_wizWarning}</div>` : '';
+    const renderer = WIZARD_RENDERERS[step.key];
+    const el = document.getElementById('ngStepContent');
+    el.innerHTML = lockBanner + warn + (renderer ? renderer() : '');
+    el.parentElement.scrollTo?.(0, 0);
+    if (step.key === 'players') _wizAfterPlayers();   // mount chips/teams etter DOM finnes
+  } catch (e) {
+    console.error('renderWizard() feilet:', e);
+    const el = document.getElementById('ngStepContent');
+    if (el) el.innerHTML = `<div style="background:rgba(226,75,74,0.1); border:1px solid rgba(226,75,74,0.3); border-radius:10px; padding:16px; color:#e8a0a0; font-size:13px;">
+      <strong>Noe gikk galt i visningen.</strong> Send dette til Hawk:<br>
+      <code style="display:block; margin-top:8px; font-size:11px; white-space:pre-wrap; color:#f0c0c0;">${(e && e.stack || e).toString().replace(/</g, '&lt;')}</code>
+    </div>`;
+  }
 }
 
 // ── Steg 1: Velg spill ────────────────────────────────────────────────────
