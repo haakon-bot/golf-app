@@ -8,13 +8,15 @@
 //   0 til denne summen — ingen spesialhåndtering nødvendig.
 // - Lag-vinner per scramble-runde gjenbrukes fra ScrambleGame.compute
 //   (samme kilde som live-ledertavlen), vist som EGEN kåring.
-// - Sidekonkurranse (nærmest pin / lengst drive) er en helt separat,
-//   append-only tally (tournament_awards) — teller ALDRI i poengsummen.
+// - Sidekonkurranse (nærmest pin / lengst drive) registreres og bekreftes
+//   PER RUNDE av game-junk.js; bekreftede vinnere legges til i summen over
+//   (se junkGame-blokken under). Manuelle justeringer er en egen, fri
+//   sikkerhetsventil (tournament_adjustments) uavhengig av alt annet.
 
 let _tournamentList = null;       // cache for lista + wizard-velgeren
 let _tournamentDetailId = null;   // hvilken turnering som er åpnet (innlogget side)
 let _lastTournamentId = null;     // sist regnede turnering (for modaler/refresh)
-let _lastTournamentData = null;   // sist regnede data (for award-modalens dropdowns)
+let _lastTournamentData = null;   // sist regnede data (for juster-poeng-modalens spillerliste)
 
 async function fetchTournaments() {
   const { data } = await db.from('tournaments').select('*').order('created_at', { ascending: false });
@@ -35,7 +37,7 @@ async function computeTournamentData(tournamentId) {
     .order('date', { ascending: true });
   const roundList = rounds || [];
   const totals = {};        // player_id → { name, points, perRound: {roundId: pts} }
-  const allPlayers = {};    // player_id → name (for award-registrering)
+  const allPlayers = {};    // player_id → name (for juster-poeng-modalens spillerliste)
   const roundMeta = [];
   for (const round of roundList) {
     const [{ data: scores }, { data: holes }, { data: events }] = await Promise.all([
@@ -91,9 +93,15 @@ async function computeTournamentData(tournamentId) {
     }
     roundMeta.push({ id: round.id, date: round.date, status: round.status, courseName: round.courses?.name || '', isTeamRound, teamWinner });
   }
-  const { data: awards } = await db.from('tournament_awards').select('*, profiles(display_name)').eq('tournament_id', tournamentId).order('created_at', { ascending: false });
+  // Sikkerhetsventil: manuell poeng-justering, helt uavhengig av alt over —
+  // for å rette opp hvis noe går galt med registrering/poeng på turen.
+  const { data: adjustments } = await db.from('tournament_adjustments').select('*, profiles(display_name)').eq('tournament_id', tournamentId).order('created_at', { ascending: false });
+  (adjustments || []).forEach(adj => {
+    if (!totals[adj.player_id]) totals[adj.player_id] = { name: allPlayers[adj.player_id] || adj.profiles?.display_name || '?', points: 0, perRound: {} };
+    totals[adj.player_id].points += Number(adj.points) || 0;
+  });
   const standings = Object.entries(totals).map(([playerId, t]) => ({ playerId, ...t })).sort((a, b) => b.points - a.points);
-  return { rounds: roundMeta, standings, awards: awards || [], allPlayers };
+  return { rounds: roundMeta, standings, adjustments: adjustments || [], allPlayers };
 }
 
 // ── Innlogget side (page-tournament) ──
@@ -192,34 +200,32 @@ function shareTournamentLink(id, name) {
   else alert(url);
 }
 
-function openAddAwardModal() {
+// ── Sikkerhetsventil: manuell poeng-justering ──
+function openAdjustPointsModal() {
   if (!_lastTournamentData) return;
-  const roundSel = document.getElementById('awardRound');
-  roundSel.innerHTML = (_lastTournamentData.rounds || []).map(r => `<option value="${r.id}">${_fmtRoundLabel(r)}</option>`).join('')
-    || '<option value="">Ingen runder ennå</option>';
-  const playerSel = document.getElementById('awardPlayer');
+  const playerSel = document.getElementById('adjustPlayer');
   const players = Object.entries(_lastTournamentData.allPlayers || {});
   playerSel.innerHTML = players.map(([id, name]) => `<option value="${id}">${name}</option>`).join('')
     || '<option value="">Ingen spillere ennå</option>';
-  document.getElementById('awardHole').value = '';
-  document.getElementById('awardAlert').innerHTML = '';
-  openModal('modalAddAward');
+  document.getElementById('adjustPoints').value = '';
+  document.getElementById('adjustNote').value = '';
+  document.getElementById('adjustPointsAlert').innerHTML = '';
+  openModal('modalAdjustPoints');
 }
-async function saveAward() {
-  const roundId = document.getElementById('awardRound').value;
-  const hole = parseInt(document.getElementById('awardHole').value) || null;
-  const type = document.getElementById('awardType').value;
-  const playerId = document.getElementById('awardPlayer').value;
-  if (!roundId || !playerId) { showAlert('awardAlert', 'Velg runde og vinner.', 'error'); return; }
-  const { error } = await db.from('tournament_awards').insert({ tournament_id: _lastTournamentId, round_id: roundId, hole_number: hole, award_type: type, player_id: playerId });
-  if (error) { showAlert('awardAlert', 'Kunne ikke lagre: ' + error.message, 'error'); return; }
-  closeModal('modalAddAward');
+async function saveAdjustment() {
+  const playerId = document.getElementById('adjustPlayer').value;
+  const points = parseFloat(document.getElementById('adjustPoints').value);
+  const note = document.getElementById('adjustNote').value.trim() || null;
+  if (!playerId || !points) { showAlert('adjustPointsAlert', 'Velg spiller og et poengtall (ikke 0).', 'error'); return; }
+  const { error } = await db.from('tournament_adjustments').insert({ tournament_id: _lastTournamentId, player_id: playerId, points, note, created_by: currentProfile?.id || null });
+  if (error) { showAlert('adjustPointsAlert', 'Kunne ikke lagre: ' + error.message, 'error'); return; }
+  closeModal('modalAdjustPoints');
   renderTournamentDetail(_lastTournamentId);
 }
-async function deleteAward(awardId) {
-  const ok = await showConfirm('Fjerne denne registreringen?', 'Fjern');
+async function deleteAdjustment(id) {
+  const ok = await showConfirm('Fjerne denne justeringen?', 'Fjern');
   if (!ok) return;
-  await db.from('tournament_awards').delete().eq('id', awardId);
+  await db.from('tournament_adjustments').delete().eq('id', id);
   renderTournamentDetail(_lastTournamentId);
 }
 
@@ -246,21 +252,12 @@ function _renderTournamentDetailHTML(t, data, opts) {
       </div>`).join('')}
     </div>` : '';
 
-  const awardTally = {};
-  (data.awards || []).forEach(a => {
-    const name = (a.profiles?.display_name || '?').split(' ')[0];
-    awardTally[name] = awardTally[name] || { closest_pin: 0, longest_drive: 0 };
-    awardTally[name][a.award_type] = (awardTally[name][a.award_type] || 0) + 1;
-  });
-  const tallyRows = Object.entries(awardTally).map(([name, c]) => `
-    <div style="display:flex;justify-content:space-between;padding:8px 0;font-size:13px;color:var(--cream);border-bottom:1px solid rgba(255,255,255,0.05);">
-      <span>${name}</span>
-      <span style="color:var(--cream-dim);">${c.closest_pin ? `🎯 ${c.closest_pin}` : ''} ${c.longest_drive ? `🚀 ${c.longest_drive}` : ''}</span>
-    </div>`).join('');
-  const awardList = (data.awards || []).map(a => `
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;font-size:12px;color:var(--cream-dim);">
-      <span>Hull ${a.hole_number ?? '?'} · ${a.award_type === 'closest_pin' ? 'Nærmest pin' : 'Lengst drive'} · <strong style="color:var(--cream);">${(a.profiles?.display_name || '?').split(' ')[0]}</strong></span>
-      ${opts.publicMode ? '' : `<button onclick="deleteAward('${a.id}')" style="background:none;border:none;color:rgba(255,255,255,0.3);cursor:pointer;font-size:14px;">✕</button>`}
+  // Sikkerhetsventil (§ tournament_adjustments): fri poeng-justering, alltid
+  // synlig som en enkel liste — ikke gjettet på verdier, bare hva som er lagret.
+  const adjustmentList = (data.adjustments || []).map(a => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 16px;font-size:12px;color:var(--cream-dim);border-bottom:1px solid rgba(255,255,255,0.05);">
+      <span><strong style="color:var(--cream);">${(a.profiles?.display_name || '?').split(' ')[0]}</strong> ${a.points > 0 ? '+' : ''}${a.points}p${a.note ? ` · ${a.note}` : ''}</span>
+      ${opts.publicMode ? '' : `<button onclick="deleteAdjustment('${a.id}')" style="background:none;border:none;color:rgba(255,255,255,0.3);cursor:pointer;font-size:14px;">✕</button>`}
     </div>`).join('');
 
   const roundClick = (r) => opts.publicMode ? `showPublicLive('${r.id}')` : (r.status === 'completed' ? `showRoundSummary('${r.id}')` : `openRound('${r.id}')`);
@@ -297,12 +294,12 @@ function _renderTournamentDetailHTML(t, data, opts) {
       </table></div>
     </div>
     ${teamSection}
-    <div style="font-size:11px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1.5px;margin:24px 0 10px;">🎯 Sidekonkurranse <span style="text-transform:none;letter-spacing:0;font-size:10px;opacity:0.7;">(nærmest pin / lengst drive — teller ikke i summen)</span></div>
-    <div style="background:rgba(0,0,0,0.2);border-radius:12px;padding:12px 16px;border:1px solid rgba(255,255,255,0.07);margin-bottom:10px;">
-      ${tallyRows || `<div style="font-size:13px;color:var(--cream-dim);">Ingen registrert ennå.</div>`}
+    <div style="font-size:10px;color:rgba(255,255,255,0.35);margin:4px 0 24px;">Sidekonkurranse (nærmest pin/lengst drive) registreres og bekreftes i den enkelte runden — se rundeoppsummeringen. Bekreftede poeng er allerede talt med i summen over.</div>
+    <div style="font-size:11px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;">⚖️ Manuelle justeringer <span style="text-transform:none;letter-spacing:0;font-size:10px;opacity:0.7;">(sikkerhetsventil — telles i summen over)</span></div>
+    <div style="background:rgba(0,0,0,0.2);border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,0.07);margin-bottom:10px;">
+      ${adjustmentList || `<div style="padding:12px 16px;font-size:13px;color:var(--cream-dim);">Ingen justeringer.</div>`}
     </div>
-    ${opts.publicMode ? '' : `<button class="btn btn-auto" style="margin-bottom:14px;" onclick="openAddAwardModal()">+ Registrer vinner</button>`}
-    ${awardList ? `<div style="background:rgba(0,0,0,0.15);border-radius:10px;padding:2px 14px;margin-bottom:10px;">${awardList}</div>` : ''}
+    ${opts.publicMode ? '' : `<button class="btn btn-auto" style="margin-bottom:14px;" onclick="openAdjustPointsModal()">+ Juster poeng</button>`}
     ${roundsSection}
   `;
 }

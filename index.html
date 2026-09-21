@@ -531,23 +531,17 @@
     </div>
   </div>
 </div>
-<!-- MODAL: Registrer nærmest pin / lengst drive -->
-<div class="modal-overlay" id="modalAddAward" style="display:none;" onclick="closeModalOnOverlay(event,'modalAddAward')">
+<!-- MODAL: Juster poeng (sikkerhetsventil) -->
+<div class="modal-overlay" id="modalAdjustPoints" style="display:none;" onclick="closeModalOnOverlay(event,'modalAdjustPoints')">
   <div class="modal" onclick="event.stopPropagation()">
-    <h2>Registrer vinner</h2>
-    <div id="awardAlert"></div>
-    <div class="form-group"><label>Runde</label><select id="awardRound"></select></div>
-    <div class="form-group"><label>Type</label>
-      <select id="awardType">
-        <option value="closest_pin">🎯 Nærmest pin</option>
-        <option value="longest_drive">🚀 Lengst drive</option>
-      </select>
-    </div>
-    <div class="form-group"><label>Hull</label><input type="number" id="awardHole" min="1" max="18" placeholder="f.eks. 14"></div>
-    <div class="form-group"><label>Vinner</label><select id="awardPlayer"></select></div>
+    <h2>Juster poeng</h2>
+    <div id="adjustPointsAlert"></div>
+    <div class="form-group"><label>Spiller</label><select id="adjustPlayer"></select></div>
+    <div class="form-group"><label>Poeng <span style="color:var(--cream-dim); font-size:11px;">(negativt tall for trekk)</span></label><input type="number" id="adjustPoints" step="1" placeholder="f.eks. 3 eller -2"></div>
+    <div class="form-group"><label>Begrunnelse</label><input type="text" id="adjustNote" placeholder="f.eks. rettet feilregistrert score hull 14"></div>
     <div class="modal-actions">
-      <button class="btn btn-outline" onclick="closeModal('modalAddAward')">Avbryt</button>
-      <button class="btn" onclick="saveAward()">Lagre</button>
+      <button class="btn btn-outline" onclick="closeModal('modalAdjustPoints')">Avbryt</button>
+      <button class="btn" onclick="saveAdjustment()">Lagre</button>
     </div>
   </div>
 </div>
