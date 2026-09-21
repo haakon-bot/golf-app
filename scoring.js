@@ -520,7 +520,7 @@ function renderGameTrackers() {
   const strip = document.getElementById('scGamesStrip');
   const el = document.getElementById('scGames');
   if (!strip || !el) return;
-  const ctx = { round: currentRound, holes: roundHoles, scores: roundScores, flights: roundFlights, fullCoursePar: _fullCoursePar };
+  const ctx = { round: currentRound, holes: roundHoles, scores: roundScores, flights: roundFlights, fullCoursePar: _fullCoursePar, events: roundEvents, currentHole };
   const html = (currentRound?.games || [])
     .filter(g => !_HANDLED_TRACKERS.includes(g.game_type))
     .map(g => { const m = getGame(g.game_type); return (m && m.trackerUI) ? m.trackerUI(ctx) : ''; })

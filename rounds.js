@@ -838,7 +838,42 @@ function _wizAddonSettingUI(type, config) {
     return `<label style="display:flex; align-items:center; justify-content:space-between; font-size:13px; color:var(--cream);">Innsats per segment (kr)
       <input type="number" min="1" max="1000" value="${config.amount ?? 50}" onchange="wizSetAddonConfig('nassau','amount', parseInt(this.value)||0)" style="${inp}"></label>`;
   }
+  if (type === 'junk') {
+    const holesList = (_wizState.course?.activeHoles || []).map(h => h.hole_number);
+    const entries = config.entries || [];
+    const rows = entries.map((e, i) => `<div style="display:flex; justify-content:space-between; align-items:center; padding:5px 0; font-size:13px; color:var(--cream);">
+      <span>Hull ${e.hole} · ${e.kind === 'closest_pin' ? '🎯 Nærmest pin' : '🚀 Lengst drive'}</span>
+      <button onclick="wizRemoveJunkEntry(${i})" style="background:none; border:none; color:rgba(255,255,255,0.3); cursor:pointer; font-size:14px;">✕</button>
+    </div>`).join('');
+    return `
+      <div style="margin-bottom:10px;">${rows || '<div style="font-size:12px; color:var(--cream-dim);">Ingen hull lagt til ennå.</div>'}</div>
+      <div style="display:flex; gap:6px; margin-bottom:12px;">
+        <select id="junkNewHole" style="flex:1; padding:6px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.35); color:var(--cream); font-size:13px;">${holesList.map(h => `<option value="${h}">Hull ${h}</option>`).join('')}</select>
+        <select id="junkNewKind" style="flex:1; padding:6px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.35); color:var(--cream); font-size:13px;">
+          <option value="closest_pin">🎯 Nærmest pin</option>
+          <option value="longest_drive">🚀 Lengst drive</option>
+        </select>
+        <button onclick="wizAddJunkEntry()" style="padding:6px 14px; border-radius:6px; border:none; background:var(--gold); color:var(--green-deep); font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap;">+ Legg til</button>
+      </div>
+      <label style="display:flex; align-items:center; justify-content:space-between; font-size:13px; color:var(--cream);">Poeng til vinner per hull <span style="color:var(--cream-dim); font-size:11px;">(kun i turnerings-summen)</span>
+        <input type="number" min="1" max="10" value="${config.points ?? 2}" onchange="wizSetAddonConfig('junk','points', parseInt(this.value)||2)" style="${inp}"></label>`;
+  }
   return '';
+}
+function wizAddJunkEntry() {
+  const holeSel = document.getElementById('junkNewHole');
+  const kindSel = document.getElementById('junkNewKind');
+  const a = (_wizState.addons || []).find(a => a.type === 'junk');
+  if (!a || !holeSel || !kindSel) return;
+  a.config.entries = a.config.entries || [];
+  a.config.entries.push({ hole: parseInt(holeSel.value), kind: kindSel.value });
+  renderWizard();
+}
+function wizRemoveJunkEntry(i) {
+  const a = (_wizState.addons || []).find(a => a.type === 'junk');
+  if (!a) return;
+  a.config.entries.splice(i, 1);
+  renderWizard();
 }
 function wizToggleAddon(type) {
   const i = (_wizState.addons || []).findIndex(a => a.type === type);

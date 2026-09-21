@@ -38,9 +38,10 @@ async function computeTournamentData(tournamentId) {
   const allPlayers = {};    // player_id → name (for award-registrering)
   const roundMeta = [];
   for (const round of roundList) {
-    const [{ data: scores }, { data: holes }] = await Promise.all([
+    const [{ data: scores }, { data: holes }, { data: events }] = await Promise.all([
       db.from('scores').select('*').eq('round_id', round.id),
       db.from('holes').select('*').eq('course_id', round.course_id).order('hole_number'),
+      db.from('game_events').select('*').eq('round_id', round.id),
     ]);
     const holeRange = round.hole_range || 'all';
     const activeHoles = holeRange === 'front9' ? (holes || []).filter(h => h.hole_number <= 9)
@@ -54,7 +55,6 @@ async function computeTournamentData(tournamentId) {
     const isTeamRound = !!(scrGame && (scrGame.game_teams || []).length);
     let teamWinner = null;
     if (isTeamRound) {
-      const { data: events } = await db.from('game_events').select('*').eq('round_id', round.id);
       const teamScores = {};
       (scores || []).forEach(s => { if (s.team_id && s.strokes) (teamScores[s.team_id] = teamScores[s.team_id] || {})[s.hole_number] = s.strokes; });
       const data = getGame('scramble').compute({ round, holes: activeHoles, teamScores, teams: scrGame.game_teams || [], events: events || [], fullCoursePar: fullPar });
@@ -73,6 +73,20 @@ async function computeTournamentData(tournamentId) {
         if (!totals[fp.player_id]) totals[fp.player_id] = { name: fp.profiles?.display_name || '?', points: 0, perRound: {} };
         totals[fp.player_id].points += pts;
         totals[fp.player_id].perRound[round.id] = pts;
+      });
+    }
+    // Sidekonkurranse (game-junk.js): bekreftede vinnere gir bonuspoeng KUN i
+    // turnerings-summen (besluttet sept 2026), uavhengig av om runden er
+    // individuell eller lagspill — en scramble-spiller uten egen player_id-
+    // score kan fortsatt vinne nærmest pin/lengst drive.
+    const junkGame = (round.games || []).find(g => g.game_type === 'junk');
+    if (junkGame && typeof getGame === 'function' && getGame('junk')) {
+      const junkData = getGame('junk').compute({ round, flights: round.flights || [], events: events || [] });
+      (junkData.entries || []).forEach(entry => {
+        if (!entry.confirmedId) return;
+        if (!totals[entry.confirmedId]) totals[entry.confirmedId] = { name: allPlayers[entry.confirmedId] || '?', points: 0, perRound: {} };
+        totals[entry.confirmedId].points += entry.points;
+        totals[entry.confirmedId].perRound[round.id] = (totals[entry.confirmedId].perRound[round.id] || 0) + entry.points;
       });
     }
     roundMeta.push({ id: round.id, date: round.date, status: round.status, courseName: round.courses?.name || '', isTeamRound, teamWinner });
