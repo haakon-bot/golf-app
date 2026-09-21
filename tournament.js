@@ -95,7 +95,14 @@ async function computeTournamentData(tournamentId) {
   }
   // Sikkerhetsventil: manuell poeng-justering, helt uavhengig av alt over —
   // for å rette opp hvis noe går galt med registrering/poeng på turen.
-  const { data: adjustments } = await db.from('tournament_adjustments').select('*, profiles(display_name)').eq('tournament_id', tournamentId).order('created_at', { ascending: false });
+  // tournament_adjustments har TO fremmednøkler mot profiles (player_id og
+  // created_by) — PostgREST kan ikke gjette hvilken uten disambiguering, og
+  // feiler embed-et stille (data blir tom, ingen kastet feil) uten
+  // !tournament_adjustments_player_id_fkey her. Det var hele bugen: innsatsen
+  // lagret fint, men denne lesingen — brukt for BÅDE summen og listen — kom
+  // aldri tilbake med noe.
+  const { data: adjustments, error: adjErr } = await db.from('tournament_adjustments').select('*, profiles!tournament_adjustments_player_id_fkey(display_name)').eq('tournament_id', tournamentId).order('created_at', { ascending: false });
+  if (adjErr) console.error('tournament_adjustments select feilet:', adjErr);
   (adjustments || []).forEach(adj => {
     if (!totals[adj.player_id]) totals[adj.player_id] = { name: allPlayers[adj.player_id] || adj.profiles?.display_name || '?', points: 0, perRound: {} };
     totals[adj.player_id].points += Number(adj.points) || 0;
