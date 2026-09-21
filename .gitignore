@@ -24,6 +24,7 @@
 !game-scramble.js
 !game-quota.js
 !game-nassau.js
+!tournament.js
 # Prosjektdokumentasjon (fasit for retning/arkitektur — skal ligge i repoet)
 !SPILLAPP-SPEC.md
 !CLAUDE.md

@@ -20,12 +20,15 @@ async function init() {
       } else {
         showApp();
         if (_joinHashCode()) { setTimeout(() => showJoinPage(), 300); }
+        else if (_isTournamentHash()) { setTimeout(() => { _tournamentDetailId = _tournamentHashId(); showPage('tournament'); }, 400); }
         else if (_isLiveHash()) { setTimeout(() => { showPage('live'); }, 400); }
       }
     } else showLogin();
   } else {
     if (_joinHashCode()) {
       showJoinPage();
+    } else if (_isTournamentHash()) {
+      showPublicTournament();
     } else if (_isLiveHash()) {
       showPublicLive();
     } else {
@@ -71,8 +74,14 @@ let _publicLiveRoundId = null;
 // #live (nyeste aktive) eller #live=<roundId> (spesifikk runde) — §2.7.
 function _isLiveHash() { return (location.hash || '').startsWith('#live'); }
 function _liveHashRoundId() { const m = (location.hash || '').match(/^#live=(.+)$/); return m ? decodeURIComponent(m[1]) : null; }
-async function showPublicLive() {
-  _publicLiveRoundId = _liveHashRoundId();
+// #turnering=<id> — offentlig, ikke-innlogget turneringsvisning (samme mønster som #live).
+function _isTournamentHash() { return (location.hash || '').startsWith('#turnering'); }
+function _tournamentHashId() { const m = (location.hash || '').match(/^#turnering=(.+)$/); return m ? decodeURIComponent(m[1]) : null; }
+async function showPublicLive(roundIdOverride) {
+  _publicLiveRoundId = roundIdOverride || _liveHashRoundId();
+  if (roundIdOverride) location.hash = '#live=' + roundIdOverride;
+  if (_publicTournamentInterval) { clearInterval(_publicTournamentInterval); _publicTournamentInterval = null; }
+  const ptp = document.getElementById('publicTournamentPage'); if (ptp) ptp.style.display = 'none';
   document.getElementById('loginPage').style.display = 'none';
   document.getElementById('appShell').style.display = 'none';
   document.getElementById('publicLivePage').style.display = 'block';
@@ -277,6 +286,7 @@ function showPage(pageId) {
   if (pageId === 'dashboard') loadDashboard();
   if (pageId === 'live') loadLivePage();
   if (pageId === 'stats') loadStatsPage();
+  if (pageId === 'tournament') loadTournamentPage();
 }
 
 // ── UTILITIES ──

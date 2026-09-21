@@ -175,7 +175,7 @@ function openNewGame() {
   _wizStep = 0;
   _wizWarning = '';
   _wizEditRoundId = null; _wizPlayerScoreCount = {}; _wizFlightId = null;
-  _wizState = { mainGame: null, config: {}, courseId: null, teeId: null, holeRange: 'all', course: null, players: [], teams: [], teamAssign: {}, numTeams: 2, flights: [], flightAssign: {}, numFlights: 1, addons: [] };
+  _wizState = { mainGame: null, config: {}, courseId: null, teeId: null, holeRange: 'all', course: null, players: [], teams: [], teamAssign: {}, numTeams: 2, flights: [], flightAssign: {}, numFlights: 1, addons: [], tournamentId: null };
   _wizCourseTees = []; _wizCourseHoles = [];
   const scr = document.getElementById('newGameScreen');
   scr.style.display = 'flex';
@@ -184,6 +184,7 @@ function openNewGame() {
   renderWizard();
   _wizLoadCourses();   // async; re-rendrer steg 2 når klart
   _wizLoadPlayers();   // async; re-rendrer steg 3 når klart
+  fetchTournaments().then(renderWizard);   // async; fyller turnerings-velgeren i steg 4
 }
 function closeNewGame() {
   document.getElementById('newGameScreen').style.display = 'none';
@@ -807,7 +808,17 @@ function _wizStepSpice() {
     </div>`;
   }).join('') : `<div style="padding:20px; text-align:center; color:var(--cream-dim); font-size:13px;">Ingen tilleggsspill passer dette oppsettet ennå.</div>`;
   const hiddenNote = hidden.length ? `<div style="margin-top:14px; font-size:11px; color:var(--cream-dim); line-height:1.5;">Skjult: ${hidden.map(h => `${h.game.meta.navn} (${h.reason})`).join(' · ')}</div>` : '';
+  const tOptions = (_tournamentList || []).map(t => `<option value="${t.id}" ${_wizState.tournamentId === t.id ? 'selected' : ''}>${t.name}</option>`).join('');
+  const tournamentPicker = `<div style="margin-bottom:24px;">
+    <label style="font-size:12px; text-transform:uppercase; letter-spacing:1px; color:var(--cream-dim); display:block; margin-bottom:8px;">Del av turnering <span style="text-transform:none; letter-spacing:0; color:rgba(255,255,255,0.35);">· valgfritt</span></label>
+    <select onchange="wizSetTournament(this.value)" style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.3); color:var(--cream); font-size:14px;">
+      <option value="">Ingen</option>
+      ${tOptions}
+    </select>
+    ${_wizState.tournamentId ? `<div style="font-size:11px; color:var(--green-light); margin-top:6px;">Telles inn i sammenlagt-stillingen for denne turneringen.</div>` : ''}
+  </div>`;
   return `<div>
+    ${tournamentPicker}
     <label style="font-size:12px; text-transform:uppercase; letter-spacing:1px; color:var(--cream-dim); display:block; margin-bottom:8px;">Tilleggsspill <span style="text-transform:none; letter-spacing:0; color:rgba(255,255,255,0.35);">· valgfritt</span></label>
     ${cards}
     ${hiddenNote}
@@ -842,6 +853,7 @@ function wizSetAddonConfig(type, key, val) {
   const a = (_wizState.addons || []).find(a => a.type === type);
   if (a) { a.config[key] = val; renderWizard(); }
 }
+function wizSetTournament(id) { _wizState.tournamentId = id || null; renderWizard(); }
 // Én-linjes oppsummering (§2.2): «Scramble · Grini GK · 18 hull · 2 lag · skins».
 function _wizSummaryLine() {
   const parts = [];
@@ -888,6 +900,7 @@ async function wizardStart() {
   const { data: round, error } = await db.from('rounds').insert({
     course_id: _wizState.courseId, tee_set_id: _wizState.teeId, date,
     created_by: currentProfile.id, status: 'active', hole_range: _wizState.holeRange,
+    tournament_id: _wizState.tournamentId || null,
   }).select().single();
   if (error || !round) { fail('Kunne ikke opprette spillet: ' + (error?.message || 'ukjent feil')); return; }
   // Hovedspill
@@ -971,17 +984,20 @@ async function openEditGame(roundId) {
     courseId: round.course_id, teeId: round.tee_set_id, holeRange, course,
     courseName: round.courses?.name || '',
     players, teams, teamAssign: {}, numTeams: teams.length || 2, addons,
+    tournamentId: round.tournament_id || null,
     _orig: {
       players: players.map(p => ({ id: p.id, handicap: p.handicap, _fpId: p._fpId })),
       addons: addons.map(a => ({ type: a.type, config: { ...a.config } })),
       teams: teams.map(t => ({ _teamId: t._teamId, team_handicap: t.team_handicap })),
       mainConfig: { ...(main?.config || {}) },
+      tournamentId: round.tournament_id || null,
     },
   };
   const scr = document.getElementById('newGameScreen');
   scr.style.display = 'flex'; scr.style.flexDirection = 'column'; scr.scrollTo?.(0, 0);
   renderWizard();
   if (!_wizAllPlayers) _wizLoadPlayers();   // async; re-rendrer chips når klart
+  fetchTournaments().then(renderWizard);   // async; fyller turnerings-velgeren i steg 4
 }
 
 // Muterer den eksisterende runden fra _wizState (diff mot _orig). Roster-
@@ -1040,6 +1056,10 @@ async function wizardSave() {
     // Hovedspillets config (f.eks. scramble tellende utslag/straffemodus/per-lag-kvote).
     if (JSON.stringify(orig.mainConfig || {}) !== JSON.stringify(_wizState.config || {})) {
       await db.from('games').update({ config: _wizState.config || {} }).eq('round_id', rid).eq('is_main', true);
+    }
+    // Turnerings-tilhørighet — ren tagging, påvirker ingen score.
+    if ((orig.tournamentId || null) !== (_wizState.tournamentId || null)) {
+      await db.from('rounds').update({ tournament_id: _wizState.tournamentId || null }).eq('id', rid);
     }
   } catch (e) {
     if (btn) { btn.disabled = false; btn.textContent = 'Lagre endringer'; }

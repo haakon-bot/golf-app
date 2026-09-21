@@ -36,6 +36,18 @@
     <button onclick="showLoginFromPublic()" class="btn btn-outline" style="font-size:13px; padding:10px 24px;">Logg inn / Registrer</button>
   </div>
 </div>
+<!-- PUBLIC TOURNAMENT VIEW (no login required) — åpnes via #turnering=<id> -->
+<div id="publicTournamentPage" style="display:none; min-height:100vh; padding:max(20px, env(safe-area-inset-top)) 20px 20px; max-width:600px; margin:0 auto;">
+  <div style="text-align:center; margin-bottom:24px;">
+    <div style="font-family:'Playfair Display',serif; font-size:28px; color:var(--gold);">⛳ The Fantastic FORE!</div>
+    <div style="font-size:12px; color:var(--cream-dim); margin-top:4px; letter-spacing:1px; text-transform:uppercase;">Turnering</div>
+  </div>
+  <div id="publicTournamentContent"></div>
+  <div style="text-align:center; margin-top:32px; padding-top:20px; border-top:1px solid rgba(255,255,255,0.06);">
+    <p style="font-size:12px; color:var(--cream-dim); margin-bottom:12px;">Vil du spille? Logg inn eller registrer deg.</p>
+    <button onclick="showLoginFromPublic()" class="btn btn-outline" style="font-size:13px; padding:10px 24px;">Logg inn / Registrer</button>
+  </div>
+</div>
 <!-- BLI MED / JOIN (§2.7) — åpnes via #join=<kode>, velg deg selv -->
 <div id="joinPage" style="display:none; min-height:100vh; padding:max(20px, env(safe-area-inset-top)) 20px 20px; max-width:600px; margin:0 auto;">
   <div style="text-align:center; margin-bottom:8px;">
@@ -139,6 +151,7 @@
       <button class="drawer-item" onclick="showPage('dashboard'); closeDrawer()"><i class="ti ti-home"></i>Hjem</button>
       <button class="drawer-item" onclick="showPage('rounds'); closeDrawer()"><i class="ti ti-golf"></i>Runder</button>
       <button class="drawer-item" onclick="showPage('live'); closeDrawer()"><i class="ti ti-broadcast"></i>Live</button>
+      <button class="drawer-item" onclick="_tournamentDetailId=null; showPage('tournament'); closeDrawer()"><i class="ti ti-trophy"></i>Turnering</button>
       <div class="drawer-section" style="margin-top:8px;">Analyse</div>
       <button class="drawer-item" onclick="showPage('stats'); closeDrawer()"><i class="ti ti-chart-bar"></i>Statistikk</button>
       <div class="drawer-section" style="margin-top:8px;">Admin</div>
@@ -210,6 +223,11 @@
   <div class="page" id="page-stats">
     <div class="page-header"><div><h1>Statistikk</h1><p>Sesongen i tall — spill, lek og moro</p></div></div>
     <div id="statsContent"></div>
+  </div>
+  <!-- Turnering -->
+  <div class="page" id="page-tournament">
+    <div class="page-header"><div><h1>🏆 Turnering</h1><p>Sammenlagt over flere runder — samlet vinner, lag-vinner og sidekonkurranse</p></div></div>
+    <div id="tournamentContent"><div class="loading"><div class="spinner"></div> Laster...</div></div>
   </div>
   <!-- Season Leaderboard -->
   <div class="page" id="page-season">
@@ -501,6 +519,38 @@
     </div>
   </div>
 </div>
+<!-- MODAL: Ny turnering -->
+<div class="modal-overlay" id="modalCreateTournament" style="display:none;" onclick="closeModalOnOverlay(event,'modalCreateTournament')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <h2>Ny turnering</h2>
+    <div id="createTournamentAlert"></div>
+    <div class="form-group"><label>Navn *</label><input type="text" id="newTournamentName" placeholder="f.eks. Golftur Spania sept 2026"></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('modalCreateTournament')">Avbryt</button>
+      <button class="btn" onclick="saveNewTournament()">Opprett</button>
+    </div>
+  </div>
+</div>
+<!-- MODAL: Registrer nærmest pin / lengst drive -->
+<div class="modal-overlay" id="modalAddAward" style="display:none;" onclick="closeModalOnOverlay(event,'modalAddAward')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <h2>Registrer vinner</h2>
+    <div id="awardAlert"></div>
+    <div class="form-group"><label>Runde</label><select id="awardRound"></select></div>
+    <div class="form-group"><label>Type</label>
+      <select id="awardType">
+        <option value="closest_pin">🎯 Nærmest pin</option>
+        <option value="longest_drive">🚀 Lengst drive</option>
+      </select>
+    </div>
+    <div class="form-group"><label>Hull</label><input type="number" id="awardHole" min="1" max="18" placeholder="f.eks. 14"></div>
+    <div class="form-group"><label>Vinner</label><select id="awardPlayer"></select></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('modalAddAward')">Avbryt</button>
+      <button class="btn" onclick="saveAward()">Lagre</button>
+    </div>
+  </div>
+</div>
 <!-- MODAL: Course Detail -->
 <div class="modal-overlay" id="modalCourseDetail" style="display:none;" onclick="closeModalOnOverlay(event,'modalCourseDetail')">
   <div class="modal" style="max-width:700px;" onclick="event.stopPropagation()">
@@ -544,5 +594,6 @@
 <script src="live.js" defer></script>
 <script src="profile.js" defer></script>
 <script src="scoring.js" defer></script>
+<script src="tournament.js" defer></script>
 </body>
 </html>
