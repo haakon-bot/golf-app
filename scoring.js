@@ -754,8 +754,36 @@ async function applyTeeChange() {
   closeModal('modalChangeTee');
   renderScoringHole();
 }
+// Hvem mangler score på ett eller flere aktive hull — på tvers av ALLE
+// flighter, ikke bare den man selv sitter i (§ finishRound-advarsel, sept
+// 2026). Avslutt runde lukker runden for ALLE flighter samtidig (ingen
+// «siste flight»-sjekk finnes i dag), så advarselen må dekke alle sammen.
+function _incompleteParticipants() {
+  const holeNums = roundHoles.map(h => h.hole_number);
+  if (!holeNums.length) return [];
+  const missing = [];
+  if (_scrambleGameRow) {
+    (roundTeams || []).forEach(t => {
+      const ps = roundTeamScores[t.id] || {};
+      const left = holeNums.filter(hn => !(ps[hn] > 0)).length;
+      if (left) missing.push({ name: t.name, left });
+    });
+  } else {
+    const allFP = (roundFlights || []).flatMap(f => f.flight_players || []);
+    allFP.forEach(fp => {
+      const ps = roundScores[fp.player_id] || {};
+      const left = holeNums.filter(hn => !(ps[hn] > 0)).length;
+      if (left) missing.push({ name: (fp.profiles?.display_name || '?').split(' ')[0], left });
+    });
+  }
+  return missing;
+}
 async function finishRound() {
-  const confirmed = await showConfirm('Avslutt runden og se sammendrag?', 'Avslutt');
+  const missing = _incompleteParticipants();
+  const msg = missing.length
+    ? `⚠️ Ikke alle har fullført: ${missing.map(m => `${m.name} (${m.left} hull igjen)`).join(', ')}. Avslutte likevel? Dette lukker runden for ALLE flighter med én gang, uansett om de er ferdige.`
+    : 'Avslutt runden og se sammendrag?';
+  const confirmed = await showConfirm(msg, 'Avslutt');
   if (!confirmed) return;
   const roundId = currentRound.id;
   await db.from('rounds').update({ status: 'completed' }).eq('id', roundId);
