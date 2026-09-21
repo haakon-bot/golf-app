@@ -803,6 +803,11 @@ async function showRoundSummary(roundId) {
     .select('*, courses(name, holes), tee_sets(name, slope, course_rating), flights(id, name, flight_players(id, player_id, handicap, profiles(display_name, username))), games(*, game_teams(*))')
     .eq('id', roundId).single();
   if (error || !round) { document.getElementById('summaryTitle').textContent = 'Feil ved lasting'; return; }
+  // Åpner samme scoringsskjerm som under runden, uansett status — for å rette
+  // opp feilregistrerte slag i etterkant. canEdit er fortsatt flight-medlemskap
+  // (samme regel som ellers), så man kan bare rette egen flights score.
+  const editScoreBtn = document.getElementById('summaryEditScoreBtn');
+  if (editScoreBtn) editScoreBtn.onclick = () => { closeModal('modalRoundSummary'); openRound(roundId); };
   const { data: scores } = await db.from('scores').select('*').eq('round_id', roundId);
   const { data: holes } = await db.from('holes').select('*').eq('course_id', round.course_id).order('hole_number');
   const { data: summaryEvents } = await db.from('game_events').select('*').eq('round_id', roundId);
