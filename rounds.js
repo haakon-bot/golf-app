@@ -894,31 +894,42 @@ async function wizardStart() {
   const { data: mainRow } = await db.from('games').insert({
     round_id: round.id, game_type: _wizState.mainGame, is_main: true, config: _wizState.config || {},
   }).select().single();
-  // Lag (scramble): frosset lag-HCP fra oppsettet
-  if (g.meta.kreverLag && mainRow) {
-    for (const t of (_wizState.teams || []).filter(t => t.member_ids.length)) {
-      await db.from('game_teams').insert({ game_id: mainRow.id, name: t.name, member_ids: t.member_ids, team_handicap: t.team_handicap });
-    }
-  }
   // Tilleggsspill (steg 4 fyller _wizState.addons; tomt i C)
   for (const a of (_wizState.addons || [])) {
     await db.from('games').insert({ round_id: round.id, game_type: a.type, is_main: false, config: a.config || {} });
   }
-  // Roster: individuelt = flighter fra FlightBuilder; scramble = én flight m/ alle.
   const courseName = (_wizCourses || []).find(c => c.id === _wizState.courseId)?.name || 'en bane';
-  const flights = (!g.meta.kreverLag && (_wizState.flights || []).some(f => f.member_ids.length))
-    ? _wizState.flights.filter(f => f.member_ids.length)
-    : [{ name: 'Flight 1', member_ids: _wizState.players.map(p => p.id) }];
-  for (let i = 0; i < flights.length; i++) {
-    const fl = flights[i];
-    const { data: flight } = await db.from('flights').insert({ round_id: round.id, name: fl.name || `Flight ${i + 1}` }).select().single();
-    if (!flight) continue;
-    for (const pid of fl.member_ids) {
+  const notify = async (pid) => {
+    if (pid !== currentProfile.id) await db.from('notifications').insert({ player_id: pid, message: `Du er lagt til i et spill på ${courseName} (${date})` });
+  };
+  const addFlightPlayers = async (flightId, memberIds) => {
+    for (const pid of memberIds) {
       const p = _wizState.players.find(x => x.id === pid);
-      await db.from('flight_players').insert({ flight_id: flight.id, player_id: pid, handicap: p?.handicap ?? 36, tee_set_id: _wizState.teeId });
-      if (pid !== currentProfile.id) {
-        await db.from('notifications').insert({ player_id: pid, message: `Du er lagt til i et spill på ${courseName} (${date})` });
-      }
+      await db.from('flight_players').insert({ flight_id: flightId, player_id: pid, handicap: p?.handicap ?? 36, tee_set_id: _wizState.teeId });
+      await notify(pid);
+    }
+  };
+  if (g.meta.kreverLag && mainRow) {
+    // Scramble (§2.7 G1b): ETT LAG = ÉN FLIGHT. Hvert lag får sin egen flight
+    // (flight.name = lagnavn), medlemmene som flight_players, og game_teams-raden
+    // knyttes til flighten via flight_id — så deling/join ruter sikkert og live
+    // kan gruppere lagene på tvers. Lag-tildelingen ER flight-tildelingen.
+    for (const t of (_wizState.teams || []).filter(t => t.member_ids.length)) {
+      const { data: flight } = await db.from('flights').insert({ round_id: round.id, name: t.name }).select().single();
+      if (!flight) continue;
+      await addFlightPlayers(flight.id, t.member_ids);
+      await db.from('game_teams').insert({ game_id: mainRow.id, flight_id: flight.id, name: t.name, member_ids: t.member_ids, team_handicap: t.team_handicap });
+    }
+  } else {
+    // Individuelt: flighter fra FlightBuilder (multi-flight), ellers én flight m/ alle.
+    const flights = ((_wizState.flights || []).some(f => f.member_ids.length))
+      ? _wizState.flights.filter(f => f.member_ids.length)
+      : [{ name: 'Flight 1', member_ids: _wizState.players.map(p => p.id) }];
+    for (let i = 0; i < flights.length; i++) {
+      const fl = flights[i];
+      const { data: flight } = await db.from('flights').insert({ round_id: round.id, name: fl.name || `Flight ${i + 1}` }).select().single();
+      if (!flight) continue;
+      await addFlightPlayers(flight.id, fl.member_ids);
     }
   }
   closeNewGame();

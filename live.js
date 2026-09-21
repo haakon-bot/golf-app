@@ -13,7 +13,7 @@ async function loadLivePage() {
     el.innerHTML = '<div class="loading"><div class="spinner"></div> Laster...</div>';
 
     const { data: active } = await db.from('rounds')
-      .select('*, courses(name, holes), tee_sets(name, slope, course_rating), flights(id, name, flight_players(id, player_id, handicap, profiles(display_name))), games(*)')
+      .select('*, courses(name, holes), tee_sets(name, slope, course_rating), flights(id, name, flight_players(id, player_id, handicap, profiles(display_name))), games(*, game_teams(*))')
       .eq('status', 'active')
       .order('created_at', { ascending: false });
 
@@ -61,6 +61,15 @@ async function renderLiveView(round) {
   const holeMap = {};
   _liveActiveHoles.forEach(h => { holeMap[h.hole_number] = h; });
   const _livePar = (holes||[]).reduce((s,h) => s + (h.par||0), 0) || 72;
+
+  // Scramble (§2.7 G1b): lag scorer på team_id, ingen player_id-rader → egen
+  // lag-ledertavle på tvers av flightene. Gjenbruker ScrambleGame.compute
+  // (samme rangering som oppsummeringen), så ingen duplisert logikk her.
+  const _scrGame = typeof scrambleGame === 'function' ? scrambleGame(round) : null;
+  if (_scrGame && (_scrGame.game_teams || []).length) {
+    await renderLiveScramble(round, _scrGame, scores || [], _liveActiveHoles, holeMap, holeCount, _livePar);
+    return;
+  }
 
   // Calculate standings
   const standings = allFP.map(fp => {
@@ -194,6 +203,79 @@ async function renderLiveView(round) {
         </div>`).join('')}
     </div>` : ''}
 
+    <div style="font-size:11px; color:var(--cream-dim); text-align:center; margin-top:8px;">Sist oppdatert: ${new Date().toLocaleTimeString('no-NO', {hour:'2-digit',minute:'2-digit',second:'2-digit'})}</div>
+  `;
+}
+
+// Scramble-live (§2.7 G1b): lag-ledertavle på tvers av flightene. Ett lag = én
+// flight; hver lag-rad kan ekspanderes til lagets scorekort. Rangeringen kommer
+// fra ScrambleGame.compute (samme kilde som rundeoppsummeringen).
+async function renderLiveScramble(round, scrGame, scores, activeHoles, holeMap, holeCount, fullPar) {
+  const el = document.getElementById('liveContent');
+  const roundId = round.id;
+  const { data: events } = await db.from('game_events').select('*').eq('round_id', roundId);
+  const teamScores = {};
+  (scores || []).forEach(s => {
+    if (!s.team_id || !s.strokes) return;
+    (teamScores[s.team_id] = teamScores[s.team_id] || {})[s.hole_number] = s.strokes;
+  });
+  const data = getGame('scramble').compute({
+    round, holes: activeHoles, teamScores, teams: scrGame.game_teams || [],
+    events: events || [], fullCoursePar: fullPar,
+  });
+  const rows = (data && data.teams) || [];
+  const scoring = (data && data.scoring) || 'netto';
+  const maxThru = rows.reduce((m, r) => Math.max(m, r.thru), 0);
+  const holeNums = activeHoles.map(h => h.hole_number);
+  const gridCols = Math.min(holeNums.length, 9) || 1;
+  const mainVal = (r) => {
+    if (!r.totalGross) return '–';
+    if (scoring === 'stableford') return `${r.totalSf}p`;
+    if (scoring === 'slag') return `${r.totalGross}`;
+    const d = r.totalNet - r.totalPar;
+    return d === 0 ? 'E' : d > 0 ? `+${d}` : `${d}`;
+  };
+  const buildTeamCard = (r) => {
+    const hdr = holeNums.map(hn => { const h = holeMap[hn]; return `<div style="text-align:center;font-size:10px;color:var(--cream-dim);padding:1px;">${hn}${h?.par ? `<span style="color:rgba(255,255,255,0.25);font-size:8px;"> p${h.par}</span>` : ''}</div>`; }).join('');
+    const cells = holeNums.map(hn => {
+      const hr = (r.holeResults || []).find(x => x.holeNumber === hn);
+      const g = hr?.gross || 0;
+      const h = holeMap[hn];
+      if (!g || !h?.par) return `<div style="text-align:center;padding:4px 1px;color:rgba(255,255,255,0.2);font-size:13px;">–</div>`;
+      const col = _vsParColor(g - h.par);
+      return `<div style="text-align:center;padding:4px 1px;"><div style="font-size:13px;font-weight:600;color:${col};">${g}</div><div style="font-size:9px;color:${hr.sf >= 3 ? '#fac775' : hr.sf === 2 ? 'rgba(255,255,255,0.5)' : '#f09595'};margin-top:2px;">${hr.sf}p</div></div>`;
+    }).join('');
+    return `<div style="background:rgba(0,0,0,0.2);border-radius:10px;padding:10px 12px;border:1px solid rgba(255,255,255,0.06);"><div style="display:grid;grid-template-columns:repeat(${gridCols},1fr);gap:2px;margin-bottom:4px;">${hdr}</div><div style="display:grid;grid-template-columns:repeat(${gridCols},1fr);gap:2px;">${cells}</div></div>`;
+  };
+  el.innerHTML = `
+    <div style="background:rgba(201,168,76,0.08); border:1px solid rgba(201,168,76,0.25); border-radius:12px; padding:14px 16px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center;">
+      <div>
+        <div style="font-size:11px; color:var(--gold); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:4px;">🟢 Live · ⛳ Scramble · Hull ${maxThru} av ${holeCount}</div>
+        <div style="font-size:16px; color:var(--cream); font-weight:500;">${round.courses?.name || ''}</div>
+        <div style="font-size:12px; color:var(--cream-dim); margin-top:2px;">${round.date} · ${round.tee_sets?.name || ''}</div>
+      </div>
+      <button onclick="shareLiveLink('${roundId}', '${round.courses?.name || ''}')" style="background:rgba(201,168,76,0.15); border:1px solid rgba(201,168,76,0.3); color:var(--gold); padding:10px 14px; border-radius:10px; cursor:pointer; font-size:13px; font-family:'DM Sans',sans-serif; white-space:nowrap;">📤 Del</button>
+    </div>
+    <div style="font-size:11px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px;">Lag-ledertavle <span style="text-transform:none;letter-spacing:0;font-size:10px;opacity:0.7;">(på tvers av flighter · trykk for scorekort)</span></div>
+    <div style="background:rgba(0,0,0,0.2); border-radius:12px; overflow:hidden; margin-bottom:16px; border:1px solid rgba(255,255,255,0.06);">
+      ${rows.map((r, i) => {
+        const isLead = i === 0 && r.thru > 0;
+        return `<div style="border-bottom:1px solid rgba(255,255,255,0.05);">
+          <div onclick="toggleLiveScorecardRow('${r.team.id}')" style="display:grid;grid-template-columns:24px 1fr auto;align-items:center;gap:8px;padding:12px 16px;${isLead ? 'background:rgba(201,168,76,0.07);' : ''}cursor:pointer;-webkit-tap-highlight-color:transparent;">
+            <div style="font-size:13px;color:${isLead ? 'var(--gold)' : 'var(--cream-dim)'};text-align:center;">${i + 1}</div>
+            <div>
+              <div style="font-size:14px;color:var(--cream);font-weight:${isLead ? '600' : '400'};">${r.team.name}${r.out ? ' <span style="color:#e8a070;font-size:11px;">⚠ ute</span>' : ''}</div>
+              <div style="font-size:11px;color:var(--cream-dim);">thru ${r.thru} · HCP ${r.teamHcp ?? '–'}${r.penalty ? ` · +${r.penalty} straff` : ''}</div>
+            </div>
+            <div style="text-align:center;min-width:44px;">
+              <div style="font-size:10px;color:var(--cream-dim);margin-bottom:2px;">${scoring === 'stableford' ? 'Stab' : scoring === 'slag' ? 'Slag' : 'Netto'}</div>
+              <div style="font-size:18px;font-weight:600;color:${isLead ? 'var(--gold)' : 'var(--cream)'};">${mainVal(r)}</div>
+            </div>
+          </div>
+          <div id="lvsc-${r.team.id}" style="display:none;padding:0 16px 14px;background:rgba(0,0,0,0.15);">${buildTeamCard(r)}</div>
+        </div>`;
+      }).join('')}
+    </div>
     <div style="font-size:11px; color:var(--cream-dim); text-align:center; margin-top:8px;">Sist oppdatert: ${new Date().toLocaleTimeString('no-NO', {hour:'2-digit',minute:'2-digit',second:'2-digit'})}</div>
   `;
 }

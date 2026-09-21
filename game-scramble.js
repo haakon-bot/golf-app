@@ -351,7 +351,8 @@ const ScrambleGame = {
     navn: 'Scramble',
     beskrivelse: 'Lagspill med delt ball — laget spiller beste plassering hvert slag. Netto lagscore mot par.',
     minSpillere: 2,
-    maxSpillere: 4,          // ett spill = én flight, maks 4 (§2.5)
+    maxSpillere: 99,         // §2.7 G1b: ETT LAG = ÉN FLIGHT → ubegrenset totalt,
+                             // grupperes i lag på maks 4 (_wizMaxPlayers = min(4, …))
     kreverLag: true,
     kreverIndividuellScore: false,
     roles: ['main'],
