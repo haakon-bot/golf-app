@@ -167,6 +167,12 @@ let _wizLastCourseId = null; // sist spilte bane (forhåndsvalgt)
 let _wizCourseTees = [];     // tee-sett for valgt bane
 let _wizCourseHoles = [];    // hull for valgt bane
 let _wizAllPlayers = null;   // profiles-cache for spiller-chips (steg 3)
+// Sidekonkurranse-velgeren (steg 4): huskes på tvers av renderWizard()-kall
+// (kalles fra wizAddJunkEntry) så valgt hull/type IKKE hopper tilbake til
+// første alternativ etter «+ Legg til» — det forårsaket at et hull ble
+// lagt til med feil type uten at noen merket det (fikset sept 2026).
+let _wizJunkPickHole = null;
+let _wizJunkPickKind = 'closest_pin';
 // Gjeste-oppretting: FK profiles_id_fkey er droppet (2026-08-guest-fk-drop.sql)
 // + is_guest-kolonne/RLS insert-policy på plass, så gjester kan opprettes.
 const WIZ_GUEST_CREATE = true;
@@ -177,6 +183,7 @@ function openNewGame() {
   _wizEditRoundId = null; _wizPlayerScoreCount = {}; _wizFlightId = null;
   _wizState = { mainGame: null, config: {}, courseId: null, teeId: null, holeRange: 'all', course: null, players: [], teams: [], teamAssign: {}, numTeams: 2, flights: [], flightAssign: {}, numFlights: 1, addons: [], tournamentId: null };
   _wizCourseTees = []; _wizCourseHoles = [];
+  _wizJunkPickHole = null; _wizJunkPickKind = 'closest_pin';
   const scr = document.getElementById('newGameScreen');
   scr.style.display = 'flex';
   scr.style.flexDirection = 'column';
@@ -840,6 +847,7 @@ function _wizAddonSettingUI(type, config) {
   }
   if (type === 'junk') {
     const holesList = (_wizState.course?.activeHoles || []).map(h => h.hole_number);
+    if (_wizJunkPickHole == null || !holesList.includes(_wizJunkPickHole)) _wizJunkPickHole = holesList[0] ?? null;
     const entries = config.entries || [];
     const rows = entries.map((e, i) => `<div style="display:flex; justify-content:space-between; align-items:center; padding:5px 0; font-size:13px; color:var(--cream);">
       <span>Hull ${e.hole} · ${e.kind === 'closest_pin' ? '🎯 Nærmest pin' : '🚀 Lengst drive'}</span>
@@ -848,10 +856,10 @@ function _wizAddonSettingUI(type, config) {
     return `
       <div style="margin-bottom:10px;">${rows || '<div style="font-size:12px; color:var(--cream-dim);">Ingen hull lagt til ennå.</div>'}</div>
       <div style="display:flex; gap:6px; margin-bottom:12px;">
-        <select id="junkNewHole" style="flex:1; padding:6px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.35); color:var(--cream); font-size:13px;">${holesList.map(h => `<option value="${h}">Hull ${h}</option>`).join('')}</select>
-        <select id="junkNewKind" style="flex:1; padding:6px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.35); color:var(--cream); font-size:13px;">
-          <option value="closest_pin">🎯 Nærmest pin</option>
-          <option value="longest_drive">🚀 Lengst drive</option>
+        <select id="junkNewHole" onchange="_wizJunkPickHole = parseInt(this.value)" style="flex:1; padding:6px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.35); color:var(--cream); font-size:13px;">${holesList.map(h => `<option value="${h}" ${h === _wizJunkPickHole ? 'selected' : ''}>Hull ${h}</option>`).join('')}</select>
+        <select id="junkNewKind" onchange="_wizJunkPickKind = this.value" style="flex:1; padding:6px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.35); color:var(--cream); font-size:13px;">
+          <option value="closest_pin" ${_wizJunkPickKind === 'closest_pin' ? 'selected' : ''}>🎯 Nærmest pin</option>
+          <option value="longest_drive" ${_wizJunkPickKind === 'longest_drive' ? 'selected' : ''}>🚀 Lengst drive</option>
         </select>
         <button onclick="wizAddJunkEntry()" style="padding:6px 14px; border-radius:6px; border:none; background:var(--gold); color:var(--green-deep); font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap;">+ Legg til</button>
       </div>
@@ -1013,6 +1021,7 @@ async function openEditGame(roundId) {
   _wizEditRoundId = roundId;
   _wizStep = 0;
   _wizWarning = '';
+  _wizJunkPickHole = null; _wizJunkPickKind = 'closest_pin';
   _wizState = {
     mainGame: main?.game_type || 'stableford',
     config: main?.config || {},
