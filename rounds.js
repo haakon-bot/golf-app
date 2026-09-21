@@ -846,8 +846,13 @@ function _wizAddonSettingUI(type, config) {
       <input type="number" min="1" max="1000" value="${config.amount ?? 50}" onchange="wizSetAddonConfig('nassau','amount', parseInt(this.value)||0)" style="${inp}"></label>`;
   }
   if (type === 'junk') {
+    if (!config) config = {};
     const holesList = (_wizState.course?.activeHoles || []).map(h => h.hole_number);
     if (_wizJunkPickHole == null || !holesList.includes(_wizJunkPickHole)) _wizJunkPickHole = holesList[0] ?? null;
+    // Renser bort en ev. skadet/ufullstendig config fra en tidligere lagring
+    // (samme vaktposte som JunkGame._safeEntries) — i PLASS, så indeksene
+    // stemmer overens med det wizRemoveJunkEntry fjerner fra.
+    if (typeof JunkGame !== 'undefined') config.entries = JunkGame._safeEntries(config);
     const entries = config.entries || [];
     const rows = entries.map((e, i) => `<div style="display:flex; justify-content:space-between; align-items:center; padding:5px 0; font-size:13px; color:var(--cream);">
       <span>Hull ${e.hole} · ${e.kind === 'closest_pin' ? '🎯 Nærmest pin' : '🚀 Lengst drive'}</span>

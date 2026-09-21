@@ -39,6 +39,15 @@ const JunkGame = {
 
   validate() { return { ok: true }; },
 
+  // Forsvar mot en config som ble lagret feil/ufullstendig av en tidligere
+  // versjon (f.eks. hull-nedtrekket som byttet verdi under seg, fikset sept
+  // 2026): dropper alt som ikke er et brukbart {hole:number, kind} par, i
+  // stedet for å la et bad-shape-objekt kræsje rendring lenger nede.
+  _safeEntries(config) {
+    const raw = Array.isArray(config?.entries) ? config.entries : [];
+    return raw.filter(e => e && Number.isFinite(e.hole) && (e.kind === 'closest_pin' || e.kind === 'longest_drive'));
+  },
+
   // Alle junk_entry/junk_confirmed-hendelser for et gitt hull+type, siste vinner.
   _latestByPlayer(events, hole, kind) {
     const out = {};
@@ -62,8 +71,8 @@ const JunkGame = {
   compute(ctx) {
     const g = gameOfType(ctx.round, 'junk');
     const config = (g && g.config) || {};
-    const entries = config.entries || [];
-    const points = config.points ?? 2;
+    const entries = JunkGame._safeEntries(config);
+    const points = Number.isFinite(config.points) ? config.points : 2;
     const allFP = (ctx.flights || []).flatMap(f => f.flight_players || []);
     const nameById = {}; allFP.forEach(fp => { nameById[fp.player_id] = fp.profiles?.display_name || '?'; });
     const evs = ctx.events || [];
@@ -86,7 +95,7 @@ const JunkGame = {
     const g = gameOfType(ctx.round, 'junk');
     if (!g) return '';
     const config = g.config || {};
-    const here = (config.entries || []).filter(e => e.hole === ctx.currentHole);
+    const here = JunkGame._safeEntries(config).filter(e => e.hole === ctx.currentHole);
     if (!here.length) return '';
     const allFP = (ctx.flights || []).flatMap(f => f.flight_players || []);
     const evs = ctx.events || [];
