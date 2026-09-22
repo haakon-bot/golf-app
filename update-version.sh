@@ -22,9 +22,9 @@ NEW_APP="v${MAJOR}.$((MINOR + 1))"
 SW_NUM=$(echo "$CURRENT_SW" | grep -oE '[0-9]+')
 NEW_SW="fore-v$((SW_NUM + 1))"
 
-# ── Oppdater filer ──
-sed -i '' "s/${CURRENT_APP}/${NEW_APP}/g" index.html
-sed -i '' "s/${CURRENT_SW}/${NEW_SW}/g" sw.js
+# ── Oppdater filer (sed -i.bak virker likt på både BSD/macOS og GNU sed) ──
+sed -i.bak "s/${CURRENT_APP}/${NEW_APP}/g" index.html && rm -f index.html.bak
+sed -i.bak "s/${CURRENT_SW}/${NEW_SW}/g" sw.js && rm -f sw.js.bak
 
 echo "✓  index.html  ${CURRENT_APP} → ${NEW_APP}"
 echo "✓  sw.js       ${CURRENT_SW} → ${NEW_SW}"
