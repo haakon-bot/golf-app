@@ -140,8 +140,16 @@ async function acLoadSlope(file) {
         1200
       );
       const tees = parsed.tees || [];
-      document.getElementById('acTeeRows').innerHTML = '';
-      _acTeeCount = 0;
+      // Legger TIL i eksisterende rader (fjernet innerHTML=''-nullstillingen som
+      // slettet forrige bilde hver gang) — baner der slope-tabellen er delt over
+      // flere ark/bilder (f.eks. ett per kjønn) trenger å kunne laste opp flere
+      // bilder etter hverandre og få alle tee-sett med, ikke bare det siste.
+      // Rydder først bort tomme plassholder-rader (f.eks. standardraden fra
+      // acAddTee() ved oppstart) så de ikke blir stående ubrukt mellom bildene.
+      document.querySelectorAll('#acTeeRows .ac-tee-row').forEach(row => {
+        const nameVal = document.getElementById('act-name-' + row.dataset.id)?.value?.trim();
+        if (!nameVal) row.remove();
+      });
       for (const t of tees) {
         _acTeeCount++;
         const id = _acTeeCount;
