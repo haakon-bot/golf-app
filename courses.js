@@ -136,7 +136,7 @@ async function acLoadSlope(file) {
     try {
       const parsed = await callClaudeProxy(
         data, file.type,
-        'Dette er en slopetabell fra en norsk golfbane. Trekk ut alle tee-sett og returner KUN gyldig JSON:\n{"tees":[{"name":"tee-navn","course_rating":72.6,"slope":129,"color":"#hexfarge"}]}\nFarger: gul=#FFD700, hvit=#FFFFFF, blå=#3366CC, rød=#CC3333, svart=#222222. Kun JSON.',
+        'Dette er en slopetabell fra en golfbane (kan være norsk eller utenlandsk, f.eks. spansk med Hombres/Mujeres). Trekk ut ALLE tee-sett og returner KUN gyldig JSON:\n{"tees":[{"name":"tee-navn","course_rating":72.6,"slope":129,"color":"#hexfarge"}]}\nFarger: gul=#FFD700, hvit=#FFFFFF, blå=#3366CC, rød=#CC3333, svart=#222222, oransje=#FF8C00.\nVIKTIG: hvis tabellen har ULIKE CR/Slope-tall for samme fargenavn avhengig av kjønn (Hombres/Men/Herre vs. Mujeres/Ladies/Dame), lag DA to separate rader og sett kjønnet i navnet, f.eks. "Gul (Herre)" og "Gul (Dame)" — slå dem aldri sammen eller velg bare én av dem. Kun JSON.',
         1200
       );
       const tees = parsed.tees || [];
@@ -547,7 +547,7 @@ async function analyzeSlopeImage() {
   try {
     const parsed = await callClaudeProxy(
       _slopeFileData, _slopeFileType,
-      'Dette er en slopetabell fra en norsk golfbane. Trekk ut alle tee-sett og returner KUN gyldig JSON:\n{"course_name":"Banens navn","tees":[{"name":"tee-navn","course_rating":72.6,"slope":129,"color":"#hexfarge"}]}\nFarger: gul=#FFD700, hvit=#FFFFFF, blå=#3366CC, rød=#CC3333, svart=#222222. Kun JSON.',
+      'Dette er en slopetabell fra en golfbane (kan være norsk eller utenlandsk, f.eks. spansk med Hombres/Mujeres). Trekk ut ALLE tee-sett og returner KUN gyldig JSON:\n{"course_name":"Banens navn","tees":[{"name":"tee-navn","course_rating":72.6,"slope":129,"color":"#hexfarge"}]}\nFarger: gul=#FFD700, hvit=#FFFFFF, blå=#3366CC, rød=#CC3333, svart=#222222, oransje=#FF8C00.\nVIKTIG: hvis tabellen har ULIKE CR/Slope-tall for samme fargenavn avhengig av kjønn (Hombres/Men/Herre vs. Mujeres/Ladies/Dame), lag DA to separate rader og sett kjønnet i navnet, f.eks. "Gul (Herre)" og "Gul (Dame)" — slå dem aldri sammen eller velg bare én av dem. Kun JSON.',
       1200
     );
     _parsedTees = parsed.tees || [];
