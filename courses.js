@@ -154,6 +154,23 @@ Returner KUN gyldig JSON: {"guides":[{"hole":1,"text":"..."}]}. Kun JSON, ingen 
   }
 }
 
+// Manuell trigger fra baneoversikten – bruker allerede lagrede par/SI, uten å
+// måtte gå via hull-lagringsskjemaet på nytt (f.eks. etter en prompt-endring).
+async function regenerateHoleGuides(courseId) {
+  const btn = document.getElementById('regenGuideBtn-' + courseId);
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Genererer...'; }
+  try {
+    const { data: course } = await db.from('courses').select('name, location').eq('id', courseId).single();
+    const { data: holes } = await db.from('holes').select('hole_number, par, stroke_index').eq('course_id', courseId).order('hole_number');
+    await generateHoleGuides(courseId, course?.name, course?.location, holes || []);
+    if (btn) { btn.textContent = '✅ Oppdatert!'; }
+    setTimeout(() => { if (btn) { btn.disabled = false; btn.textContent = '🧭 Regenerer baneguide'; } }, 2500);
+  } catch(e) {
+    if (btn) { btn.disabled = false; btn.textContent = '🧭 Regenerer baneguide'; }
+    alert('Feil ved generering av baneguide: ' + e.message);
+  }
+}
+
 async function acLoadSlope(file) {
   if (!file) return;
   const statusEl = document.getElementById('acSlopeStatus');
@@ -356,6 +373,7 @@ async function openCourseDetail(courseId) {
         <div><p style="font-size:12px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;">Sted</p><p style="margin-top:4px;">${course.location || '–'}</p></div>
         <div><p style="font-size:12px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1px;">Hull</p><p style="margin-top:4px;color:${(hasFront||hasBack)?'var(--green-light)':'var(--cream-dim)'};">${hullStatus}</p></div>
       </div>
+      ${(hasFront || hasBack) ? `<button id="regenGuideBtn-${courseId}" onclick="regenerateHoleGuides('${courseId}')" class="btn-sm" style="margin-top:12px;">🧭 Regenerer baneguide</button>` : ''}
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 10px;">
       <h3 style="font-family:'Playfair Display',serif; font-size:16px; color:var(--cream-dim);">Tee-sett</h3>
