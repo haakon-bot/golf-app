@@ -85,6 +85,7 @@ async function loadProfilePage() {
         <button class="btn btn-outline btn-auto" onclick="showPage('players')" style="width:100%;margin-bottom:8px;">Administrer spillere</button>
       `) : ''}
     </div>
+    <button class="btn btn-outline btn-auto" onclick="handleLogout()" style="width:100%;margin-top:20px;color:var(--danger);border-color:rgba(192,57,43,0.4);">Logg ut</button>
   `;
   _profileLoading = false;
 }
