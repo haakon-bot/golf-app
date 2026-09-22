@@ -68,6 +68,22 @@ async function deletePlayer(playerId, displayName, username) {
   if (error) { alert('Feil ved sletting: ' + error.message); return; }
   loadPlayers();
 }
+
+async function deleteAllGuests() {
+  const { data: guests } = await db.from('profiles').select('id, display_name, username').eq('is_guest', true);
+  if (!guests?.length) { alert('Ingen gjesteprofiler å slette.'); return; }
+  const confirmed = await showConfirm(`Slette alle ${guests.length} gjesteprofiler? Dette sletter også ALL score-historikk og rundedeltakelse knyttet til dem, og kan ikke angres.`);
+  if (!confirmed) return;
+  for (const g of guests) {
+    await db.from('flight_players').delete().eq('player_id', g.id);
+    await db.from('scores').delete().eq('player_id', g.id);
+    await db.from('notifications').delete().eq('player_id', g.id);
+  }
+  const { error } = await db.from('profiles').delete().in('id', guests.map(g => g.id));
+  if (error) { alert('Feil ved sletting: ' + error.message); return; }
+  alert(`✅ ${guests.length} gjesteprofiler slettet.`);
+  loadPlayers();
+}
 function openResetPassword(playerId, displayName, username) {
   const overlay = document.createElement('div');
   overlay.id = 'resetPwOverlay';

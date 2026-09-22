@@ -211,7 +211,10 @@
   <div class="page" id="page-players">
     <div class="page-header">
       <div><h1>Spillere</h1><p>Administrer spillere</p></div>
-      <button class="btn btn-auto" onclick="openAddPlayer()">+ Legg til spiller</button>
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-outline btn-auto" onclick="deleteAllGuests()" style="font-size:13px;">🧹 Slett gjester</button>
+        <button class="btn btn-auto" onclick="openAddPlayer()">+ Legg til spiller</button>
+      </div>
     </div>
     <div id="playersList"><div class="loading"><div class="spinner"></div> Laster spillere...</div></div>
   </div>
