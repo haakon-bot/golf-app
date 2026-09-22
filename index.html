@@ -278,6 +278,10 @@
       </div>
       <button id="scNextHole" onclick="changeHole(1)" style="background:var(--gold); border:none; color:var(--green-deep); padding:10px 20px; border-radius:8px; cursor:pointer; font-weight:600; font-family:'DM Sans',sans-serif; font-size:15px; -webkit-tap-highlight-color:transparent; touch-action:manipulation;">Neste →</button>
     </div>
+    <!-- Baneguide-knapp -->
+    <div style="text-align:center; padding:8px 16px 0; background:rgba(0,0,0,0.2);">
+      <button id="scGuideBtn" onclick="openHoleGuide()" style="background:none; border:1px solid rgba(201,168,76,0.35); color:var(--gold); padding:6px 16px; border-radius:20px; font-size:12px; cursor:pointer; font-family:'DM Sans',sans-serif; -webkit-tap-highlight-color:transparent; touch-action:manipulation;">🧭 Baneguide</button>
+    </div>
     <!-- Stats-rad -->
     <div style="display:flex; gap:0; border-bottom:1px solid rgba(255,255,255,0.05);">
       <div style="flex:1; padding:10px; text-align:center; border-right:1px solid rgba(255,255,255,0.05);">
@@ -354,6 +358,16 @@
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="closeModal('modalChangeTee')">Avbryt</button>
         <button class="btn" onclick="applyTeeChange()">Bytt tee</button>
+      </div>
+    </div>
+  </div>
+  <!-- MODAL: Hole Guide -->
+  <div class="modal-overlay" id="modalHoleGuide" style="display:none;" onclick="closeModalOnOverlay(event,'modalHoleGuide')">
+    <div class="modal" style="max-width:420px;" onclick="event.stopPropagation()">
+      <h2>🧭 Baneguide – hull <span id="hgHoleNum">1</span></h2>
+      <p id="hgText" style="color:var(--cream); font-size:15px; line-height:1.6; margin:12px 0 20px;"></p>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal('modalHoleGuide')">Lukk</button>
       </div>
     </div>
   </div>

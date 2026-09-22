@@ -346,19 +346,14 @@ async function forceUpdate() {
 
 
 // ── CLAUDE PROXY HELPER ──
-async function callClaudeProxy(fileData, fileType, prompt, maxTokens = 1500) {
-  const mediaType = fileType === 'application/pdf' ? 'application/pdf' : fileType;
-  const contentType = fileType === 'application/pdf' ? 'document' : 'image';
+async function _claudeProxyJSON(content, maxTokens) {
   const response = await fetch(CLAUDE_PROXY, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SUPABASE_ANON },
     body: JSON.stringify({
       model: 'claude-sonnet-4-6',
       max_tokens: maxTokens,
-      messages: [{ role: 'user', content: [
-        { type: contentType, source: { type: 'base64', media_type: mediaType, data: fileData } },
-        { type: 'text', text: prompt }
-      ]}]
+      messages: [{ role: 'user', content }]
     })
   });
   if (!response.ok) {
@@ -372,6 +367,19 @@ async function callClaudeProxy(fileData, fileType, prompt, maxTokens = 1500) {
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error('Fant ingen JSON i svaret: ' + text.slice(0, 120));
   return JSON.parse(jsonMatch[0]);
+}
+
+async function callClaudeProxy(fileData, fileType, prompt, maxTokens = 1500) {
+  const mediaType = fileType === 'application/pdf' ? 'application/pdf' : fileType;
+  const contentType = fileType === 'application/pdf' ? 'document' : 'image';
+  return _claudeProxyJSON([
+    { type: contentType, source: { type: 'base64', media_type: mediaType, data: fileData } },
+    { type: 'text', text: prompt }
+  ], maxTokens);
+}
+
+async function callClaudeProxyText(prompt, maxTokens = 1500) {
+  return _claudeProxyJSON([{ type: 'text', text: prompt }], maxTokens);
 }
 
 // ── CONFIRM DIALOG ──

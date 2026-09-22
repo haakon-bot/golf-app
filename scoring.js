@@ -140,6 +140,10 @@ function renderScoringHole() {
   } else {
     document.getElementById('scPar').style.color = 'var(--cream)';
   }
+  const guideBtn = document.getElementById('scGuideBtn');
+  if (guideBtn) {
+    guideBtn.style.opacity = holeData.guide_text ? '1' : '0.5';
+  }
   renderHoleStats();
   if (_scrambleGameRow) {
     renderTeamInputs(holeData);
@@ -460,6 +464,12 @@ async function adjustScore(playerId, delta) {
   const holeData = roundHoles.find(h => h.hole_number === currentHole) || { par: null, stroke_index: null };
   renderPlayerInputs(holeData);
   renderMiniLeaderboard();
+}
+function openHoleGuide() {
+  const holeData = roundHoles.find(h => h.hole_number === currentHole);
+  document.getElementById('hgHoleNum').textContent = currentHole;
+  document.getElementById('hgText').textContent = holeData?.guide_text || 'Ingen baneguide er generert for dette hullet ennå.';
+  openModal('modalHoleGuide');
 }
 function changeHole(delta) {
   const firstHole = roundHoles.length > 0 ? Math.min(...roundHoles.map(h => h.hole_number)) : 1;

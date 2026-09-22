@@ -126,6 +126,32 @@ function acRemoveTee(id) {
   if (row) row.remove();
 }
 
+// ── BANEGUIDE (AI-generert strategi-tips per hull) ──
+// Kjøres i bakgrunnen (fire-and-forget) hver gang hull-data lagres/oppdateres
+// for en bane. Ett samlet Claude-kall for alle hullene som nettopp ble lagret,
+// resultatet skrives til holes.guide_text. Feiler generering (proxy nede o.l.)
+// lar vi runden/lagringen stå uberørt — baneguiden er kun en bonus-visning.
+async function generateHoleGuides(courseId, courseName, location, holes) {
+  const valid = (holes || []).filter(h => h.par && h.stroke_index);
+  if (!valid.length) return;
+  const holeList = valid.map(h => `Hull ${h.hole_number}: Par ${h.par}, SI ${h.stroke_index}`).join('\n');
+  const prompt = `Du er en erfaren golf-caddie. Under følger hull-informasjon for banen "${courseName}"${location ? ' i ' + location : ''}. Gi et kort strategi-tips per hull for en vennegjeng med svært ulikt spillenivå og ulik slaglengde.
+
+${holeList}
+
+For HVERT hull, skriv 2–4 setninger på norsk med konkret strategiråd. VIKTIG:
+- Ikke anbefal spesifikk kølle (jern/driver) siden spillerne slår ulikt langt. Si heller hvor mange meter de bør ha igjen inn til green for en god vinkel, f.eks. "Legg deg igjen ca 120 meter for en åpen tilnærming" eller "Driver her gir typisk rundt 150 meter inn til green – sikt mot venstre side av fairway".
+- Nevn kun konkrete avstander eller hindre (bunker, vann, dogleg, out of bounds osv.) hvis du faktisk har kjennskap til denne spesifikke banen og hullet. Har du ikke sikker kunnskap om banen, gi et generelt strategiråd basert på par og stroke index i stedet for å dikte opp detaljer.
+- Ikke skriv forbehold som "jeg er usikker" i selve teksten – skriv rådet rett fram, eller hold deg generelt.
+
+Returner KUN gyldig JSON: {"guides":[{"hole":1,"text":"..."}]}. Kun JSON, ingen annen tekst.`;
+  const parsed = await callClaudeProxyText(prompt, 3000);
+  for (const g of (parsed.guides || [])) {
+    if (!g.hole || !g.text) continue;
+    await db.from('holes').update({ guide_text: g.text }).eq('course_id', courseId).eq('hole_number', g.hole);
+  }
+}
+
 async function acLoadSlope(file) {
   if (!file) return;
   const statusEl = document.getElementById('acSlopeStatus');
@@ -270,10 +296,10 @@ async function acSave() {
     }
     const holeData = (_ac.holeData || []).filter(h => h.par && h.si);
     if (holeData.length > 0) {
-      const { error: he } = await db.from('holes').insert(
-        holeData.map(h => ({ course_id: course.id, hole_number: h.hole, par: h.par, stroke_index: h.si }))
-      );
+      const holeRows = holeData.map(h => ({ course_id: course.id, hole_number: h.hole, par: h.par, stroke_index: h.si }));
+      const { error: he } = await db.from('holes').insert(holeRows);
       if (he) throw new Error('Feil ved lagring av hull: ' + he.message);
+      generateHoleGuides(course.id, _ac.name, _ac.location, holeRows).catch(e => console.warn('Baneguide-generering feilet:', e.message));
     }
     showAlert('acAlert', '✅ Bane lagret!', 'success');
     loadCourses();
@@ -459,6 +485,9 @@ async function saveHoles(courseId, range) {
   const { error } = await db.from('holes').insert(holes);
   if (error) { showAlert(alertId, 'Feil: ' + error.message, 'error'); return; }
   showAlert(alertId, `✅ ${holes.length} hull lagret!`, 'success');
+  db.from('courses').select('name, location').eq('id', courseId).single().then(({ data: courseRow }) => {
+    generateHoleGuides(courseId, courseRow?.name, courseRow?.location, holes).catch(e => console.warn('Baneguide-generering feilet:', e.message));
+  });
 }
 
 // ── SLOPE UPLOAD (frittstående fra Baner-siden) ──
