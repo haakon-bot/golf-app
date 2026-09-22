@@ -146,11 +146,18 @@ async function acLoadSlope(file) {
       // bilder etter hverandre og få alle tee-sett med, ikke bare det siste.
       // Rydder først bort tomme plassholder-rader (f.eks. standardraden fra
       // acAddTee() ved oppstart) så de ikke blir stående ubrukt mellom bildene.
+      const existingNames = new Set();
       document.querySelectorAll('#acTeeRows .ac-tee-row').forEach(row => {
         const nameVal = document.getElementById('act-name-' + row.dataset.id)?.value?.trim();
-        if (!nameVal) row.remove();
+        if (!nameVal) { row.remove(); return; }
+        existingNames.add(nameVal.toLowerCase());
       });
+      // Hopper over tee-sett som allerede finnes (samme navn, ikke case-sensitivt)
+      // — unngår duplikater om samme tee dukker opp i mer enn ett opplastet bilde.
       for (const t of tees) {
+        const tName = (t.name || '').trim();
+        if (tName && existingNames.has(tName.toLowerCase())) continue;
+        if (tName) existingNames.add(tName.toLowerCase());
         _acTeeCount++;
         const id = _acTeeCount;
         const row = document.createElement('div');
