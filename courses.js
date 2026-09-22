@@ -260,7 +260,7 @@ function acRenderHoleTable(holes, detectedRange) {
   const isAll = detectedRange === 'all18';
   const startHole = isBack ? 10 : 1;
   const endHole = isAll ? 18 : (isBack ? 18 : 9);
-  const siMax = 9;
+  const siMax = 18; // SI er en global rangering 1–18 for hele banen, ikke lokal 1–9 per halvdel
   const el = document.getElementById('acHoleTable');
   el.style.display = 'block';
   el.innerHTML = '<table class="hole-table"><thead><tr><th>Hull</th><th>Par</th><th>SI</th></tr></thead><tbody>' +
@@ -435,7 +435,7 @@ function buildHoleSection(range, startHole, endHole, existing, courseId) {
     const h = existing[i] || {};
     rows += `<tr><td class="hole-num">${i}</td>` +
       `<td><input type="number" id="hpar-${i}" value="${h.par||''}" placeholder="4" min="3" max="5" style="width:60px;"></td>` +
-      `<td><input type="number" id="hsi-${i}" value="${h.stroke_index||''}" placeholder="${i-startHole+1}" min="1" max="9" style="width:60px;"></td></tr>`;
+      `<td><input type="number" id="hsi-${i}" value="${h.stroke_index||''}" placeholder="1-18" min="1" max="18" style="width:60px;"></td></tr>`;
   }
   return `<div style="margin-bottom:4px;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
@@ -472,14 +472,24 @@ async function saveHoles(courseId, range) {
     if (!siVal)  { errors.push(`Hull ${i}: SI mangler`); continue; }
     const par = parseInt(parVal), si = parseInt(siVal);
     if (![3, 4, 5].includes(par)) { errors.push(`Hull ${i}: Par må være 3–5`); continue; }
-    if (isNaN(si) || si < 1 || si > 9) { errors.push(`Hull ${i}: SI må være 1–9`); continue; }
-    if (usedSI.includes(si)) { errors.push(`Hull ${i}: SI ${si} er allerede brukt`); continue; }
+    // SI (stroke index) er en global rangering 1–18 for HELE banen, ikke lokal
+    // 1–9 per halvdel (SPILLAPP-SPEC.md/CLAUDE.md: "fordeles etter SI på 18
+    // hull") — ekte scorekort har derfor gjerne SI 10–18 på front 9 og omvendt.
+    if (isNaN(si) || si < 1 || si > 18) { errors.push(`Hull ${i}: SI må være 1–18`); continue; }
+    if (usedSI.includes(si)) { errors.push(`Hull ${i}: SI ${si} er allerede brukt på et annet hull i denne halvdelen`); continue; }
     usedSI.push(si);
     holes.push({ course_id: courseId, hole_number: i, par, stroke_index: si });
   }
   const alertId = `holesAlert-${range}`;
   if (errors.length) { showAlert(alertId, '⚠️ Feil:<br>' + errors.join('<br>'), 'error'); return; }
   if (!holes.length) { showAlert(alertId, 'Ingen hull å lagre', 'error'); return; }
+  // Sjekk SI-kollisjon mot den ANDRE halvdelen (allerede lagret i DB) – hele
+  // banen skal ha unike SI 1–18 totalt, ikke bare unike innad i denne halvdelen.
+  const otherStart = isBack ? 1 : 10, otherEnd = isBack ? 9 : 18;
+  const { data: otherHoles } = await db.from('holes').select('hole_number, stroke_index').eq('course_id', courseId).gte('hole_number', otherStart).lte('hole_number', otherEnd);
+  const otherSI = new Map((otherHoles || []).map(h => [h.stroke_index, h.hole_number]));
+  const crossErrors = holes.filter(h => otherSI.has(h.stroke_index)).map(h => `Hull ${h.hole_number}: SI ${h.stroke_index} er allerede brukt på hull ${otherSI.get(h.stroke_index)}`);
+  if (crossErrors.length) { showAlert(alertId, '⚠️ Feil:<br>' + crossErrors.join('<br>'), 'error'); return; }
   const { error: de } = await db.from('holes').delete().eq('course_id', courseId).gte('hole_number', startHole).lte('hole_number', endHole);
   if (de) { showAlert(alertId, 'Feil: ' + de.message, 'error'); return; }
   const { error } = await db.from('holes').insert(holes);
