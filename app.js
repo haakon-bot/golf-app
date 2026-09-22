@@ -346,12 +346,12 @@ async function forceUpdate() {
 
 
 // ── CLAUDE PROXY HELPER ──
-async function _claudeProxyJSON(content, maxTokens) {
+async function _claudeProxyJSON(content, maxTokens, model = 'claude-sonnet-4-6') {
   const response = await fetch(CLAUDE_PROXY, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SUPABASE_ANON },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
+      model,
       max_tokens: maxTokens,
       messages: [{ role: 'user', content }]
     })
@@ -378,8 +378,8 @@ async function callClaudeProxy(fileData, fileType, prompt, maxTokens = 1500) {
   ], maxTokens);
 }
 
-async function callClaudeProxyText(prompt, maxTokens = 1500) {
-  return _claudeProxyJSON([{ type: 'text', text: prompt }], maxTokens);
+async function callClaudeProxyText(prompt, maxTokens = 1500, model = 'claude-sonnet-4-6') {
+  return _claudeProxyJSON([{ type: 'text', text: prompt }], maxTokens, model);
 }
 
 // ── CONFIRM DIALOG ──

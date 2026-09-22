@@ -135,17 +135,19 @@ async function generateHoleGuides(courseId, courseName, location, holes) {
   const valid = (holes || []).filter(h => h.par && h.stroke_index);
   if (!valid.length) return;
   const holeList = valid.map(h => `Hull ${h.hole_number}: Par ${h.par}, SI ${h.stroke_index}`).join('\n');
-  const prompt = `Du er en erfaren golf-caddie. Under følger hull-informasjon for banen "${courseName}"${location ? ' i ' + location : ''}. Gi et kort strategi-tips per hull for en vennegjeng med svært ulikt spillenivå og ulik slaglengde.
+  const prompt = `Du er en erfaren caddie som kjenner golfbanen "${courseName}"${location ? ' i ' + location : ''} godt. Jeg skal spille denne banen sammen med en vennegjeng med svært ulikt spillenivå og ulik slaglengde.
 
+Hullene jeg spiller:
 ${holeList}
 
-For HVERT hull, skriv 2–4 setninger på norsk med konkret strategiråd. VIKTIG:
-- Ikke anbefal spesifikk kølle (jern/driver) siden spillerne slår ulikt langt. Si heller hvor mange meter de bør ha igjen inn til green for en god vinkel, f.eks. "Legg deg igjen ca 120 meter for en åpen tilnærming" eller "Driver her gir typisk rundt 150 meter inn til green – sikt mot venstre side av fairway".
-- Nevn kun konkrete avstander eller hindre (bunker, vann, dogleg, out of bounds osv.) hvis du faktisk har kjennskap til denne spesifikke banen og hullet. Har du ikke sikker kunnskap om banen, gi et generelt strategiråd basert på par og stroke index i stedet for å dikte opp detaljer.
-- Ikke skriv forbehold som "jeg er usikker" i selve teksten – skriv rådet rett fram, eller hold deg generelt.
+Gi meg konkrete strategitips per hull, basert på din kunnskap om nettopp DENNE banen – ta hensyn til reelle fareelementer, dogleg, vann, bunkere, greenens form osv. der du kjenner dem:
+- For par 4 og par 5: oppgi ca hvor mange meter jeg bør ha igjen inn til green etter utslaget/leggeslaget for en god, åpen tilnærming (f.eks. "legg deg igjen ca 100 meter" eller "sikt for å ha 120–130 meter inn"), og forklar kort hvorfor (hindring å unngå, dogleg osv). Ikke anbefal spesifikk kølle – vi slår ulikt langt.
+- For par 3: beskriv kort utfordringen med hullet (greenens form/helning, bunkere, vann) og hvor man bør sikte fra tee.
+
+Skriv 2–4 setninger per hull, på norsk, konkret og til poenget. Ikke ta forbehold om usikkerhet i selve teksten – bruk det du vet om banen.
 
 Returner KUN gyldig JSON: {"guides":[{"hole":1,"text":"..."}]}. Kun JSON, ingen annen tekst.`;
-  const parsed = await callClaudeProxyText(prompt, 3000);
+  const parsed = await callClaudeProxyText(prompt, 4000, 'claude-sonnet-5');
   for (const g of (parsed.guides || [])) {
     if (!g.hole || !g.text) continue;
     await db.from('holes').update({ guide_text: g.text }).eq('course_id', courseId).eq('hole_number', g.hole);
