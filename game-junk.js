@@ -20,11 +20,22 @@
 // sept 2026) — enklest og lavest risiko, ingen eksisterende visning endres.
 // ==========================================================================
 
+// Én kilde til sannhet for alle fire konkurransetypene: hvilken retning som
+// "vinner" (laveste/høyeste verdi), enhet og etikett. closest_pin/longest_drive
+// er de opprinnelige (positive poeng); farthest_pin/shortest_drive er de
+// "gøyale" straffevariantene (samme |poeng|, men med minus).
+const JUNK_KIND_META = {
+  closest_pin:    { label: '🎯 Nærmest pin',    unit: 'cm', better: 'lower',  penalty: false },
+  longest_drive:  { label: '🚀 Lengst drive',   unit: 'm',  better: 'higher', penalty: false },
+  farthest_pin:   { label: '🤦 Lengst fra pin', unit: 'cm', better: 'higher', penalty: true },
+  shortest_drive: { label: '🐌 Kortest drive',  unit: 'm',  better: 'lower',  penalty: true },
+};
+
 const JunkGame = {
   type: 'junk',
   meta: {
     navn: 'Sidekonkurranse',
-    beskrivelse: 'Nærmest pin / lengst drive på valgte hull. Alle registrerer forsøk underveis; vinner bekreftes i rundeoppsummeringen.',
+    beskrivelse: 'Nærmest pin / lengst drive på valgte hull — og for de som vil ha det litt gøyere: lengst fra pin / kortest drive med straffepoeng. Alle registrerer forsøk underveis; vinner bekreftes i rundeoppsummeringen.',
     minSpillere: 1,
     maxSpillere: null,
     kreverLag: false,
@@ -32,6 +43,8 @@ const JunkGame = {
     roles: ['addon'],
     status: 'ready',
   },
+
+  KIND_META: JUNK_KIND_META,
 
   defaultConfig() { return { entries: [], points: 2 }; },   // entries: [{hole, kind}]
 
@@ -45,7 +58,7 @@ const JunkGame = {
   // stedet for å la et bad-shape-objekt kræsje rendring lenger nede.
   _safeEntries(config) {
     const raw = Array.isArray(config?.entries) ? config.entries : [];
-    return raw.filter(e => e && Number.isFinite(e.hole) && (e.kind === 'closest_pin' || e.kind === 'longest_drive'));
+    return raw.filter(e => e && Number.isFinite(e.hole) && JUNK_KIND_META[e.kind]);
   },
 
   // Alle junk_entry/junk_confirmed-hendelser for et gitt hull+type, siste vinner.
@@ -77,12 +90,13 @@ const JunkGame = {
     const nameById = {}; allFP.forEach(fp => { nameById[fp.player_id] = fp.profiles?.display_name || '?'; });
     const evs = ctx.events || [];
     const results = entries.map(entry => {
+      const meta = JUNK_KIND_META[entry.kind] || JUNK_KIND_META.closest_pin;
       const latest = JunkGame._latestByPlayer(evs, entry.hole, entry.kind);
       const candidates = Object.entries(latest)
         .map(([pid, v]) => ({ playerId: pid, name: nameById[pid] || '?', value: v.value }))
-        .sort((a, b) => entry.kind === 'longest_drive' ? b.value - a.value : a.value - b.value);
+        .sort((a, b) => meta.better === 'higher' ? b.value - a.value : a.value - b.value);
       return {
-        hole: entry.hole, kind: entry.kind, points,
+        hole: entry.hole, kind: entry.kind, points: meta.penalty ? -points : points,
         candidates, bestId: candidates[0]?.playerId || null,
         confirmedId: JunkGame._latestConfirmed(evs, entry.hole, entry.kind),
       };
@@ -100,9 +114,10 @@ const JunkGame = {
     const allFP = (ctx.flights || []).flatMap(f => f.flight_players || []);
     const evs = ctx.events || [];
     const blocks = here.map(entry => {
+      const meta = JUNK_KIND_META[entry.kind] || JUNK_KIND_META.closest_pin;
       const latest = JunkGame._latestByPlayer(evs, entry.hole, entry.kind);
-      const unit = entry.kind === 'longest_drive' ? 'm' : 'cm';
-      const label = entry.kind === 'longest_drive' ? '🚀 Lengst drive' : '🎯 Nærmest pin';
+      const unit = meta.unit;
+      const label = meta.label;
       const logged = Object.entries(latest).map(([pid, v]) => {
         const name = allFP.find(fp => fp.player_id === pid)?.profiles?.display_name?.split(' ')[0] || '?';
         return `<span style="color:var(--cream-dim);">${name}: ${v.value}${unit}</span>`;
@@ -132,8 +147,9 @@ const JunkGame = {
     const roundId = ctx.round.id;
     const gameId = g.id;
     const rows = data.entries.map(entry => {
-      const label = entry.kind === 'longest_drive' ? '🚀 Lengst drive' : '🎯 Nærmest pin';
-      const unit = entry.kind === 'longest_drive' ? 'm' : 'cm';
+      const meta = JUNK_KIND_META[entry.kind] || JUNK_KIND_META.closest_pin;
+      const label = meta.label;
+      const unit = meta.unit;
       if (!entry.candidates.length) {
         return `<div style="padding:10px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
           <div style="font-size:12px; color:var(--cream-dim);">${label} · hull ${entry.hole} — ingen registrert ennå</div>
@@ -150,7 +166,7 @@ const JunkGame = {
         ${confirmBtn}
       </div>`;
       return `<div style="padding:10px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
-        <div style="font-size:12px; color:var(--cream-dim); margin-bottom:4px;">${label} · hull ${entry.hole} <span style="color:rgba(255,255,255,0.35);">(+${entry.points}p ved seier)</span></div>
+        <div style="font-size:12px; color:var(--cream-dim); margin-bottom:4px;">${label} · hull ${entry.hole} <span style="color:rgba(255,255,255,0.35);">(${entry.points > 0 ? '+' : ''}${entry.points}p ved seier)</span></div>
         <div style="font-size:13px; margin-bottom:6px;">${candList}</div>
         ${entry.confirmedId
           ? `<div style="font-size:12px; color:var(--gold);">🔒 Bekreftet: ${confirmedName} <button onclick="_toggleJunkOverride('${uid}')" style="background:none;border:none;color:var(--cream-dim);text-decoration:underline;cursor:pointer;font-size:11px;margin-left:6px;">endre</button></div>

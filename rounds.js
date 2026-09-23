@@ -875,7 +875,7 @@ function _wizAddonSettingUI(type, config) {
     if (typeof JunkGame !== 'undefined') config.entries = JunkGame._safeEntries(config);
     const entries = config.entries || [];
     const rows = entries.map((e, i) => `<div style="display:flex; justify-content:space-between; align-items:center; padding:5px 0; font-size:13px; color:var(--cream);">
-      <span>Hull ${e.hole} · ${e.kind === 'closest_pin' ? '🎯 Nærmest pin' : '🚀 Lengst drive'}</span>
+      <span>Hull ${e.hole} · ${JunkGame.KIND_META[e.kind]?.label || e.kind}</span>
       <button onclick="wizRemoveJunkEntry(${i})" style="background:none; border:none; color:rgba(255,255,255,0.3); cursor:pointer; font-size:14px;">✕</button>
     </div>`).join('');
     return `
@@ -885,10 +885,12 @@ function _wizAddonSettingUI(type, config) {
         <select id="junkNewKind" onchange="_wizJunkPickKind = this.value" style="flex:1; padding:6px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.35); color:var(--cream); font-size:13px;">
           <option value="closest_pin" ${_wizJunkPickKind === 'closest_pin' ? 'selected' : ''}>🎯 Nærmest pin</option>
           <option value="longest_drive" ${_wizJunkPickKind === 'longest_drive' ? 'selected' : ''}>🚀 Lengst drive</option>
+          <option value="farthest_pin" ${_wizJunkPickKind === 'farthest_pin' ? 'selected' : ''}>🤦 Lengst fra pin (straff)</option>
+          <option value="shortest_drive" ${_wizJunkPickKind === 'shortest_drive' ? 'selected' : ''}>🐌 Kortest drive (straff)</option>
         </select>
         <button onclick="wizAddJunkEntry()" style="padding:6px 14px; border-radius:6px; border:none; background:var(--gold); color:var(--green-deep); font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap;">+ Legg til</button>
       </div>
-      <label style="display:flex; align-items:center; justify-content:space-between; font-size:13px; color:var(--cream);">Poeng til vinner per hull <span style="color:var(--cream-dim); font-size:11px;">(kun i turnerings-summen)</span>
+      <label style="display:flex; align-items:center; justify-content:space-between; font-size:13px; color:var(--cream);">Poeng ved «seier» per hull <span style="color:var(--cream-dim); font-size:11px;">(straffevariantene trekker fra i stedet — kun i turnerings-summen)</span>
         <input type="number" min="1" max="10" value="${config.points ?? 2}" onchange="wizSetAddonConfig('junk','points', parseInt(this.value)||2)" style="${inp}"></label>`;
   }
   return '';
