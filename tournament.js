@@ -264,7 +264,7 @@ function _renderTournamentDetailHTML(t, data, opts) {
   const adjustmentList = (data.adjustments || []).map(a => `
     <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 16px;font-size:12px;color:var(--cream-dim);border-bottom:1px solid rgba(255,255,255,0.05);">
       <span><strong style="color:var(--cream);">${(a.profiles?.display_name || '?').split(' ')[0]}</strong> ${a.points > 0 ? '+' : ''}${a.points}p${a.note ? ` · ${a.note}` : ''}</span>
-      ${opts.publicMode ? '' : `<button onclick="deleteAdjustment('${a.id}')" style="background:none;border:none;color:rgba(255,255,255,0.3);cursor:pointer;font-size:14px;">✕</button>`}
+      ${(opts.publicMode || !currentProfile?.is_admin) ? '' : `<button onclick="deleteAdjustment('${a.id}')" style="background:none;border:none;color:rgba(255,255,255,0.3);cursor:pointer;font-size:14px;">✕</button>`}
     </div>`).join('');
 
   const roundClick = (r) => opts.publicMode ? `showPublicLive('${r.id}')` : (r.status === 'completed' ? `showRoundSummary('${r.id}')` : `openRound('${r.id}')`);
@@ -283,8 +283,10 @@ function _renderTournamentDetailHTML(t, data, opts) {
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:16px;">
       <h1 style="font-family:'Playfair Display',serif;font-size:22px;color:var(--gold-light);margin:0;">🏆 ${t?.name || 'Turnering'}</h1>
       ${!opts.publicMode && t ? `<div style="display:flex;gap:8px;flex-shrink:0;">
+        ${currentProfile?.is_admin ? `
         <button onclick="openEditTournamentModal('${t.id}','${(t.name || '').replace(/'/g, '')}')" title="Endre navn" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);color:var(--cream-dim);padding:8px 10px;border-radius:10px;cursor:pointer;font-size:14px;-webkit-tap-highlight-color:transparent;">✏️</button>
         <button onclick="deleteTournamentPrompt('${t.id}','${(t.name || '').replace(/'/g, '')}')" title="Slett turnering" style="background:rgba(226,75,74,0.1);border:1px solid rgba(226,75,74,0.3);color:#e8a0a0;padding:8px 10px;border-radius:10px;cursor:pointer;font-size:14px;-webkit-tap-highlight-color:transparent;">🗑</button>
+        ` : ''}
         <button onclick="shareTournamentLink('${t.id}','${(t.name || '').replace(/'/g, '')}')" style="background:rgba(201,168,76,0.15);border:1px solid rgba(201,168,76,0.3);color:var(--gold);padding:8px 14px;border-radius:10px;cursor:pointer;font-size:12px;white-space:nowrap;-webkit-tap-highlight-color:transparent;">📤 Del</button>
       </div>` : ''}
     </div>
@@ -306,7 +308,7 @@ function _renderTournamentDetailHTML(t, data, opts) {
     <div style="background:rgba(0,0,0,0.2);border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,0.07);margin-bottom:10px;">
       ${adjustmentList || `<div style="padding:12px 16px;font-size:13px;color:var(--cream-dim);">Ingen justeringer.</div>`}
     </div>
-    ${opts.publicMode ? '' : `<button class="btn btn-auto" style="margin-bottom:14px;" onclick="openAdjustPointsModal()">+ Juster poeng</button>`}
+    ${(opts.publicMode || !currentProfile?.is_admin) ? '' : `<button class="btn btn-auto" style="margin-bottom:14px;" onclick="openAdjustPointsModal()">+ Juster poeng</button>`}
     ${roundsSection}
   `;
 }
