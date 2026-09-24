@@ -184,6 +184,7 @@ function openNewGame() {
   _wizState = { mainGame: null, config: {}, courseId: null, teeId: null, holeRange: 'all', course: null, players: [], teams: [], teamAssign: {}, numTeams: 2, flights: [], flightAssign: {}, numFlights: 1, addons: [], tournamentId: null };
   _wizCourseTees = []; _wizCourseHoles = [];
   _wizJunkPickHole = null; _wizJunkPickKind = 'closest_pin';
+  if (typeof TeamBuilder !== 'undefined') TeamBuilder._overrides = {};
   const scr = document.getElementById('newGameScreen');
   scr.style.display = 'flex';
   scr.style.flexDirection = 'column';

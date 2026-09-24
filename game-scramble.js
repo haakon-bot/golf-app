@@ -97,6 +97,15 @@ function _teamExtraStrokes(teamHcp, strokeIndex) {
 const TeamBuilder = {
   _c: null, _players: [], _numTeams: 2, _course: {}, _assign: {},
 
+  // Manuell overstyring av lag-HCP (teamIndex → tall), f.eks. for å sette
+  // alle lag likt ("like mange tildelte") uten å endre laginndelingen.
+  // Kun i BYGGE-steget (ny runde) — mid-runde-redigering (_wizRenderEditTeams
+  // i rounds.js, §2.6) viser fortsatt kun RÅ spiller-HCP redigerbart, aldri
+  // lag-HCP direkte, med vilje. Nullstilles av openNewGame() ved ny wizard,
+  // og av setPlayers()/setAssignment() når laginndelingen endres vesentlig
+  // (indeksene ville pekt på en annen sammensetning enn den som ble overstyrt).
+  _overrides: {},
+
   _onChange: null,
 
   // opts: { container (el|id), players:[{id,name,handicap}], numTeams, slope, cr, par,
@@ -111,7 +120,7 @@ const TeamBuilder = {
   },
 
   // Sett hele fordelingen på én gang (brukes av «bland på nytt»).
-  setAssignment(map) { this._assign = { ...map }; this.render(); },
+  setAssignment(map) { this._assign = { ...map }; this._overrides = {}; this.render(); },
 
   setCourse(slope, cr, par) { this._course = { slope, cr, par }; this.render(); },
 
@@ -129,6 +138,7 @@ const TeamBuilder = {
     this._numTeams = Math.max(minT, n | 0);
     // flytt spillere ut av fjernede lag til minste åpne
     this._players.forEach(p => { if (this._assign[p.id] == null || this._assign[p.id] >= this._numTeams) this._assign[p.id] = this._smallestOpen(); });
+    this._overrides = {};   // lagindeksene betyr noe annet nå
     this.render();
   },
 
@@ -144,6 +154,7 @@ const TeamBuilder = {
       if (cur != null && cur < this._numTeams) return;
       this._assign[p.id] = this._smallestOpen();
     });
+    this._overrides = {};   // ny/endret spillerliste → ikke lenger sammensetningen som ble overstyrt
     this.render();
   },
 
@@ -154,16 +165,27 @@ const TeamBuilder = {
     this.render();
   },
 
+  // Manuell overstyring av lag-HCP. Tomt/ugyldig → tilbake til auto-utledet.
+  setOverride(teamIdx, val) {
+    const n = parseFloat(val);
+    if (val === '' || isNaN(n)) delete this._overrides[teamIdx];
+    else this._overrides[teamIdx] = n;
+    this.render();
+  },
+
   // → [{ name, member_ids, members, team_handicap }] for hvert lag.
   getTeams() {
     const teams = [];
     for (let t = 0; t < this._numTeams; t++) {
       const members = this._players.filter(p => this._assign[p.id] === t);
+      const auto = members.length ? scrambleTeamHandicap(members, this._course.slope, this._course.cr, this._course.par) : null;
       teams.push({
         name: `Lag ${t + 1}`,
         member_ids: members.map(p => p.id),
         members,
-        team_handicap: members.length ? scrambleTeamHandicap(members, this._course.slope, this._course.cr, this._course.par) : null,
+        team_handicap: this._overrides[t] != null ? this._overrides[t] : auto,
+        _autoHandicap: auto,
+        _overridden: this._overrides[t] != null,
       });
     }
     return teams;
@@ -183,10 +205,13 @@ const TeamBuilder = {
     const teamPicker = `<div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:10px;">
       ${stepBtn(-1, this._numTeams <= minT, '−')}<span style="font-size:13px;color:var(--cream);min-width:52px;text-align:center;">${this._numTeams} lag</span>${stepBtn(1, this._numTeams >= this._players.length, '+')}
     </div>`;
-    const teamCards = teams.map(t => `<div style="flex:1;min-width:84px;text-align:center;padding:8px;border-radius:8px;background:rgba(0,0,0,0.25);border:1px solid ${t.member_ids.length > this._max ? 'rgba(192,57,43,0.4)' : 'rgba(201,168,76,0.2)'};">
+    const teamCards = teams.map((t, i) => `<div style="flex:1;min-width:84px;text-align:center;padding:8px;border-radius:8px;background:rgba(0,0,0,0.25);border:1px solid ${t.member_ids.length > this._max ? 'rgba(192,57,43,0.4)' : t._overridden ? 'rgba(201,168,76,0.6)' : 'rgba(201,168,76,0.2)'};">
       <div style="font-size:11px;color:var(--gold-light);">${t.name}</div>
-      <div style="font-family:'Playfair Display',serif;font-size:20px;color:var(--gold);">${t.team_handicap != null ? t.team_handicap : '–'}</div>
+      <input type="number" step="1" value="${t.team_handicap ?? ''}" ${t.member_ids.length ? '' : 'disabled'}
+        onchange="TeamBuilder.setOverride(${i}, this.value)"
+        style="width:52px;text-align:center;background:transparent;border:none;border-bottom:1px solid ${t._overridden ? 'var(--gold)' : 'rgba(255,255,255,0.2)'};color:var(--gold);font-family:'Playfair Display',serif;font-size:20px;padding:0 0 2px;">
       <div style="font-size:9px;color:var(--cream-dim);">lag-HCP · ${t.member_ids.length}/${this._max}</div>
+      ${t._overridden ? `<button type="button" onclick="TeamBuilder.setOverride(${i},'')" style="background:none;border:none;color:rgba(255,255,255,0.35);font-size:9px;text-decoration:underline;cursor:pointer;padding:2px 0 0;">↺ auto (${t._autoHandicap ?? '–'})</button>` : ''}
     </div>`).join('');
     const rows = this._players.map(p => {
       const seg = [];
