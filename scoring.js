@@ -191,7 +191,8 @@ function renderPlayerInputs(holeData) {
   const _rSlope = currentRound?.tee_sets?.slope, _rCr = currentRound?.tee_sets?.course_rating;
   let html = '';
   roundFlights.forEach(flight => {
-    const canEdit = flight.flight_players?.some(fp => fp.player_id === _myRoundPlayerId);
+    const canEdit = flight.flight_players?.some(fp => fp.player_id === _myRoundPlayerId)
+      || (currentProfile?.is_admin && currentRound?.status === 'completed');
     html += `<div style="margin-bottom:16px;">
       <div style="font-size:11px; color:var(--cream-dim); letter-spacing:1.5px; text-transform:uppercase; margin-bottom:8px;">${flight.name}${canEdit ? ' · <span style="color:var(--green-light);">din flight</span>' : ' <span style="color:rgba(255,255,255,0.3);">· kun visning</span>'}</div>`;
     (flight.flight_players || []).forEach(fp => {
@@ -255,9 +256,10 @@ function renderTeamInputs(holeData) {
   // Registrer kun eget lag — man trenger ikke se andre lags kort her (de vises
   // på ledertavla). Ikke-deltaker (uten lag) ser alle, kun visning.
   const myTeams = roundTeams.filter(t => (t.member_ids || []).includes(_myRoundPlayerId));
-  const teamsToShow = myTeams.length ? myTeams : roundTeams;
+  const _adminOverride = currentProfile?.is_admin && currentRound?.status === 'completed';
+  const teamsToShow = _adminOverride ? roundTeams : (myTeams.length ? myTeams : roundTeams);
   teamsToShow.forEach(team => {
-    const canEdit = (team.member_ids || []).includes(_myRoundPlayerId);
+    const canEdit = (team.member_ids || []).includes(_myRoundPlayerId) || _adminOverride;
     const teamHcp = team.team_handicap != null ? Number(team.team_handicap) : 0;
     const strokes = roundTeamScores[team.id]?.[currentHole] || 0;
     const extra = _teamExtraStrokes(teamHcp, holeData.stroke_index);
@@ -814,8 +816,10 @@ async function showRoundSummary(roundId) {
     .eq('id', roundId).single();
   if (error || !round) { document.getElementById('summaryTitle').textContent = 'Feil ved lasting'; return; }
   // Åpner samme scoringsskjerm som under runden, uansett status — for å rette
-  // opp feilregistrerte slag i etterkant. canEdit er fortsatt flight-medlemskap
-  // (samme regel som ellers), så man kan bare rette egen flights score.
+  // opp feilregistrerte slag i etterkant. canEdit er flight-medlemskap som
+  // ellers, MEN admin får redigere alle flighter/lag når runden er
+  // 'completed' (aug/sep 2026-avklaring) — kun for avsluttede runder, ikke
+  // under en live/aktiv runde, se renderPlayerInputs/renderTeamInputs.
   const editScoreBtn = document.getElementById('summaryEditScoreBtn');
   if (editScoreBtn) editScoreBtn.onclick = () => { closeModal('modalRoundSummary'); openRound(roundId); };
   const { data: scores } = await db.from('scores').select('*').eq('round_id', roundId);
