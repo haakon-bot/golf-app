@@ -255,7 +255,7 @@ async function acAnalyzeScorecard() {
   try {
     const parsed = await callClaudeProxy(
       _ac.fileData, _ac.fileType,
-      'Dette er et scorekort fra en norsk golfbane. Detekter hvilke hull som er med: "front9" (hull 1-9), "back9" (hull 10-18), eller "all18" (hull 1-18). Trekk ut par og SI/Index per hull. Returner KUN JSON: {"hole_range":"front9","holes":[{"hole":1,"par":4,"si":7}]}. Kun JSON.',
+      'Dette er et scorekort fra en golfbane (kan være norsk eller utenlandsk). VIKTIG: noen baner har flere 9-hulls-løkker som kombineres (f.eks. spanske baner med 27 hull), og scorekortet kan da vise EGNE trykte hull-numre som ikke er 1-18 (f.eks. "19" til "27" for første halvdel, eller "1" til "9" igjen for en annen løkke enn den vanlige). IGNORER de trykte hull-numrene helt og nummerer i stedet SEKVENSIELT etter rekkefølgen kolonnene faktisk står i på kortet, fra venstre mot høyre: de første 9 kolonnene blir hull 1-9, de neste 9 kolonnene (hvis de finnes) blir hull 10-18 – uavhengig av hva som står trykt over dem. Detekter om scorekortet totalt viser 9 eller 18 hull: "front9", "back9", eller "all18". Trekk ut par og SI/Index (stroke index/HCP-raden) per hull i denne sekvensielle nummereringen. Returner KUN JSON: {"hole_range":"front9","holes":[{"hole":1,"par":4,"si":7}]}. Kun JSON.',
       2000
     );
     const holes = parsed.holes || [];
@@ -777,7 +777,7 @@ async function analyzeHullScorecard(file, courseId, range) {
     try {
       const parsed = await callClaudeProxy(
         fileData, file.type,
-        `Dette er et scorekort fra en norsk golfbane med hull ${startHole} til ${endHole}. Trekk ut par og stroke index (SI/Index) per hull. Returner KUN JSON: {"holes":[{"hole":${startHole},"par":4,"si":1}]}. Kun JSON.`,
+        `Dette er et scorekort/utsnitt fra en golfbane som viser NI hull. VIKTIG: uansett hvilke hull-numre som faktisk står trykt på kortet (noen baner, f.eks. spanske baner med flere 9-hulls-løkker, bruker egne numre som ikke er 1-18), skal du IGNORERE de trykte tallene og i stedet nummerere kolonnene sekvensielt som hull ${startHole} til ${endHole}, i rekkefølgen de står fra venstre mot høyre. Trekk ut par og stroke index (SI/Index) per hull i denne sekvensielle nummereringen. Returner KUN JSON: {"holes":[{"hole":${startHole},"par":4,"si":1}]}. Kun JSON.`,
         2000
       );
       const holes = parsed.holes || [];
