@@ -360,7 +360,7 @@ function _renderTournamentDetailHTML(t, data, opts) {
         <thead><tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
           <th style="padding:8px 10px;text-align:left;color:var(--cream-dim);font-size:10px;">#</th>
           <th style="padding:8px 10px;text-align:left;color:var(--cream-dim);font-size:10px;">Spiller</th>
-          ${data.rounds.map(r => `<th style="padding:8px 6px;text-align:center;color:var(--cream-dim);font-size:9px;" title="${_fmtRoundLabel(r)}">${(r.date || '').slice(5)}${r.isTeamRound ? ' 🏌️' : ''}</th>`).join('')}
+          ${data.rounds.map((r, i) => `<th style="padding:8px 6px;text-align:center;color:var(--cream-dim);font-size:9px;" title="${_fmtRoundLabel(r)}">R${i + 1}${r.isTeamRound ? ' 🏌️' : ''}</th>`).join('')}
           <th style="padding:8px 10px;text-align:right;color:var(--cream-dim);font-size:10px;">Sum</th>
         </tr></thead>
         <tbody>${standingsRows || `<tr><td colspan="${data.rounds.length + 3}" style="padding:20px;text-align:center;color:var(--cream-dim);font-size:13px;">Ingen runder med poeng ennå.</td></tr>`}</tbody>
