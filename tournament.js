@@ -1,17 +1,50 @@
 // ── TURNERING ──
 // Binder flere RUNDER til én sammenlagt konkurranse (f.eks. en golftur).
 // Ren tillegging oppå eksisterende data — ingen endring i spillmotoren:
-// - Samlet ledertavle = sum av Stableford-poeng per spiller på tvers av
-//   rundene som er merket for turneringen. Regnes fra scores/player_id
-//   (samme calcStableford/_playingHcp som Live/Stats). Lagspill (scramble)
-//   scorer på team_id og har ingen player_id-rader, så de bidrar automatisk
-//   0 til denne summen — ingen spesialhåndtering nødvendig.
-// - Lag-vinner per scramble-runde gjenbrukes fra ScrambleGame.compute
-//   (samme kilde som live-ledertavlen), vist som EGEN kåring.
-// - Sidekonkurranse (nærmest pin / lengst drive) registreres og bekreftes
-//   PER RUNDE av game-junk.js; bekreftede vinnere legges til i summen over
-//   (se junkGame-blokken under). Manuelle justeringer er en egen, fri
-//   sikkerhetsventil (tournament_adjustments) uavhengig av alt annet.
+// - Samlet ledertavle = PLASSERINGSPOENG per spiller, ikke rå Stableford-sum
+//   (besluttet sept 2026 — nødvendig når en turnering blander rundetyper,
+//   f.eks. Stableford og Texas scramble, som ellers ikke er sammenlignbare):
+//   · Stableford-runde: spillerne rangeres etter Stableford-poeng den
+//     runden. Poeng = (antall deltakere − plass + 1), og 1. plass får i
+//     tillegg STABLEFORD_WINNER_BONUS oppå. Delt plass → alle får poeng for
+//     beste delte plass, neste plass hopper forbi.
+//   · Scramble/lag-runde: INGEN full plasseringsstige — vinnerlaget
+//     (delt 1. plass inkludert) får SCRAMBLE_WIN_POINTS hver, øvrige lag 0.
+//     Rangeringen gjenbruker ScrambleGame.compute (samme kilde som
+//     live-ledertavlen); "🏌️ Lag-vinner" vises i tillegg som egen kåring.
+// - Sidekonkurranse (nærmest pin / lengst drive + straffevariantene)
+//   registreres og bekreftes PER RUNDE av game-junk.js; bekreftede vinnere
+//   legger til/trekker fra poeng i summen over (se junkGame-blokken under).
+// - Manuelle justeringer er en egen, fri sikkerhetsventil
+//   (tournament_adjustments), uavhengig av alt annet.
+
+const STABLEFORD_WINNER_BONUS = 3;   // ekstra poeng oppå vanlig plasseringspoeng for 1. plass
+const SCRAMBLE_WIN_POINTS = 3;       // poeng til hvert medlem av vinnerlaget (taperlag: 0)
+
+// Poeng for én plass i et felt på n deltakere (1 = best). Sisteplass = 1p,
+// +1 poeng per plass oppover, og vinneren får winnerBonus i tillegg.
+function _placementPoints(n, place, winnerBonus) {
+  const base = n - place + 1;
+  return place === 1 ? base + winnerBonus : base;
+}
+
+// entries: [{id, value}], høyere value = bedre. → { id: poeng }. Delt plass
+// (lik value) gir ALLE i gruppen poengene for beste delte plass —
+// neste distinkte gruppe hopper forbi de brukte plassene (1,2,2,4,5…).
+function _rankToPoints(entries, winnerBonus) {
+  const n = entries.length;
+  const sorted = [...entries].sort((a, b) => b.value - a.value);
+  const out = {};
+  let i = 0;
+  while (i < sorted.length) {
+    let j = i;
+    while (j < sorted.length && sorted[j].value === sorted[i].value) j++;
+    const pts = _placementPoints(n, i + 1, winnerBonus);
+    for (let k = i; k < j; k++) out[sorted[k].id] = pts;
+    i = j;
+  }
+  return out;
+}
 
 let _tournamentList = null;       // cache for lista + wizard-velgeren
 let _tournamentDetailId = null;   // hvilken turnering som er åpnet (innlogget side)
@@ -60,21 +93,44 @@ async function computeTournamentData(tournamentId) {
       const teamScores = {};
       (scores || []).forEach(s => { if (s.team_id && s.strokes) (teamScores[s.team_id] = teamScores[s.team_id] || {})[s.hole_number] = s.strokes; });
       const data = getGame('scramble').compute({ round, holes: activeHoles, teamScores, teams: scrGame.game_teams || [], events: events || [], fullCoursePar: fullPar });
-      const top = ((data && data.teams) || [])[0];
+      const teamsRanked = (data && data.teams) || [];
+      const top = teamsRanked[0];
       if (top && top.thru > 0) teamWinner = { name: top.team.name, thru: top.thru };
+      // Scramble gir INGEN full plasseringsstige — kun vinnerlaget (delt 1.
+      // plass inkludert) får SCRAMBLE_WIN_POINTS hver, øvrige lag 0.
+      if (top && top.thru > 0 && !top.out) {
+        const val = r => data.scoring === 'stableford' ? r.totalSf : data.scoring === 'slag' ? r.totalGross : r.totalNet;
+        const bestVal = val(top);
+        const winners = teamsRanked.filter(r => r.thru > 0 && !r.out && val(r) === bestVal);
+        winners.forEach(w => {
+          (w.team.member_ids || []).forEach(pid => {
+            if (!totals[pid]) totals[pid] = { name: allPlayers[pid] || '?', points: 0, perRound: {} };
+            totals[pid].points += SCRAMBLE_WIN_POINTS;
+            totals[pid].perRound[round.id] = (totals[pid].perRound[round.id] || 0) + SCRAMBLE_WIN_POINTS;
+          });
+        });
+      }
     } else {
       const scoreMap = {};
       (scores || []).forEach(s => { if (s.player_id) (scoreMap[s.player_id] = scoreMap[s.player_id] || {})[s.hole_number] = s.strokes; });
+      // Rangér spillerne som faktisk har scoret noe denne runden etter
+      // Stableford-poeng, og legg PLASSERINGSpoeng (ikke rå Stableford-sum)
+      // inn i turneringssummen — se _rankToPoints/_placementPoints over.
+      const played = [];
       allFP.forEach(fp => {
         const phcp = _playingHcp(fp.handicap, round.tee_sets?.slope, round.tee_sets?.course_rating, fullPar);
-        let pts = 0;
+        let pts = 0, thru = 0;
         Object.entries(scoreMap[fp.player_id] || {}).forEach(([hn, strokes]) => {
           const h = holeMap[parseInt(hn)];
-          if (strokes > 0 && h?.par && h?.stroke_index) pts += calcStableford(strokes, h.par, phcp, h.stroke_index, 18);
+          if (strokes > 0 && h?.par && h?.stroke_index) { pts += calcStableford(strokes, h.par, phcp, h.stroke_index, 18); thru++; }
         });
-        if (!totals[fp.player_id]) totals[fp.player_id] = { name: fp.profiles?.display_name || '?', points: 0, perRound: {} };
-        totals[fp.player_id].points += pts;
-        totals[fp.player_id].perRound[round.id] = pts;
+        if (thru > 0) played.push({ id: fp.player_id, name: fp.profiles?.display_name || '?', value: pts });
+      });
+      const placement = _rankToPoints(played, STABLEFORD_WINNER_BONUS);
+      played.forEach(p => {
+        if (!totals[p.id]) totals[p.id] = { name: p.name, points: 0, perRound: {} };
+        totals[p.id].points += placement[p.id];
+        totals[p.id].perRound[round.id] = placement[p.id];
       });
     }
     // Sidekonkurranse (game-junk.js): bekreftede vinnere gir bonuspoeng KUN i
