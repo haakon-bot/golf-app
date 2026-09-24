@@ -96,6 +96,15 @@ async function computeTournamentData(tournamentId) {
       const teamsRanked = (data && data.teams) || [];
       const top = teamsRanked[0];
       if (top && top.thru > 0) teamWinner = { name: top.team.name, thru: top.thru };
+      // Nullstill 0p for ALLE som er med i et lag denne runden, så tapende
+      // lag viser eksplisitt "0" i standings-kolonnen (ikke "–", som betyr
+      // "ikke med i runden"). Vinnerne bumpes til SCRAMBLE_WIN_POINTS under.
+      (scrGame.game_teams || []).forEach(t => {
+        (t.member_ids || []).forEach(pid => {
+          if (!totals[pid]) totals[pid] = { name: allPlayers[pid] || '?', points: 0, perRound: {} };
+          if (totals[pid].perRound[round.id] == null) totals[pid].perRound[round.id] = 0;
+        });
+      });
       // Scramble gir INGEN full plasseringsstige — kun vinnerlaget (delt 1.
       // plass inkludert) får SCRAMBLE_WIN_POINTS hver, øvrige lag 0.
       if (top && top.thru > 0 && !top.out) {
@@ -295,14 +304,13 @@ async function deleteAdjustment(id) {
 // Delt HTML-renderer for både innlogget side og offentlig delingslenke.
 function _renderTournamentDetailHTML(t, data, opts) {
   opts = opts || {};
-  const indivRounds = data.rounds.filter(r => !r.isTeamRound);
   const teamRounds = data.rounds.filter(r => r.isTeamRound);
 
   const standingsRows = data.standings.map((s, i) => `
     <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
       <td style="padding:9px 10px;color:${i === 0 ? 'var(--gold)' : 'var(--cream-dim)'};font-size:13px;">${i + 1}</td>
       <td style="padding:9px 10px;color:var(--cream);font-size:14px;">${(s.name || '?').split(' ')[0]}</td>
-      ${indivRounds.map(r => `<td style="padding:9px 6px;text-align:center;color:var(--cream-dim);font-size:12px;">${s.perRound[r.id] != null ? s.perRound[r.id] : '–'}</td>`).join('')}
+      ${data.rounds.map(r => `<td style="padding:9px 6px;text-align:center;color:var(--cream-dim);font-size:12px;">${s.perRound[r.id] != null ? s.perRound[r.id] : '–'}</td>`).join('')}
       <td style="padding:9px 10px;text-align:right;font-family:'Playfair Display',serif;font-size:17px;color:${i === 0 ? 'var(--gold)' : 'var(--cream)'};">${s.points}p</td>
     </tr>`).join('');
 
@@ -346,16 +354,16 @@ function _renderTournamentDetailHTML(t, data, opts) {
         <button onclick="shareTournamentLink('${t.id}','${(t.name || '').replace(/'/g, '')}')" style="background:rgba(201,168,76,0.15);border:1px solid rgba(201,168,76,0.3);color:var(--gold);padding:8px 14px;border-radius:10px;cursor:pointer;font-size:12px;white-space:nowrap;-webkit-tap-highlight-color:transparent;">📤 Del</button>
       </div>` : ''}
     </div>
-    <div style="font-size:11px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;">Sammenlagt · individuelt</div>
+    <div style="font-size:11px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;">Sammenlagt · poeng per runde</div>
     <div style="background:rgba(0,0,0,0.2);border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,0.07);margin-bottom:10px;">
       <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">
         <thead><tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
           <th style="padding:8px 10px;text-align:left;color:var(--cream-dim);font-size:10px;">#</th>
           <th style="padding:8px 10px;text-align:left;color:var(--cream-dim);font-size:10px;">Spiller</th>
-          ${indivRounds.map(r => `<th style="padding:8px 6px;text-align:center;color:var(--cream-dim);font-size:9px;">${(r.date || '').slice(5)}</th>`).join('')}
+          ${data.rounds.map(r => `<th style="padding:8px 6px;text-align:center;color:var(--cream-dim);font-size:9px;" title="${_fmtRoundLabel(r)}">${(r.date || '').slice(5)}${r.isTeamRound ? ' 🏌️' : ''}</th>`).join('')}
           <th style="padding:8px 10px;text-align:right;color:var(--cream-dim);font-size:10px;">Sum</th>
         </tr></thead>
-        <tbody>${standingsRows || `<tr><td colspan="${indivRounds.length + 3}" style="padding:20px;text-align:center;color:var(--cream-dim);font-size:13px;">Ingen individuelle runder med poeng ennå.</td></tr>`}</tbody>
+        <tbody>${standingsRows || `<tr><td colspan="${data.rounds.length + 3}" style="padding:20px;text-align:center;color:var(--cream-dim);font-size:13px;">Ingen runder med poeng ennå.</td></tr>`}</tbody>
       </table></div>
     </div>
     ${teamSection}
