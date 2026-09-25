@@ -64,7 +64,7 @@ async function fetchTournaments() {
 }
 
 function _fmtRoundLabel(r) {
-  return `${r.date || ''} · ${r.courseName}${r.isTeamRound ? ' 🏌️ Lag' : ''}`;
+  return `${r.date || ''} · ${r.courseName}${r.isTeamRound ? ' 🏌️ Lag' : r.isBestBall ? ' ⛳ Best Ball' : ''}`;
 }
 
 // Henter alle runder for en turnering og regner sammenlagt + lag-vinnere.
@@ -95,6 +95,7 @@ async function computeTournamentData(tournamentId) {
     const scrGame = typeof scrambleGame === 'function' ? scrambleGame(round) : null;
     const isTeamRound = !!(scrGame && (scrGame.game_teams || []).length);
     let teamWinner = null;
+    let isBestBall = false;
     if (isTeamRound) {
       const teamScores = {};
       (scores || []).forEach(s => { if (s.team_id && s.strokes) (teamScores[s.team_id] = teamScores[s.team_id] || {})[s.hole_number] = s.strokes; });
@@ -152,11 +153,13 @@ async function computeTournamentData(tournamentId) {
       // inkludert) BESTBALL_WIN_POINTS hver — samme mønster som scramble.
       const bbGame = (round.games || []).find(g => g.game_type === 'bestball' && g.is_main);
       if (bbGame && typeof getGame === 'function' && getGame('bestball')) {
+        isBestBall = true;
         const bbData = getGame('bestball').compute({ round, holes: activeHoles, scores: scoreMap, flights: round.flights || [], fullCoursePar: fullPar });
         const bbTeams = (bbData && bbData.teams) || [];
         const bbTop = bbTeams[0];
         if (bbTop && bbTop.thru > 0) {
           const bbWinners = bbTeams.filter(t => t.thru > 0 && t.total === bbTop.total);
+          teamWinner = { name: bbWinners.map(t => t.name).join(' & '), thru: bbTop.thru };
           bbWinners.forEach(w => {
             w.members.forEach(fp => {
               const pid = fp.player_id;
@@ -182,7 +185,7 @@ async function computeTournamentData(tournamentId) {
         totals[entry.confirmedId].perRound[round.id] = (totals[entry.confirmedId].perRound[round.id] || 0) + entry.points;
       });
     }
-    roundMeta.push({ id: round.id, date: round.date, status: round.status, courseName: round.courses?.name || '', isTeamRound, teamWinner });
+    roundMeta.push({ id: round.id, date: round.date, status: round.status, courseName: round.courses?.name || '', isTeamRound, isBestBall, teamWinner });
   }
   // Sikkerhetsventil: manuell poeng-justering, helt uavhengig av alt over —
   // for å rette opp hvis noe går galt med registrering/poeng på turen.
@@ -330,7 +333,7 @@ async function deleteAdjustment(id) {
 // Delt HTML-renderer for både innlogget side og offentlig delingslenke.
 function _renderTournamentDetailHTML(t, data, opts) {
   opts = opts || {};
-  const teamRounds = data.rounds.filter(r => r.isTeamRound);
+  const teamRounds = data.rounds.filter(r => r.isTeamRound || r.isBestBall);
 
   const standingsRows = data.standings.map((s, i) => `
     <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
@@ -386,7 +389,7 @@ function _renderTournamentDetailHTML(t, data, opts) {
         <thead><tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
           <th style="padding:8px 10px;text-align:left;color:var(--cream-dim);font-size:10px;">#</th>
           <th style="padding:8px 10px;text-align:left;color:var(--cream-dim);font-size:10px;">Spiller</th>
-          ${data.rounds.map((r, i) => `<th style="padding:8px 6px;text-align:center;color:var(--cream-dim);font-size:9px;" title="${_fmtRoundLabel(r)}">R${i + 1}${r.isTeamRound ? ' 🏌️' : ''}</th>`).join('')}
+          ${data.rounds.map((r, i) => `<th style="padding:8px 6px;text-align:center;color:var(--cream-dim);font-size:9px;" title="${_fmtRoundLabel(r)}">R${i + 1}${r.isTeamRound ? ' 🏌️' : r.isBestBall ? ' ⛳' : ''}</th>`).join('')}
           <th style="padding:8px 10px;text-align:right;color:var(--cream-dim);font-size:10px;">Sum</th>
         </tr></thead>
         <tbody>${standingsRows || `<tr><td colspan="${data.rounds.length + 3}" style="padding:20px;text-align:center;color:var(--cream-dim);font-size:13px;">Ingen runder med poeng ennå.</td></tr>`}</tbody>
