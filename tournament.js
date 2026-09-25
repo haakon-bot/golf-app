@@ -108,7 +108,7 @@ async function computeTournamentData(tournamentId) {
       // "ikke med i runden"). Vinnerne bumpes til SCRAMBLE_WIN_POINTS under.
       (scrGame.game_teams || []).forEach(t => {
         (t.member_ids || []).forEach(pid => {
-          if (!totals[pid]) totals[pid] = { name: allPlayers[pid] || '?', points: 0, perRound: {} };
+          if (!totals[pid]) totals[pid] = { name: allPlayers[pid] || '?', points: 0, perRound: {}, perRoundBonus: {} };
           if (totals[pid].perRound[round.id] == null) totals[pid].perRound[round.id] = 0;
         });
       });
@@ -120,7 +120,7 @@ async function computeTournamentData(tournamentId) {
         const winners = teamsRanked.filter(r => r.thru > 0 && !r.out && val(r) === bestVal);
         winners.forEach(w => {
           (w.team.member_ids || []).forEach(pid => {
-            if (!totals[pid]) totals[pid] = { name: allPlayers[pid] || '?', points: 0, perRound: {} };
+            if (!totals[pid]) totals[pid] = { name: allPlayers[pid] || '?', points: 0, perRound: {}, perRoundBonus: {} };
             totals[pid].points += SCRAMBLE_WIN_POINTS;
             totals[pid].perRound[round.id] = (totals[pid].perRound[round.id] || 0) + SCRAMBLE_WIN_POINTS;
           });
@@ -144,7 +144,7 @@ async function computeTournamentData(tournamentId) {
       });
       const placement = _rankToPoints(played, STABLEFORD_WINNER_BONUS);
       played.forEach(p => {
-        if (!totals[p.id]) totals[p.id] = { name: p.name, points: 0, perRound: {} };
+        if (!totals[p.id]) totals[p.id] = { name: p.name, points: 0, perRound: {}, perRoundBonus: {} };
         totals[p.id].points += placement[p.id];
         totals[p.id].perRound[round.id] = placement[p.id];
       });
@@ -163,9 +163,10 @@ async function computeTournamentData(tournamentId) {
           bbWinners.forEach(w => {
             w.members.forEach(fp => {
               const pid = fp.player_id;
-              if (!totals[pid]) totals[pid] = { name: fp.profiles?.display_name || '?', points: 0, perRound: {} };
+              if (!totals[pid]) totals[pid] = { name: fp.profiles?.display_name || '?', points: 0, perRound: {}, perRoundBonus: {} };
               totals[pid].points += BESTBALL_WIN_POINTS;
               totals[pid].perRound[round.id] = (totals[pid].perRound[round.id] || 0) + BESTBALL_WIN_POINTS;
+              totals[pid].perRoundBonus[round.id] = (totals[pid].perRoundBonus[round.id] || 0) + BESTBALL_WIN_POINTS;
             });
           });
         }
@@ -180,7 +181,7 @@ async function computeTournamentData(tournamentId) {
       const junkData = getGame('junk').compute({ round, flights: round.flights || [], events: events || [] });
       (junkData.entries || []).forEach(entry => {
         if (!entry.confirmedId) return;
-        if (!totals[entry.confirmedId]) totals[entry.confirmedId] = { name: allPlayers[entry.confirmedId] || '?', points: 0, perRound: {} };
+        if (!totals[entry.confirmedId]) totals[entry.confirmedId] = { name: allPlayers[entry.confirmedId] || '?', points: 0, perRound: {}, perRoundBonus: {} };
         totals[entry.confirmedId].points += entry.points;
         totals[entry.confirmedId].perRound[round.id] = (totals[entry.confirmedId].perRound[round.id] || 0) + entry.points;
       });
@@ -198,7 +199,7 @@ async function computeTournamentData(tournamentId) {
   const { data: adjustments, error: adjErr } = await db.from('tournament_adjustments').select('*, profiles!tournament_adjustments_player_id_fkey(display_name)').eq('tournament_id', tournamentId).order('created_at', { ascending: false });
   if (adjErr) console.error('tournament_adjustments select feilet:', adjErr);
   (adjustments || []).forEach(adj => {
-    if (!totals[adj.player_id]) totals[adj.player_id] = { name: allPlayers[adj.player_id] || adj.profiles?.display_name || '?', points: 0, perRound: {} };
+    if (!totals[adj.player_id]) totals[adj.player_id] = { name: allPlayers[adj.player_id] || adj.profiles?.display_name || '?', points: 0, perRound: {}, perRoundBonus: {} };
     totals[adj.player_id].points += Number(adj.points) || 0;
   });
   const standings = Object.entries(totals).map(([playerId, t]) => ({ playerId, ...t })).sort((a, b) => b.points - a.points);
@@ -335,11 +336,21 @@ function _renderTournamentDetailHTML(t, data, opts) {
   opts = opts || {};
   const teamRounds = data.rounds.filter(r => r.isTeamRound || r.isBestBall);
 
+  // Best Ball-runder summerer individuell plassering + lagbonus i samme celle
+  // — vis bruddet ("9+3") i stedet for bare sluttsummen, så lagbonusen er
+  // synlig der den faktisk ble lagt til, ikke bare gjettbar fra Sum-kolonnen.
+  const _fmtRoundCell = (s, r) => {
+    const total = s.perRound[r.id];
+    if (total == null) return '–';
+    const bonus = r.isBestBall ? (s.perRoundBonus?.[r.id] || 0) : 0;
+    if (bonus > 0) return `${total - bonus}<span style="color:var(--gold-dim);">+${bonus}</span>`;
+    return `${total}`;
+  };
   const standingsRows = data.standings.map((s, i) => `
     <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
       <td style="padding:9px 10px;color:${i === 0 ? 'var(--gold)' : 'var(--cream-dim)'};font-size:13px;">${i + 1}</td>
       <td style="padding:9px 10px;color:var(--cream);font-size:14px;">${(s.name || '?').split(' ')[0]}</td>
-      ${data.rounds.map(r => `<td style="padding:9px 6px;text-align:center;color:var(--cream-dim);font-size:12px;">${s.perRound[r.id] != null ? s.perRound[r.id] : '–'}</td>`).join('')}
+      ${data.rounds.map(r => `<td style="padding:9px 6px;text-align:center;color:var(--cream-dim);font-size:12px;">${_fmtRoundCell(s, r)}</td>`).join('')}
       <td style="padding:9px 10px;text-align:right;font-family:'Playfair Display',serif;font-size:17px;color:${i === 0 ? 'var(--gold)' : 'var(--cream)'};">${s.points}p</td>
     </tr>`).join('');
 
