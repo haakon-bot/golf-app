@@ -12,6 +12,11 @@
 //     (delt 1. plass inkludert) får SCRAMBLE_WIN_POINTS hver, øvrige lag 0.
 //     Rangeringen gjenbruker ScrambleGame.compute (samme kilde som
 //     live-ledertavlen); "🏌️ Lag-vinner" vises i tillegg som egen kåring.
+//   · Best Ball-runde: scorer individuelt, så går gjennom SAMME
+//     plasseringsstige som en vanlig Stableford-runde (ingen game_teams-
+//     rader å kjenne igjen den på) — MEN i tillegg får hvert medlem av
+//     vinner-flighten (beste BestBallGame-lagresultat) BESTBALL_WIN_POINTS
+//     oppå sin individuelle plasseringspoengsum, samme mønster som scramble.
 // - Sidekonkurranse (nærmest pin / lengst drive + straffevariantene)
 //   registreres og bekreftes PER RUNDE av game-junk.js; bekreftede vinnere
 //   legger til/trekker fra poeng i summen over (se junkGame-blokken under).
@@ -20,6 +25,7 @@
 
 const STABLEFORD_WINNER_BONUS = 3;   // ekstra poeng oppå vanlig plasseringspoeng for 1. plass
 const SCRAMBLE_WIN_POINTS = 3;       // poeng til hvert medlem av vinnerlaget (taperlag: 0)
+const BESTBALL_WIN_POINTS = 3;       // poeng OPPÅ individuell plassering, til vinner-flighten i Best Ball
 
 // Poeng for én plass i et felt på n deltakere (1 = best). Sisteplass = 1p,
 // +1 poeng per plass oppover, og vinneren får winnerBonus i tillegg.
@@ -141,6 +147,26 @@ async function computeTournamentData(tournamentId) {
         totals[p.id].points += placement[p.id];
         totals[p.id].perRound[round.id] = placement[p.id];
       });
+      // Best Ball: OPPÅ den individuelle plasseringspoengsummen over, får
+      // hvert medlem av vinner-flighten (beste lagresultat, delt 1. plass
+      // inkludert) BESTBALL_WIN_POINTS hver — samme mønster som scramble.
+      const bbGame = (round.games || []).find(g => g.game_type === 'bestball' && g.is_main);
+      if (bbGame && typeof getGame === 'function' && getGame('bestball')) {
+        const bbData = getGame('bestball').compute({ round, holes: activeHoles, scores: scoreMap, flights: round.flights || [], fullCoursePar: fullPar });
+        const bbTeams = (bbData && bbData.teams) || [];
+        const bbTop = bbTeams[0];
+        if (bbTop && bbTop.thru > 0) {
+          const bbWinners = bbTeams.filter(t => t.thru > 0 && t.total === bbTop.total);
+          bbWinners.forEach(w => {
+            w.members.forEach(fp => {
+              const pid = fp.player_id;
+              if (!totals[pid]) totals[pid] = { name: fp.profiles?.display_name || '?', points: 0, perRound: {} };
+              totals[pid].points += BESTBALL_WIN_POINTS;
+              totals[pid].perRound[round.id] = (totals[pid].perRound[round.id] || 0) + BESTBALL_WIN_POINTS;
+            });
+          });
+        }
+      }
     }
     // Sidekonkurranse (game-junk.js): bekreftede vinnere gir bonuspoeng KUN i
     // turnerings-summen (besluttet sept 2026), uavhengig av om runden er
