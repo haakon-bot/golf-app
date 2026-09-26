@@ -244,7 +244,7 @@ async function openRound(roundId) {
   document.getElementById('scCourseName').textContent = round.courses?.name || '';
   document.getElementById('scRoundDate').textContent = round.date;
   const teeBtnEl = document.getElementById('scTeeBtn');
-  if (teeBtnEl) teeBtnEl.textContent = round.tee_sets?.name ? `Tee: ${round.tee_sets.name} ✏️` : '';
+  if (teeBtnEl) teeBtnEl.textContent = round.tee_sets?.name ? `· ${round.tee_sets.name} tee` : '';
 
   // Identitet i denne runden: et EKSPLISITT valg («velg deg selv» via #join,
   // lagret i localStorage) vinner over innlogget profil — slik at hvis du velger
@@ -261,11 +261,11 @@ async function openRound(roundId) {
   const isParticipant = roundFlights.some(f => f.flight_players?.some(fp => fp.player_id === _myRoundPlayerId));
   const finishBtn = document.getElementById('scFinishBtn');
   const nextBottom = document.getElementById('scNextHoleBottom');
-  if (finishBtn) finishBtn.style.display = isParticipant ? 'inline-block' : 'none';
+  if (finishBtn) finishBtn.style.display = isParticipant ? 'block' : 'none';
   if (nextBottom) nextBottom.style.display = isParticipant ? 'block' : 'none';
   // ⚙ Oppsett kun for deltakere i en aktiv runde (§2.6 rediger oppsett)
   const editBtn = document.getElementById('scEditBtn');
-  if (editBtn) editBtn.style.display = (isParticipant && round.status === 'active') ? 'inline-block' : 'none';
+  if (editBtn) editBtn.style.display = (isParticipant && round.status === 'active') ? 'block' : 'none';
 
   renderScoringHole();
   document.getElementById('scoringScreen').style.display = 'flex';
@@ -295,16 +295,11 @@ function renderScoringHole() {
   // Oppdater begge Neste-knapper
   const nextTop = document.getElementById('scNextHole');
   const nextBottom = document.getElementById('scNextHoleBottom');
-  if (nextTop) nextTop.textContent = isLastHole ? 'Avslutt →' : 'Neste →';
+  if (nextTop) nextTop.textContent = isLastHole ? '🏁' : '›';
   if (nextBottom) {
     nextBottom.textContent = isLastHole ? '🏁 Avslutt runde' : 'Neste hull →';
     nextBottom.style.background = isLastHole ? 'var(--green-mid)' : 'var(--gold)';
     nextBottom.style.color = isLastHole ? 'var(--gold-light)' : 'var(--green-deep)';
-  }
-  if (!holeData.par) {
-    document.getElementById('scPar').style.color = 'var(--gold)';
-  } else {
-    document.getElementById('scPar').style.color = 'var(--cream)';
   }
   const guideBtn = document.getElementById('scGuideBtn');
   if (guideBtn) {
@@ -356,52 +351,45 @@ function renderHoleStats() {
 }
 function renderPlayerInputs(holeData) {
   const _rSlope = currentRound?.tee_sets?.slope, _rCr = currentRound?.tee_sets?.course_rating;
+  const _adminOverride = currentProfile?.is_admin && currentRound?.status === 'completed';
+  // Kun egen flight på scoringskjermen — de andre sees i stillingen/ledertavla.
+  // Ikke-deltaker (tilskuer) og admin på avsluttet runde ser alle flighter.
+  const myFlights = roundFlights.filter(f => f.flight_players?.some(fp => fp.player_id === _myRoundPlayerId));
+  const flightsToShow = (_adminOverride || !myFlights.length) ? roundFlights : myFlights;
+  const showFlightNames = flightsToShow.length > 1;
   let html = '';
-  roundFlights.forEach(flight => {
-    const canEdit = flight.flight_players?.some(fp => fp.player_id === _myRoundPlayerId)
-      || (currentProfile?.is_admin && currentRound?.status === 'completed');
-    html += `<div style="margin-bottom:16px;">
-      <div style="font-size:11px; color:var(--cream-dim); letter-spacing:1.5px; text-transform:uppercase; margin-bottom:8px;">${flight.name}${canEdit ? ' · <span style="color:var(--green-light);">din flight</span>' : ' <span style="color:rgba(255,255,255,0.3);">· kun visning</span>'}</div>`;
+  flightsToShow.forEach(flight => {
+    const canEdit = flight.flight_players?.some(fp => fp.player_id === _myRoundPlayerId) || _adminOverride;
+    if (showFlightNames) html += `<div style="font-size:10px; color:var(--cream-dim); letter-spacing:1.5px; text-transform:uppercase; margin:8px 0 6px;">${flight.name}${canEdit ? '' : ' · kun visning'}</div>`;
     (flight.flight_players || []).forEach(fp => {
       const player = fp.profiles;
       const strokes = roundScores[fp.player_id]?.[currentHole] || 0;
       const _phcp = _playingHcp(fp.handicap, _rSlope, _rCr, _fullCoursePar);
-      const stableford = (holeData.par && holeData.stroke_index)
-        ? calcStableford(strokes, holeData.par, _phcp, holeData.stroke_index)
-        : 0;
+      const stableford = (holeData.par && holeData.stroke_index) ? calcStableford(strokes, holeData.par, _phcp, holeData.stroke_index) : 0;
       const scoreColor = holeData.par ? getScoreColor(strokes, holeData.par) : 'var(--cream)';
       const scoreName = holeData.par ? getScoreName(strokes, holeData.par) : '';
-      const activeHcpBadge = _activeStrokes(_phcp, roundHoles);
       let extraStrokes = 0;
       if (holeData.stroke_index) {
         extraStrokes = Math.floor(_phcp / 18);
         if (holeData.stroke_index <= (_phcp % 18)) extraStrokes++;
       }
-      const strokesLabel = extraStrokes > 0
-        ? `<span style="color:var(--green-light); font-size:11px;">${extraStrokes === 1 ? '+1 slag' : `+${extraStrokes} slag`}</span>`
-        : '';
+      const dots = extraStrokes > 0 ? `<span style="color:var(--green-light); letter-spacing:1px;" title="${extraStrokes} slag her">${'•'.repeat(extraStrokes)}</span>` : '';
+      const sub = strokes > 0
+        ? `<span style="color:${scoreColor}">${scoreName}</span> · ${stableford}p`
+        : `HCP ${fp.handicap ?? '–'} · ${_activeStrokes(_phcp, roundHoles)} slag`;
       html += `
-      <div style="display:flex; align-items:center; gap:12px; padding:12px; background:rgba(0,0,0,0.2); border-radius:10px; margin-bottom:8px; border:1px solid rgba(255,255,255,0.06);">
-        <div style="width:36px; height:36px; border-radius:50%; background:var(--green-mid); border:2px solid var(--gold-dim); display:flex; align-items:center; justify-content:center; font-family:'Playfair Display',serif; font-size:14px; color:var(--gold-light); flex-shrink:0;">
-          ${(player?.display_name || '?')[0]}
-        </div>
-        <div style="flex:1;">
-          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-            <div style="font-size:14px;color:var(--cream);font-weight:500;">${player?.display_name || '?'}</div>
-            <div style="font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(201,168,76,0.15);color:var(--gold-dim);white-space:nowrap;">${activeHcpBadge} slag</div>
-          </div>
-          <div style="font-size:11px;color:var(--cream-dim);">HCP ${fp.handicap || '–'} ${strokesLabel} ${strokes > 0 ? `· <span style="color:${scoreColor}">${scoreName}</span> · ${stableford}p` : ''}</div>
+      <div class="sc-row">
+        <div style="flex:1; min-width:0;">
+          <div style="font-size:15px; color:var(--cream); font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${player?.display_name || '?'} ${dots}</div>
+          <div style="font-size:11px; color:var(--cream-dim); white-space:nowrap;">${sub}</div>
         </div>
         ${canEdit ? `
-        <div style="display:flex; align-items:center; gap:8px;">
-          <button onclick="adjustScore('${fp.player_id}', -1)" style="width:48px; height:48px; border-radius:50%; border:1px solid rgba(255,255,255,0.2); background:transparent; color:var(--cream); font-size:24px; cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1; touch-action:manipulation; -webkit-tap-highlight-color:transparent; user-select:none;">−</button>
-          <div id="score-${fp.player_id}" style="font-family:'Playfair Display',serif; font-size:36px; color:${scoreColor}; min-width:40px; text-align:center;">${strokes || '–'}</div>
-          <button onclick="adjustScore('${fp.player_id}', 1)" style="width:48px; height:48px; border-radius:50%; background:var(--green-mid); border:none; color:var(--cream); font-size:24px; cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1; touch-action:manipulation; -webkit-tap-highlight-color:transparent; user-select:none;">+</button>
-        </div>` : `
-        <div style="font-family:'Playfair Display',serif; font-size:32px; color:${scoreColor}; min-width:36px; text-align:center;">${strokes || '–'}</div>`}
+        <button class="sc-step" onclick="adjustScore('${fp.player_id}', -1)">−</button>
+        <div id="score-${fp.player_id}" class="sc-score" style="color:${scoreColor};">${strokes || '–'}</div>
+        <button class="sc-step plus" onclick="adjustScore('${fp.player_id}', 1)">+</button>` : `
+        <div class="sc-score" style="color:${scoreColor}; margin-right:8px;">${strokes || '–'}</div>`}
       </div>`;
     });
-    html += '</div>';
   });
   document.getElementById('scPlayerScores').innerHTML = html;
 }
@@ -437,10 +425,9 @@ function renderTeamInputs(holeData) {
     const memberNames = (team.member_ids || []).map(_memberFirstName).join(', ');
     const strokesLabel = extra > 0 ? `<span style="color:var(--green-light); font-size:11px;">${extra === 1 ? '+1 slag' : `+${extra} slag`}</span>` : '';
     html += `
-    <div style="display:flex; flex-direction:column; padding:12px; background:rgba(0,0,0,0.2); border-radius:10px; margin-bottom:8px; border:1px solid rgba(255,255,255,0.06);">
-     <div style="display:flex; align-items:center; gap:12px;">
-      <div style="width:36px; height:36px; border-radius:50%; background:var(--green-mid); border:2px solid var(--gold-dim); display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0;">⛳</div>
-      <div style="flex:1;">
+    <div class="sc-row" style="flex-direction:column; align-items:stretch;">
+     <div style="display:flex; align-items:center; gap:10px;">
+      <div style="flex:1; min-width:0;">
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
           <div style="font-size:14px;color:var(--cream);font-weight:500;">${team.name}</div>
           <div style="font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(201,168,76,0.15);color:var(--gold-dim);white-space:nowrap;">HCP ${team.team_handicap ?? '–'}</div>
@@ -450,11 +437,11 @@ function renderTeamInputs(holeData) {
       </div>
       ${canEdit ? `
       <div style="display:flex; align-items:center; gap:8px;">
-        <button onclick="adjustTeamScore('${team.id}', -1)" style="width:48px; height:48px; border-radius:50%; border:1px solid rgba(255,255,255,0.2); background:transparent; color:var(--cream); font-size:24px; cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1; touch-action:manipulation; -webkit-tap-highlight-color:transparent; user-select:none;">−</button>
-        <div id="teamscore-${team.id}" style="font-family:'Playfair Display',serif; font-size:36px; color:${scoreColor}; min-width:40px; text-align:center;">${strokes || '–'}</div>
-        <button onclick="adjustTeamScore('${team.id}', 1)" style="width:48px; height:48px; border-radius:50%; background:var(--green-mid); border:none; color:var(--cream); font-size:24px; cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1; touch-action:manipulation; -webkit-tap-highlight-color:transparent; user-select:none;">+</button>
+        <button class="sc-step" onclick="adjustTeamScore('${team.id}', -1)">−</button>
+        <div id="teamscore-${team.id}" class="sc-score" style="color:${scoreColor};">${strokes || '–'}</div>
+        <button class="sc-step plus" onclick="adjustTeamScore('${team.id}', 1)">+</button>
       </div>` : `
-      <div style="font-family:'Playfair Display',serif; font-size:32px; color:${scoreColor}; min-width:36px; text-align:center;">${strokes || '–'}</div>`}
+      <div class="sc-score" style="color:${scoreColor}; margin-right:8px;">${strokes || '–'}</div>`}
      </div>
      ${_driveBlock(team, canEdit)}
     </div>`;
@@ -539,11 +526,7 @@ function renderTeamMiniLeaderboard() {
     const main = scoring === 'stableford' ? `${r.totalSf}p`
       : scoring === 'slag' ? `${r.totalGross || '–'}`
       : (vsPar == null ? '–' : vsPar === 0 ? 'E' : vsPar > 0 ? `+${vsPar}` : `${vsPar}`);
-    return `<div style="flex-shrink:0; text-align:center; padding:8px 14px; background:${lead ? 'rgba(201,168,76,0.2)' : 'rgba(0,0,0,0.2)'}; border-radius:8px; border:1px solid ${lead ? 'rgba(201,168,76,0.3)' : 'rgba(255,255,255,0.06)'};">
-      <div style="font-size:10px; color:var(--cream-dim);">${i + 1}. ${r.team.name}</div>
-      <div style="font-family:'Playfair Display',serif; font-size:20px; color:${lead ? 'var(--gold)' : 'var(--cream)'};">${main}</div>
-      <div style="font-size:10px; color:var(--cream-dim);">${r.thru} hull</div>
-    </div>`;
+    return `<div class="sc-chip${lead ? ' lead' : ''}"><span style="color:var(--cream-dim);">${i + 1}</span> ${r.team.name} <b style="color:${lead ? 'var(--gold)' : 'var(--cream)'};">${main}</b><span style="font-size:10px;color:var(--cream-dim);">${r.thru}</span></div>`;
   }).join('');
 }
 // _playingHcp og calcStableford bor nå i games-core.js (spillmotoren, delte helpers).
@@ -603,6 +586,14 @@ function adjustScore(playerId, delta) {
   renderMiniLeaderboard();
   _sqSetState(_sqState);
 }
+function toggleScoringMenu() {
+  const m = document.getElementById('scMenu');
+  if (m) m.style.display = m.style.display === 'none' ? 'block' : 'none';
+}
+document.addEventListener('click', e => {
+  const m = document.getElementById('scMenu');
+  if (m && m.style.display !== 'none' && !m.contains(e.target) && !e.target.closest('[onclick="toggleScoringMenu()"]')) m.style.display = 'none';
+});
 function openHoleGuide() {
   const holeData = roundHoles.find(h => h.hole_number === currentHole);
   document.getElementById('hgHoleNum').textContent = currentHole;
@@ -619,7 +610,7 @@ async function _ensureSaved(allowSkip = true) {
   _sqGateBusy = true;
   const btns = ['scNextHole', 'scNextHoleBottom', 'scPrevHole'].map(id => document.getElementById(id)).filter(Boolean);
   const labels = btns.map(b => b.textContent);
-  btns.forEach(b => { b.textContent = 'Lagrer…'; b.style.opacity = '0.6'; });
+  btns.forEach(b => { if (b.id === 'scNextHoleBottom') b.textContent = 'Lagrer…'; b.style.opacity = '0.6'; });
   try {
     while (true) {
       if (await waitForSaved(8000)) return true;
@@ -668,13 +659,9 @@ function renderMiniLeaderboard() {
     });
     return { name: fp.profiles?.display_name?.split(' ')[0] || '?', total, holes };
   }).sort((a, b) => b.total - a.total);
-  document.getElementById('scMiniLeader').innerHTML = standings.map((p, i) => `
-    <div style="flex-shrink:0; text-align:center; padding:8px 14px; background:${i === 0 ? 'rgba(201,168,76,0.2)' : 'rgba(0,0,0,0.2)'}; border-radius:8px; border:1px solid ${i === 0 ? 'rgba(201,168,76,0.3)' : 'rgba(255,255,255,0.06)'};">
-      <div style="font-size:10px; color:var(--cream-dim);">${i + 1}. ${p.name}</div>
-      <div style="font-family:'Playfair Display',serif; font-size:20px; color:${i === 0 ? 'var(--gold)' : 'var(--cream)'};">${p.total}p</div>
-      <div style="font-size:10px; color:var(--cream-dim);">${p.holes} hull</div>
-    </div>
-  `).join('');
+  document.getElementById('scMiniLeader').innerHTML = standings.map((p, i) =>
+    `<div class="sc-chip${i === 0 && p.holes ? ' lead' : ''}"><span style="color:var(--cream-dim);">${i + 1}</span> ${p.name} <b style="color:${i === 0 && p.holes ? 'var(--gold)' : 'var(--cream)'};">${p.total}p</b><span style="font-size:10px;color:var(--cream-dim);">${p.holes}</span></div>`
+  ).join('');
 }
 // toggleSkinsAmount + skins-beregning/-rendring bor nå i game-skins.js (skins-modulen).
 // Tynn wrapper: bygg ctx og la motoren rendre tracker-stripa.
@@ -834,53 +821,93 @@ function _renderScrambleLeaderboard() {
     </div>`;
   }).join('');
 }
+// Scorekort i PGA-stil: hull i blokker à 9, sirkel = birdie, dobbel sirkel =
+// eagle+, firkant = bogey, dobbel firkant = dobbel bogey+. Prikker = tildelte slag.
+function _pgaScorecardHtml(scores, holes, phcp) {
+  const sorted = [...holes].sort((a, b) => a.hole_number - b.hole_number);
+  const chunks = [];
+  for (let i = 0; i < sorted.length; i += 9) chunks.push(sorted.slice(i, i + 9));
+  let tot = { par: 0, s: 0, pts: 0, parPlayed: 0, net: 0, n: 0 };
+  const extraFor = h => { if (!h.stroke_index) return 0; let e = Math.floor(phcp / 18); if (h.stroke_index <= (phcp % 18)) e++; return e; };
+  const shape = (s, par) => {
+    if (!s) return '<span style="color:rgba(255,255,255,0.2);">–</span>';
+    const d = s - par;
+    const cls = d <= -2 ? 'eagle' : d === -1 ? 'birdie' : d === 1 ? 'bogey' : d >= 2 ? 'double' : '';
+    return `<span class="pga-s ${cls}">${s}</span>`;
+  };
+  const blocks = chunks.map(ch => {
+    let par = 0, sum = 0, pts = 0, played = 0;
+    const cells = ch.map(h => {
+      const s = scores[h.hole_number] || 0;
+      const e = extraFor(h);
+      const p = (s && h.par && h.stroke_index) ? calcStableford(s, h.par, phcp, h.stroke_index) : null;
+      par += h.par || 0;
+      if (s) { sum += s; played++; tot.parPlayed += h.par || 0; tot.net += s - e; tot.n++; }
+      if (p != null) pts += p;
+      return { h, s, e, p };
+    });
+    tot.par += par; tot.s += sum; tot.pts += pts;
+    const label = `${ch[0].hole_number}-${ch[ch.length - 1].hole_number}`;
+    const pad = n => '<div></div>'.repeat(9 - n);
+    return `<div class="pga-grid">
+      <div class="lbl hole" style="background:rgba(255,255,255,0.05);">Hull</div>${cells.map(c => `<div class="hole">${c.h.hole_number}<span class="pga-dots">${'•'.repeat(c.e)}</span></div>`).join('')}${pad(cells.length)}<div class="hole sum">${label}</div>
+      <div class="lbl">Par</div>${cells.map(c => `<div style="color:var(--cream-dim);">${c.h.par || '–'}</div>`).join('')}${pad(cells.length)}<div class="sum" style="color:var(--cream-dim);">${par}</div>
+      <div class="lbl">Score</div>${cells.map(c => `<div>${shape(c.s, c.h.par)}</div>`).join('')}${pad(cells.length)}<div class="sum">${played ? sum : '–'}</div>
+      <div class="lbl">Poeng</div>${cells.map(c => `<div class="pts">${c.p ?? ''}</div>`).join('')}${pad(cells.length)}<div class="sum" style="color:var(--gold);">${pts}</div>
+    </div>`;
+  }).join('');
+  const bvp = tot.n ? tot.s - tot.parPlayed : null, nvp = tot.n ? tot.net - tot.parPlayed : null;
+  return `${blocks}
+    <div style="display:flex; justify-content:space-around; font-size:12px; color:var(--cream-dim); margin:2px 0 10px;">
+      <div>Brutto <b style="color:var(--cream);">${tot.n ? tot.s : '–'}</b> <span style="color:${_vsParColor(bvp)};">${_fmtVsPar(bvp)}</span></div>
+      <div>Netto <b style="color:var(--cream);">${tot.n ? tot.net : '–'}</b> <span style="color:${_vsParColor(nvp)};">${_fmtVsPar(nvp)}</span></div>
+      <div>Poeng <b style="color:var(--gold);">${tot.pts}</b></div>
+    </div>
+    <div class="pga-legend"><span><i class="pga-s eagle"></i>Eagle</span><span><i class="pga-s birdie"></i>Birdie</span><span><i class="pga-s bogey"></i>Bogey</span><span><i class="pga-s double"></i>Dobbel+</span><span><b style="color:var(--green-light);">•</b> slag</span></div>`;
+}
 function showLeaderboard() {
+  // Snitt per partype bygger på individuelle scorer — gir ikke mening i scramble
+  const _psw = document.getElementById('scParStatsWrap');
+  if (_psw) _psw.style.display = _scrambleGameRow ? 'none' : '';
   if (_scrambleGameRow) { _renderScrambleLeaderboard(); openModal('modalLeaderboard'); return; }
   const allFP = roundFlights.flatMap(f => f.flight_players || []);
   const standings = allFP.map(fp => {
     const phcp = _playingHcp(fp.handicap, currentRound?.tee_sets?.slope, currentRound?.tee_sets?.course_rating, _fullCoursePar);
-    let brutto = 0, netto = 0, parThru = 0, stab = 0, holesPlayed = 0;
+    let netto = 0, parThru = 0, stab = 0, holesPlayed = 0;
     Object.entries(roundScores[fp.player_id] || {}).forEach(([h, s]) => {
       if (s > 0) {
         const hd = roundHoles.find(hh => hh.hole_number === parseInt(h));
         if (hd?.par && hd?.stroke_index) {
           let extra = Math.floor(phcp / 18);
           if (hd.stroke_index <= (phcp % 18)) extra++;
-          brutto += s; netto += s - extra; parThru += hd.par;
+          netto += s - extra; parThru += hd.par;
           stab += calcStableford(s, hd.par, phcp, hd.stroke_index);
           holesPlayed++;
         }
       }
     });
-    return { fp, stab, holesPlayed, bruttoVsPar: holesPlayed ? brutto - parThru : null, nettoVsPar: holesPlayed ? netto - parThru : null };
-  }).sort((a, b) => b.stab - a.stab);
-  document.getElementById('leaderboardContent').innerHTML = standings.map((p, i) => {
-    const isLead = i === 0;
-    const firstName = (p.fp.profiles?.display_name || '?').split(' ')[0];
-    const scHtml = _scorecardInlineHtml(p.fp, roundScores[p.fp.player_id] || {}, roundHoles, currentRound, _fullCoursePar);
-    return `<div style="border-bottom:1px solid rgba(255,255,255,0.05);">
-      <div onclick="toggleLeaderboardScorecard('${p.fp.player_id}')" style="display:grid;grid-template-columns:24px 1fr auto auto auto;align-items:center;gap:8px;padding:12px 16px;${isLead ? 'background:rgba(201,168,76,0.07);' : ''}cursor:pointer;-webkit-tap-highlight-color:transparent;">
-        <div style="font-size:13px;color:${isLead ? 'var(--gold)' : 'var(--cream-dim)'};text-align:center;">${i+1}</div>
-        <div>
-          <div style="font-size:14px;color:var(--cream);font-weight:${isLead ? '600' : '400'};">${firstName}</div>
-          <div style="font-size:11px;color:var(--cream-dim);">thru ${p.holesPlayed} · HCP ${p.fp.handicap ?? '–'}</div>
+    return { fp, phcp, stab, holesPlayed, nettoVsPar: holesPlayed ? netto - parThru : null };
+  }).sort((a, b) => b.stab - a.stab || (a.nettoVsPar ?? 99) - (b.nettoVsPar ?? 99));
+  const allHolesCount = roundHoles.length;
+  const rows = standings.map((p, i) => {
+    const tied = standings.filter(o => o.stab === p.stab).length > 1;
+    const pos = standings.findIndex(o => o.stab === p.stab) + 1;
+    const isMe = p.fp.player_id === _myRoundPlayerId;
+    const thru = p.holesPlayed === 0 ? '–' : p.holesPlayed >= allHolesCount ? 'F' : p.holesPlayed;
+    return `<div class="lb-row${isMe ? ' me' : ''}" onclick="toggleLeaderboardScorecard('${p.fp.player_id}')">
+        <div class="lb-num" style="color:${pos === 1 ? 'var(--gold)' : 'var(--cream-dim)'}; font-size:13px;">${tied ? 'T' : ''}${pos}</div>
+        <div style="min-width:0;">
+          <div style="font-size:15px; color:var(--cream); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${p.fp.profiles?.display_name || '?'}</div>
+          <div style="font-size:10px; color:var(--cream-dim);">HCP ${p.fp.handicap ?? '–'} · ${p.phcp} slag</div>
         </div>
-        <div style="text-align:center;min-width:38px;">
-          <div style="font-size:10px;color:var(--cream-dim);margin-bottom:2px;">Brutto</div>
-          <div style="font-size:14px;font-weight:600;color:${_vsParColor(p.bruttoVsPar)};">${_fmtVsPar(p.bruttoVsPar)}</div>
-        </div>
-        <div style="text-align:center;min-width:38px;">
-          <div style="font-size:10px;color:var(--cream-dim);margin-bottom:2px;">Netto</div>
-          <div style="font-size:14px;font-weight:600;color:${_vsParColor(p.nettoVsPar)};">${_fmtVsPar(p.nettoVsPar)}</div>
-        </div>
-        <div style="text-align:center;min-width:38px;">
-          <div style="font-size:10px;color:var(--cream-dim);margin-bottom:2px;">Stab</div>
-          <div style="font-size:16px;font-weight:600;color:var(--gold);">${p.stab}p</div>
-        </div>
+        <div class="lb-num" style="font-size:14px; font-weight:600; color:${_vsParColor(p.nettoVsPar)};">${_fmtVsPar(p.nettoVsPar)}</div>
+        <div class="lb-num" style="font-size:13px; color:var(--cream-dim);">${thru}</div>
+        <div class="lb-num" style="font-size:16px; font-weight:700; color:var(--gold);">${p.stab}</div>
       </div>
-      <div id="lbsc-${p.fp.player_id}" style="display:none;padding:0 16px 14px;background:rgba(0,0,0,0.15);">${scHtml}</div>
-    </div>`;
+      <div id="lbsc-${p.fp.player_id}" class="pga-card" style="display:none;">${_pgaScorecardHtml(roundScores[p.fp.player_id] || {}, roundHoles, p.phcp)}</div>`;
   }).join('');
+  document.getElementById('leaderboardContent').innerHTML =
+    `<div class="lb-head"><div class="lb-num">Pos</div><div>Spiller</div><div class="lb-num">Netto</div><div class="lb-num">Thru</div><div class="lb-num">Poeng</div></div>${rows}`;
   openModal('modalLeaderboard');
 }
 function toggleLeaderboardScorecard(playerId) {

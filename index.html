@@ -261,85 +261,77 @@
   </div>
   <!-- SCREEN: Scoring -->
   <div id="scoringScreen" style="display:none; position:fixed; inset:0; background:var(--green-deep); z-index:500; overflow-y:auto; flex-direction:column;">
-    <div style="background:var(--green-dark); padding:max(14px, env(safe-area-inset-top)) 16px 14px; border-bottom:1px solid rgba(201,168,76,0.2); display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; z-index:10;">
-      <button onclick="closeScoringScreen()" style="background:none; border:none; color:var(--gold); font-size:22px; cursor:pointer; -webkit-tap-highlight-color:transparent;">←</button>
-      <div style="text-align:center;">
-        <div id="scCourseName" style="font-family:'Playfair Display',serif; font-size:16px; color:var(--cream);"></div>
-        <div id="scRoundDate" style="font-size:11px; color:var(--cream-dim); letter-spacing:1px;"></div>
-        <button id="scTeeBtn" onclick="openChangeTee()" style="background:none;border:none;font-size:10px;color:var(--gold-dim);cursor:pointer;font-family:'DM Sans',sans-serif;-webkit-tap-highlight-color:transparent;padding:2px 0;"></button>
+    <!-- Toppfelt: tilbake · bane · ledertavle · meny -->
+    <div style="background:var(--green-dark); padding:max(10px, env(safe-area-inset-top)) 8px 8px; border-bottom:1px solid rgba(201,168,76,0.2); display:flex; align-items:center; gap:4px; position:sticky; top:0; z-index:10;">
+      <button onclick="closeScoringScreen()" class="sc-icon-btn" style="color:var(--gold);">←</button>
+      <div style="flex:1; min-width:0; text-align:center;">
+        <div id="scCourseName" style="font-family:'Playfair Display',serif; font-size:15px; color:var(--cream); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></div>
+        <div style="font-size:10px; color:var(--cream-dim); letter-spacing:0.5px;"><span id="scRoundDate"></span> <button id="scTeeBtn" onclick="openChangeTee()" style="background:none;border:none;font-size:10px;color:var(--gold-dim);cursor:pointer;font-family:'DM Sans',sans-serif;-webkit-tap-highlight-color:transparent;padding:0;"></button></div>
       </div>
-      <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
-        <button onclick="showLeaderboard()" style="background:none; border:none; color:var(--gold-light); font-size:13px; cursor:pointer; font-family:'DM Sans',sans-serif; -webkit-tap-highlight-color:transparent; touch-action:manipulation;">Ledertavle</button>
-        <button id="scEditBtn" onclick="openEditGame(currentRound?.id)" style="display:none; background:none; border:none; color:var(--cream-dim); font-size:12px; cursor:pointer; font-family:'DM Sans',sans-serif; -webkit-tap-highlight-color:transparent; touch-action:manipulation;">⚙ Oppsett</button>
-        <button onclick="shareJoinLink(currentRound?.id, currentRound?.courses?.name)" style="background:none; border:none; color:var(--gold-light); font-size:12px; cursor:pointer; font-family:'DM Sans',sans-serif; -webkit-tap-highlight-color:transparent; touch-action:manipulation;">🔗 Del spill</button>
-        <button onclick="shareLiveLink(currentRound?.id, currentRound?.courses?.name)" style="background:none; border:none; color:var(--cream-dim); font-size:12px; cursor:pointer; font-family:'DM Sans',sans-serif; -webkit-tap-highlight-color:transparent; touch-action:manipulation;">📤 Del live</button>
+      <button onclick="showLeaderboard()" class="sc-icon-btn" title="Ledertavle" style="font-size:19px;">🏆</button>
+      <button onclick="toggleScoringMenu()" class="sc-icon-btn" title="Meny" style="color:var(--cream); font-size:24px; font-weight:700; padding-bottom:10px;">⋯</button>
+      <div id="scMenu" style="display:none; position:absolute; top:100%; right:8px; background:#111f17; border:1px solid rgba(201,168,76,0.25); border-radius:10px; padding:6px; min-width:190px; box-shadow:0 8px 24px rgba(0,0,0,0.5); z-index:20;">
+        <button id="scEditBtn" onclick="toggleScoringMenu(); openEditGame(currentRound?.id)" class="sc-menu-item" style="display:none;">⚙ Oppsett</button>
+        <button onclick="toggleScoringMenu(); shareJoinLink(currentRound?.id, currentRound?.courses?.name)" class="sc-menu-item">🔗 Del spill</button>
+        <button onclick="toggleScoringMenu(); shareLiveLink(currentRound?.id, currentRound?.courses?.name)" class="sc-menu-item">📤 Del live</button>
+        <button onclick="toggleScoringMenu(); openChangeTee()" class="sc-menu-item">🎯 Bytt tee</button>
+        <button id="scFinishBtn" onclick="toggleScoringMenu(); finishRound()" class="sc-menu-item" style="color:var(--gold-light);">🏁 Avslutt runde</button>
       </div>
     </div>
-    <!-- Hull-nummer strip -->
-    <div style="display:flex; align-items:center; justify-content:center; gap:16px; padding:12px 16px; background:rgba(0,0,0,0.2); border-bottom:1px solid rgba(255,255,255,0.05);">
-      <button id="scPrevHole" onclick="changeHole(-1)" style="background:none; border:1px solid rgba(255,255,255,0.15); color:var(--cream); padding:10px 20px; border-radius:8px; cursor:pointer; font-family:'DM Sans',sans-serif; font-size:15px; -webkit-tap-highlight-color:transparent; touch-action:manipulation;">← Forrige</button>
-      <div style="text-align:center; min-width:80px;">
-        <div style="font-size:11px; color:var(--cream-dim); letter-spacing:2px; text-transform:uppercase;">Hull</div>
-        <div id="scHoleNum" style="font-family:'Playfair Display',serif; font-size:40px; color:var(--gold); line-height:1;">1</div>
-        <div id="scSaveStatus" style="font-size:10px; color:var(--cream-dim); margin-top:3px; min-height:12px; white-space:nowrap;"></div>
+    <!-- Hull: ‹ nummer · par · SI · guide › -->
+    <div style="display:flex; align-items:center; gap:10px; padding:10px 12px; background:rgba(0,0,0,0.2); border-bottom:1px solid rgba(255,255,255,0.05);">
+      <button id="scPrevHole" onclick="changeHole(-1)" class="sc-arrow-btn">‹</button>
+      <div style="flex:1; display:flex; align-items:center; gap:12px; min-width:0;">
+        <div style="text-align:center; line-height:1;">
+          <div style="font-size:9px; color:var(--cream-dim); letter-spacing:1.5px; text-transform:uppercase;">Hull</div>
+          <div id="scHoleNum" style="font-family:'Playfair Display',serif; font-size:30px; color:var(--gold);">1</div>
+        </div>
+        <div style="flex:1; min-width:0;">
+          <div style="font-size:14px; color:var(--cream);">Par <b id="scPar">–</b> <span style="color:var(--cream-dim);">·</span> SI <b id="scSI">–</b></div>
+          <div id="scSaveStatus" style="font-size:10px; color:var(--cream-dim); min-height:12px; white-space:nowrap;"></div>
+        </div>
+        <button id="scGuideBtn" onclick="openHoleGuide()" class="sc-icon-btn" title="Baneguide" style="color:var(--gold); font-size:18px;">🧭</button>
       </div>
-      <button id="scNextHole" onclick="changeHole(1)" style="background:var(--gold); border:none; color:var(--green-deep); padding:10px 20px; border-radius:8px; cursor:pointer; font-weight:600; font-family:'DM Sans',sans-serif; font-size:15px; -webkit-tap-highlight-color:transparent; touch-action:manipulation;">Neste →</button>
+      <button id="scNextHole" onclick="changeHole(1)" class="sc-arrow-btn">›</button>
     </div>
-    <!-- Baneguide-knapp -->
-    <div style="text-align:center; padding:8px 16px 0; background:rgba(0,0,0,0.2);">
-      <button id="scGuideBtn" onclick="openHoleGuide()" style="background:none; border:1px solid rgba(201,168,76,0.35); color:var(--gold); padding:6px 16px; border-radius:20px; font-size:12px; cursor:pointer; font-family:'DM Sans',sans-serif; -webkit-tap-highlight-color:transparent; touch-action:manipulation;">🧭 Baneguide</button>
-    </div>
-    <!-- Stats-rad -->
-    <div style="display:flex; gap:0; border-bottom:1px solid rgba(255,255,255,0.05);">
-      <div style="flex:1; padding:10px; text-align:center; border-right:1px solid rgba(255,255,255,0.05);">
-        <div style="font-size:10px; color:var(--cream-dim); letter-spacing:1.5px; text-transform:uppercase;">Par</div>
-        <div id="scPar" style="font-family:'Playfair Display',serif; font-size:22px; color:var(--cream);">–</div>
-      </div>
-      <div style="flex:1; padding:10px; text-align:center; border-right:1px solid rgba(255,255,255,0.05);">
-        <div style="font-size:10px; color:var(--cream-dim); letter-spacing:1.5px; text-transform:uppercase;">SI</div>
-        <div id="scSI" style="font-family:'Playfair Display',serif; font-size:22px; color:var(--cream);">–</div>
-      </div>
-      <div id="scParStats" style="flex:3; display:flex;"></div>
-    </div>
-    <!-- Spillerscores -->
-    <div id="scPlayerScores" style="padding:12px 16px; flex:1;"></div>
-    <!-- Mini-ledertavle -->
-    <div style="padding:0 16px 12px;">
-      <div style="font-size:10px; color:var(--cream-dim); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">Stilling</div>
-      <div id="scMiniLeader" style="display:flex; gap:8px; overflow-x:auto; padding-bottom:4px;"></div>
+    <!-- Spillerscores (kun egen flight) -->
+    <div id="scPlayerScores" style="padding:10px 12px 4px;"></div>
+    <!-- Stilling på tvers av flighter (trykk = ledertavle) -->
+    <div style="padding:4px 12px 8px;">
+      <div id="scMiniLeader" onclick="showLeaderboard()" style="display:flex; gap:6px; overflow-x:auto; padding-bottom:2px; cursor:pointer;"></div>
     </div>
     <!-- Scramble-tracker (skjult hvis ikke scramble-runde) -->
-    <div id="scScrambleStrip" style="padding:0 16px 8px;display:none;">
+    <div id="scScrambleStrip" style="padding:0 12px 8px;display:none;">
       <div style="font-size:10px;color:var(--gold);letter-spacing:2px;text-transform:uppercase;margin-bottom:6px;">⛳ Scramble</div>
       <div id="scScramble" style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;"></div>
     </div>
     <!-- Skins-tracker (skjult hvis ikke skins-runde) -->
-    <div id="scSkinsStrip" style="padding:0 16px 8px;display:none;">
+    <div id="scSkinsStrip" style="padding:0 12px 8px;display:none;">
       <div style="font-size:10px;color:var(--gold);letter-spacing:2px;text-transform:uppercase;margin-bottom:6px;">💰 Skins</div>
       <div id="scSkins" style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;"></div>
     </div>
     <!-- Generisk spill-tracker for øvrige spill (quota o.l.) -->
-    <div id="scGamesStrip" style="padding:0 16px 8px;display:none;">
+    <div id="scGamesStrip" style="padding:0 12px 8px;display:none;">
       <div id="scGames" style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;"></div>
     </div>
-    <!-- Neste hull-knapp stor nederst + diskret avslutt -->
-    <div style="padding:12px 16px 8px;">
-      <button id="scNextHoleBottom" onclick="changeHole(1)" style="width:100%; padding:18px; background:var(--gold); border:none; color:var(--green-deep); border-radius:10px; font-size:17px; font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif; -webkit-tap-highlight-color:transparent; touch-action:manipulation;">Neste hull →</button>
-    </div>
-    <div style="padding:4px 16px 24px; text-align:center;">
-      <button id="scFinishBtn" onclick="finishRound()" style="background:none; border:none; color:var(--cream-dim); font-size:13px; cursor:pointer; font-family:'DM Sans',sans-serif; text-decoration:underline; -webkit-tap-highlight-color:transparent;">Avslutt runde</button>
+    <div style="flex:1;"></div>
+    <!-- Neste hull: fast nederst -->
+    <div style="position:sticky; bottom:0; padding:10px 12px max(10px, env(safe-area-inset-bottom)); background:linear-gradient(to top, var(--green-deep) 75%, transparent);">
+      <button id="scNextHoleBottom" onclick="changeHole(1)" style="width:100%; padding:14px; background:var(--gold); border:none; color:var(--green-deep); border-radius:10px; font-size:16px; font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif; -webkit-tap-highlight-color:transparent; touch-action:manipulation;">Neste hull →</button>
     </div>
   </div>
-  <!-- MODAL: Leaderboard -->
-  <div class="modal-overlay" id="modalLeaderboard" style="display:none;" onclick="closeModalOnOverlay(event,'modalLeaderboard')">
-    <div class="modal" style="max-width:500px;" onclick="event.stopPropagation()">
-      <h2>Ledertavle 🏆</h2>
-      <p style="font-size:11px;color:var(--cream-dim);margin-top:-16px;margin-bottom:16px;">(trykk for fullt scorekort)</p>
-      <div id="leaderboardContent"></div>
-      <div class="modal-actions">
-        <button class="btn btn-outline" onclick="closeModal('modalLeaderboard')">Lukk</button>
+  <!-- Ledertavle (fullskjerm, PGA-stil) -->
+  <div id="modalLeaderboard" style="display:none; position:fixed; inset:0; background:var(--green-deep); z-index:1000; flex-direction:column; overflow-y:auto;">
+    <div style="background:var(--green-dark); padding:max(12px, env(safe-area-inset-top)) 12px 10px; border-bottom:1px solid rgba(201,168,76,0.2); display:flex; align-items:center; position:sticky; top:0; z-index:5;">
+      <div style="flex:1;">
+        <div style="font-family:'Playfair Display',serif; font-size:18px; color:var(--gold-light);">Ledertavle</div>
+        <div style="font-size:10px; color:var(--cream-dim);">Trykk på en spiller for scorekort</div>
       </div>
+      <button onclick="closeModal('modalLeaderboard')" class="sc-icon-btn" style="color:var(--cream); font-size:22px;">✕</button>
     </div>
+    <div id="leaderboardContent"></div>
+    <div id="scParStatsWrap"><div style="padding:16px 12px 8px; font-size:10px; color:var(--cream-dim); letter-spacing:1.5px; text-transform:uppercase;">Snitt per partype</div>
+    <div id="scParStats" style="display:flex; margin:0 12px max(24px, env(safe-area-inset-bottom)); background:rgba(0,0,0,0.2); border-radius:10px;"></div></div>
   </div>
   <!-- MODAL: Player Scorecard -->
   <div class="modal-overlay" id="modalPlayerScorecard" style="display:none;z-index:1010;" onclick="closeModalOnOverlay(event,'modalPlayerScorecard')">
