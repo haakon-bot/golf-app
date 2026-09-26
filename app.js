@@ -100,7 +100,7 @@ async function renderPublicLive() {
     round = data || null;
   }
   if (!round) {
-    const { data: active } = await db.from('rounds').select(embed).eq('status', 'active').order('created_at', { ascending: false });
+    const { data: active } = await db.from('rounds').select(embed).eq('status', 'active').is('deleted_at', null).order('created_at', { ascending: false });
     round = active?.[0] || null;
   }
   if (!round) {

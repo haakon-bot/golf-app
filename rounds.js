@@ -2,11 +2,15 @@
 async function loadRounds() {
   const { data: rounds } = await db.from('rounds')
     .select('*, courses(name), tee_sets(name, slope, course_rating), flights(id, name, flight_players(id, handicap, profiles(display_name, username)))')
+    .is('deleted_at', null)
     .order('created_at', { ascending: false })
     .limit(20);
   const el = document.getElementById('roundsList');
+  const trashBtn = currentProfile?.is_admin
+    ? `<div style="text-align:center; margin-top:16px;"><button class="btn btn-outline" onclick="openTrash()" style="font-size:13px;">🗑 Papirkurv</button></div>`
+    : '';
   if (!rounds?.length) {
-    el.innerHTML = '<div class="empty"><div class="empty-icon">⛳</div><h3>Ingen spill ennå</h3><p>Trykk "🧪 Start et spill" for å starte!</p></div>';
+    el.innerHTML = '<div class="empty"><div class="empty-icon">⛳</div><h3>Ingen spill ennå</h3><p>Trykk "🧪 Start et spill" for å starte!</p></div>' + trashBtn;
     return;
   }
   el.innerHTML = rounds.map(r => {
@@ -32,9 +36,9 @@ async function loadRounds() {
           <div style="font-size:12px; color:${statusColor};">${statusText}</div>
         </div>
       </div>
-      <button onclick="deleteRound('${r.id}')" style="background:none; border:1px solid rgba(192,57,43,0.4); color:var(--danger); border-radius:6px; padding:6px 10px; cursor:pointer; font-size:14px; flex-shrink:0;" title="Slett runde">🗑</button>
+      ${currentProfile?.is_admin ? `<button onclick="deleteRound('${r.id}')" style="background:none; border:1px solid rgba(192,57,43,0.4); color:var(--danger); border-radius:6px; padding:6px 10px; cursor:pointer; font-size:14px; flex-shrink:0;" title="Flytt til papirkurven">🗑</button>` : ''}
     </div>`;
-  }).join('');
+  }).join('') + trashBtn;
 }
 
 let _dashboardLoading = false;
@@ -51,10 +55,10 @@ async function loadDashboard() {
     ] = await Promise.all([
       db.from('rounds')
         .select('*, courses(name), flights(id, flight_players(player_id))')
-        .eq('status', 'active').order('created_at', { ascending: false }),
+        .eq('status', 'active').is('deleted_at', null).order('created_at', { ascending: false }),
       db.from('rounds')
         .select('*, courses(name), flights(id, flight_players(player_id, handicap, profiles(display_name)))')
-        .eq('status', 'completed').order('date', { ascending: false }).limit(8),
+        .eq('status', 'completed').is('deleted_at', null).order('date', { ascending: false }).limit(8),
       currentProfile?.is_admin
         ? db.from('profiles').select('id').eq('is_approved', false)
         : Promise.resolve({ data: [] }),
@@ -88,7 +92,7 @@ async function loadDashboard() {
         const rPlayers = (r.flights || []).flatMap(f => f.flight_players || []);
         const playerNames = rPlayers.map(fp => fp.profiles?.display_name?.split(' ')[0] || '?').join(' · ');
         const delBtn = isAdmin
-          ? `<button onclick="event.stopPropagation(); deleteRound('${r.id}')" style="background:none; border:1px solid rgba(192,57,43,0.4); color:var(--danger); border-radius:6px; padding:6px 10px; cursor:pointer; font-size:14px; flex-shrink:0;" title="Slett runde">🗑</button>`
+          ? `<button onclick="event.stopPropagation(); deleteRound('${r.id}')" style="background:none; border:1px solid rgba(192,57,43,0.4); color:var(--danger); border-radius:6px; padding:6px 10px; cursor:pointer; font-size:14px; flex-shrink:0;" title="Flytt til papirkurven">🗑</button>`
           : '';
         return `<div style="display:flex; align-items:center; gap:10px; padding:14px 18px; background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.06); border-radius:12px; margin-bottom:8px;">
           <div onclick="showRoundSummary('${r.id}')" style="flex:1; min-width:0; cursor:pointer;">
@@ -1141,4 +1145,57 @@ async function wizardSave() {
   }
   closeNewGame();
   await openRound(rid);
+}
+
+// ── PAPIRKURV (kun admin) ──
+// Runder flyttes hit med deleteRound (scoring.js). Gjenopprett og permanent
+// sletting går via RPC-er som sjekker admin i databasen
+// (migrations/2026-09-rounds-trash.sql).
+async function openTrash() {
+  if (!currentProfile?.is_admin) return;
+  document.getElementById('trashContent').innerHTML = '<div class="loading"><div class="spinner"></div> Laster...</div>';
+  openModal('modalTrash');
+  const { data: rounds, error } = await db.from('rounds')
+    .select('id, date, deleted_at, courses(name), deleter:profiles!rounds_deleted_by_fkey(display_name), flights(flight_players(id))')
+    .not('deleted_at', 'is', null)
+    .order('deleted_at', { ascending: false });
+  const el = document.getElementById('trashContent');
+  if (error) { el.innerHTML = `<p style="color:var(--danger);font-size:13px;">Kunne ikke laste papirkurven: ${error.message}</p>`; return; }
+  if (!rounds?.length) { el.innerHTML = '<p style="text-align:center;color:var(--cream-dim);font-size:14px;padding:20px 0;">Papirkurven er tom.</p>'; return; }
+  const fmt = iso => new Date(iso).toLocaleString('nb-NO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  el.innerHTML = rounds.map(r => {
+    const players = (r.flights || []).reduce((n, f) => n + (f.flight_players?.length || 0), 0);
+    return `<div style="padding:12px; background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.06); border-radius:10px; margin-bottom:8px;">
+      <div style="font-size:15px; color:var(--cream);">${r.courses?.name || '(slettet bane)'} <span style="font-size:12px; color:var(--cream-dim);">· ${r.date} · ${players} spillere</span></div>
+      <div style="font-size:11px; color:var(--cream-dim); margin:2px 0 10px;">Flyttet hit ${fmt(r.deleted_at)}${r.deleter?.display_name ? ' av ' + r.deleter.display_name : ''}</div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn" style="flex:1; padding:9px; font-size:13px;" onclick="restoreRound('${r.id}')">↩ Gjenopprett</button>
+        <button class="btn btn-outline" style="flex:1; padding:9px; font-size:13px; color:var(--danger); border-color:rgba(192,57,43,0.5);" onclick="purgeRound('${r.id}')">Slett permanent</button>
+      </div>
+    </div>`;
+  }).join('') + `<button class="btn btn-outline" style="width:100%; margin-top:8px; font-size:13px; color:var(--danger); border-color:rgba(192,57,43,0.5);" onclick="emptyTrash(${rounds.length})">Tøm papirkurven (${rounds.length})</button>`;
+}
+async function restoreRound(roundId) {
+  const { error } = await db.rpc('restore_round', { rid: roundId });
+  if (error) { alert('Kunne ikke gjenopprette runden:\n\n' + error.message); return; }
+  await openTrash();
+  loadRounds();
+  loadDashboard();
+}
+async function purgeRound(roundId) {
+  const ok = await showConfirm('⚠️ Slette runden PERMANENT? Alle scorer, flighter og spill for runden slettes for godt. Dette kan IKKE angres, og det finnes ingen backup.', 'Slett permanent');
+  if (!ok) return;
+  const { error } = await db.rpc('purge_round', { rid: roundId });
+  if (error) { alert('Kunne ikke slette runden:\n\n' + error.message); return; }
+  await openTrash();
+}
+async function emptyTrash(count) {
+  const ok = await showConfirm(`⚠️ Tømme papirkurven? ${count} runde${count === 1 ? '' : 'r'} med alle scorer slettes PERMANENT. Dette kan IKKE angres, og det finnes ingen backup.`, 'Tøm papirkurven');
+  if (!ok) return;
+  const { data: rounds } = await db.from('rounds').select('id').not('deleted_at', 'is', null);
+  for (const r of (rounds || [])) {
+    const { error } = await db.rpc('purge_round', { rid: r.id });
+    if (error) { alert('Stoppet — kunne ikke slette en runde:\n\n' + error.message); break; }
+  }
+  await openTrash();
 }

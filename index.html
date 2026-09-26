@@ -333,6 +333,17 @@
     <div id="scParStatsWrap"><div style="padding:16px 12px 8px; font-size:10px; color:var(--cream-dim); letter-spacing:1.5px; text-transform:uppercase;">Snitt per partype</div>
     <div id="scParStats" style="display:flex; margin:0 12px max(24px, env(safe-area-inset-bottom)); background:rgba(0,0,0,0.2); border-radius:10px;"></div></div>
   </div>
+  <!-- MODAL: Papirkurv (kun admin) -->
+  <div class="modal-overlay" id="modalTrash" style="display:none;" onclick="closeModalOnOverlay(event,'modalTrash')">
+    <div class="modal" style="max-width:500px;" onclick="event.stopPropagation()">
+      <h2>🗑 Papirkurv</h2>
+      <p style="font-size:12px;color:var(--cream-dim);margin-top:-16px;margin-bottom:16px;">Runder her vises ikke i lister, statistikk eller turnering. Gjenopprett for å få dem tilbake med alle scorer.</p>
+      <div id="trashContent"></div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal('modalTrash')">Lukk</button>
+      </div>
+    </div>
+  </div>
   <!-- MODAL: Player Scorecard -->
   <div class="modal-overlay" id="modalPlayerScorecard" style="display:none;z-index:1010;" onclick="closeModalOnOverlay(event,'modalPlayerScorecard')">
     <div class="modal" style="max-width:520px;" onclick="event.stopPropagation()">

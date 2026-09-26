@@ -97,6 +97,7 @@ async function _lazyLoadAlleRunder() {
   if (!el) return;
   const { data: rounds } = await db.from('rounds')
     .select('id, date, hole_range, status, courses(name), flights(flight_players(player_id))')
+    .is('deleted_at', null)
     .order('date', { ascending: false });
   const mine = (rounds || []).filter(r => r.flights?.some(f => f.flight_players?.some(fp => fp.player_id === currentProfile.id)));
   if (!mine.length) { el.innerHTML = '<p style="font-size:13px;color:var(--cream-dim);">Ingen runder spilt ennå.</p>'; return; }

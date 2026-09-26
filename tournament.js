@@ -73,6 +73,7 @@ async function computeTournamentData(tournamentId) {
   const { data: rounds } = await db.from('rounds')
     .select('*, courses(name, holes), tee_sets(slope, course_rating), flights(id, name, flight_players(id, player_id, handicap, profiles(display_name))), games(*, game_teams(*))')
     .eq('tournament_id', tournamentId)
+    .is('deleted_at', null)
     .order('date', { ascending: true });
   const roundList = rounds || [];
   const totals = {};        // player_id → { name, points, perRound: {roundId: pts} }

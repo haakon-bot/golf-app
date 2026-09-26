@@ -22,6 +22,7 @@ async function _computeGameStats() {
   const { data: rounds, error } = await db.from('rounds')
     .select('id, date, hole_range, course_id, courses(name), tee_sets(slope, course_rating), games(*, game_teams(*)), flights(id, name, flight_players(player_id, handicap, profiles(display_name)))')
     .eq('status', 'completed')
+    .is('deleted_at', null)
     .order('date', { ascending: false });
   if (error) throw new Error(error.message);
   if (!rounds?.length) return { players: [], awards: {}, roundCount: 0 };

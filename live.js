@@ -15,6 +15,7 @@ async function loadLivePage() {
     const { data: active } = await db.from('rounds')
       .select('*, courses(name, holes), tee_sets(name, slope, course_rating), flights(id, name, flight_players(id, player_id, handicap, profiles(display_name))), games(*, game_teams(*))')
       .eq('status', 'active')
+      .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
     if (!active?.length) {

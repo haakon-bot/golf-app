@@ -175,20 +175,15 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden' && hasPendingWrites()) flushScoreQueue();
 });
 
+// Kun admin: flytter runden til papirkurven (ingenting slettes). Gjenopprett
+// eller slett permanent fra papirkurven (rounds.js). Håndheves også i databasen
+// (migrations/2026-09-rounds-trash.sql).
 async function deleteRound(roundId) {
-  const confirmed = await showConfirm('Slette denne runden? Dette sletter alle scores og kan ikke angres.');
+  if (!currentProfile?.is_admin) return;
+  const confirmed = await showConfirm('Flytte runden til papirkurven? Den forsvinner fra lister, statistikk og turnering, men kan gjenopprettes fra papirkurven.', 'Flytt');
   if (!confirmed) return;
-  const { error: e1 } = await db.from('scores').delete().eq('round_id', roundId);
-  const { data: flights } = await db.from('flights').select('id').eq('round_id', roundId);
-  for (const f of (flights || [])) {
-    await db.from('flight_players').delete().eq('flight_id', f.id);
-  }
-  await db.from('flights').delete().eq('round_id', roundId);
-  const { error: e2 } = await db.from('rounds').delete().eq('id', roundId);
-  if (e2) {
-    alert('Kunne ikke slette runden. Du må være admin eller delta i runden for å slette den.\n\n' + e2.message);
-    return;
-  }
+  const { error } = await db.rpc('trash_round', { rid: roundId });
+  if (error) { alert('Kunne ikke flytte runden til papirkurven:\n\n' + error.message); return; }
   loadRounds();
   loadDashboard();
 }
