@@ -509,10 +509,9 @@ function renderScrambleTracker() {
   const strip = document.getElementById('scScrambleStrip');
   const el = document.getElementById('scScramble');
   if (!strip || !el) return;
-  if (!_scrambleGameRow) { strip.style.display = 'none'; el.innerHTML = ''; return; }
-  const html = getGame('scramble').trackerUI(_scrambleCtx());
-  strip.style.display = html ? 'block' : 'none';
-  el.innerHTML = html || '';
+  // Lag-stillingen vises nå i stilling-chipsene (renderTeamMiniLeaderboard) og
+  // egen kvote i utslagsblokken — den gamle stripa ville vist det samme to ganger.
+  strip.style.display = 'none'; el.innerHTML = '';
 }
 function renderTeamMiniLeaderboard() {
   const el = document.getElementById('scMiniLeader');
@@ -526,7 +525,8 @@ function renderTeamMiniLeaderboard() {
     const main = scoring === 'stableford' ? `${r.totalSf}p`
       : scoring === 'slag' ? `${r.totalGross || '–'}`
       : (vsPar == null ? '–' : vsPar === 0 ? 'E' : vsPar > 0 ? `+${vsPar}` : `${vsPar}`);
-    return `<div class="sc-chip${lead ? ' lead' : ''}"><span style="color:var(--cream-dim);">${i + 1}</span> ${r.team.name} <b style="color:${lead ? 'var(--gold)' : 'var(--cream)'};">${main}</b><span style="font-size:10px;color:var(--cream-dim);">${r.thru}</span></div>`;
+    const flag = r.out ? ' <span style="color:#f09595;">⚠</span>' : r.penalty ? ` <span style="font-size:10px;color:#e8a070;">+${r.penalty}</span>` : '';
+    return `<div class="sc-chip${lead ? ' lead' : ''}"><span style="color:var(--cream-dim);">${i + 1}</span> ${r.team.name} <b style="color:${lead ? 'var(--gold)' : 'var(--cream)'};">${main}</b>${flag}<span style="font-size:10px;color:var(--cream-dim);">${r.thru}</span></div>`;
   }).join('');
 }
 // _playingHcp og calcStableford bor nå i games-core.js (spillmotoren, delte helpers).
@@ -745,28 +745,6 @@ function _scorecardInlineHtml(fp, scores, holes, round, fullCoursePar) {
   </div>`;
 }
 // Fullt scorekort for ett lag (per hull: brutto/netto/stab) — vises ved trykk.
-function _teamScorecardHtml(r) {
-  let tg = 0, tn = 0, ts = 0;
-  const th = 'padding:4px 6px;text-align:center;color:var(--cream-dim);font-size:10px;font-weight:400;';
-  const rows = r.holeResults.map(h => {
-    const played = h.gross > 0;
-    if (played) { tg += h.gross; tn += h.net; ts += h.sf; }
-    const color = played ? getScoreColor(h.gross, h.par) : 'var(--cream-dim)';
-    return `<tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
-      <td style="padding:4px 6px;color:var(--gold-dim);">${h.holeNumber}</td>
-      <td style="padding:4px 6px;text-align:center;color:var(--cream-dim);">${h.par ?? '–'}</td>
-      <td style="padding:4px 6px;text-align:center;color:var(--cream-dim);font-size:11px;">${h.si ?? '–'}</td>
-      <td style="padding:4px 6px;text-align:center;color:${color};font-family:'Playfair Display',serif;">${played ? h.gross : '–'}</td>
-      <td style="padding:4px 6px;text-align:center;color:var(--cream);">${played ? h.net : '–'}</td>
-      <td style="padding:4px 6px;text-align:center;color:var(--gold);">${played ? h.sf + 'p' : '–'}</td>
-    </tr>`;
-  }).join('');
-  return `<div style="overflow-x:auto;padding:6px 0;"><table style="width:100%;border-collapse:collapse;font-size:12px;">
-    <thead><tr style="border-bottom:1px solid rgba(255,255,255,0.1);"><th style="${th}text-align:left;">Hull</th><th style="${th}">Par</th><th style="${th}">SI</th><th style="${th}">Brutto</th><th style="${th}">Netto</th><th style="${th}">Stab</th></tr></thead>
-    <tbody>${rows}</tbody>
-    <tfoot><tr style="border-top:1px solid rgba(255,255,255,0.12);font-weight:600;"><td colspan="3" style="padding:6px;color:var(--cream-dim);">Totalt</td><td style="padding:6px;text-align:center;color:var(--cream);">${tg || '–'}</td><td style="padding:6px;text-align:center;color:var(--cream);">${tn || '–'}</td><td style="padding:6px;text-align:center;color:var(--gold);">${ts}p</td></tr></tfoot>
-  </table></div>`;
-}
 function toggleTeamScorecard(teamId) {
   const target = document.getElementById('lbteam-' + teamId);
   if (!target) return;
@@ -786,12 +764,14 @@ function _renderScrambleLeaderboard() {
   const gid = _scrambleGameRow.id;
   const scoring = data.scoring;
   const scoreLbl = scoring === 'stableford' ? 'Poeng' : scoring === 'slag' ? 'Slag' : 'Netto';
-  el.innerHTML = data.teams.map((r, i) => {
-    const lead = i === 0 && r.thru > 0;
+  const allHolesCount = roundHoles.length;
+  const myTeamIds = roundTeams.filter(t => (t.member_ids || []).includes(_myRoundPlayerId)).map(t => t.id);
+  const rows = data.teams.map((r, i) => {
     const vsPar = r.totalGross ? r.totalNet - r.totalPar : null;
-    const main = scoring === 'stableford' ? `${r.totalSf}p` : scoring === 'slag' ? `${r.totalGross || '–'}` : _fmtVsPar(vsPar);
-    const mainColor = scoring === 'netto' ? _vsParColor(vsPar) : (lead ? 'var(--gold)' : 'var(--cream)');
+    const main = scoring === 'stableford' ? `${r.totalSf}` : scoring === 'slag' ? `${r.totalGross || '–'}` : _fmtVsPar(vsPar);
+    const mainColor = scoring === 'netto' ? _vsParColor(vsPar) : (i === 0 ? 'var(--gold)' : 'var(--cream)');
     const members = (r.team.member_ids || []).map(_memberFirstName).join(', ');
+    const thru = r.thru === 0 ? '–' : r.thru >= allHolesCount ? 'F' : r.thru;
     let drives = '';
     if (showDrives) {
       const counts = driveCountsByPlayer(roundEvents, { gameId: gid, teamId: r.team.id });
@@ -800,70 +780,76 @@ function _renderScrambleLeaderboard() {
         return `<span style="color:${ok ? 'var(--green-light)' : '#e8a070'};">${_memberFirstName(pid)} ${u}/${min}</span>`;
       }).join(' · ');
       const pen = r.penalty ? ` · <span style="color:#e8a070;">+${r.penalty} straff</span>` : '';
-      drives = `<div style="font-size:11px;color:var(--cream-dim);margin-top:6px;">🏌️ Utslag: ${per}${pen}</div>`;
+      const out = r.out ? ` · <span style="color:#f09595;">⚠ ute av premie</span>` : '';
+      drives = `<div style="font-size:10px;color:var(--cream-dim);margin-top:2px;">🏌️ ${per}${pen}${out}</div>`;
     }
-    return `<div style="border-bottom:1px solid rgba(255,255,255,0.05);${lead ? 'background:rgba(201,168,76,0.07);' : ''}">
-      <div onclick="toggleTeamScorecard('${r.team.id}')" style="padding:12px 16px;cursor:pointer;-webkit-tap-highlight-color:transparent;">
-      <div style="display:grid;grid-template-columns:24px 1fr auto;align-items:center;gap:10px;">
-        <div style="font-size:14px;color:${lead ? 'var(--gold)' : 'var(--cream-dim)'};text-align:center;">${i + 1}</div>
-        <div>
-          <div style="font-size:14px;color:var(--cream);font-weight:${lead ? '600' : '400'};">${r.team.name} <span style="font-size:11px;color:var(--cream-dim);">· HCP ${r.teamHcp ?? '–'}</span></div>
-          <div style="font-size:11px;color:var(--cream-dim);">${members} · thru ${r.thru}</div>
+    return `<div class="lb-row${myTeamIds.includes(r.team.id) ? ' me' : ''}" style="grid-template-columns:34px 1fr 40px 56px; padding-top:6px; padding-bottom:6px;" onclick="toggleTeamScorecard('${r.team.id}')">
+        <div class="lb-num" style="color:${i === 0 ? 'var(--gold)' : 'var(--cream-dim)'}; font-size:13px;">${i + 1}</div>
+        <div style="min-width:0;">
+          <div style="font-size:15px; color:var(--cream);">${r.team.name} <span style="font-size:10px;color:var(--cream-dim);">HCP ${r.teamHcp ?? '–'}</span></div>
+          <div style="font-size:10px; color:var(--cream-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${members}</div>
+          ${drives}
         </div>
-        <div style="text-align:right;min-width:52px;">
-          <div style="font-size:10px;color:var(--cream-dim);">${scoreLbl}</div>
-          <div style="font-family:'Playfair Display',serif;font-size:18px;font-weight:600;color:${mainColor};">${main}</div>
-        </div>
+        <div class="lb-num" style="font-size:13px; color:var(--cream-dim);">${thru}</div>
+        <div class="lb-num" style="font-size:16px; font-weight:700; color:${mainColor};">${main}</div>
       </div>
-      ${drives}
-      </div>
-      <div id="lbteam-${r.team.id}" style="display:none;padding:0 16px 12px;background:rgba(0,0,0,0.15);">${_teamScorecardHtml(r)}</div>
-    </div>`;
+      <div id="lbteam-${r.team.id}" class="pga-card" style="display:none;">${_teamPgaScorecardHtml(r)}</div>`;
   }).join('');
+  el.innerHTML = `<div class="lb-head" style="grid-template-columns:34px 1fr 40px 56px;"><div class="lb-num">Pos</div><div>Lag</div><div class="lb-num">Thru</div><div class="lb-num">${scoreLbl}</div></div>${rows}`;
 }
 // Scorekort i PGA-stil: hull i blokker à 9, sirkel = birdie, dobbel sirkel =
 // eagle+, firkant = bogey, dobbel firkant = dobbel bogey+. Prikker = tildelte slag.
-function _pgaScorecardHtml(scores, holes, phcp) {
-  const sorted = [...holes].sort((a, b) => a.hole_number - b.hole_number);
-  const chunks = [];
-  for (let i = 0; i < sorted.length; i += 9) chunks.push(sorted.slice(i, i + 9));
-  let tot = { par: 0, s: 0, pts: 0, parPlayed: 0, net: 0, n: 0 };
-  const extraFor = h => { if (!h.stroke_index) return 0; let e = Math.floor(phcp / 18); if (h.stroke_index <= (phcp % 18)) e++; return e; };
+// cells: [{ hole, par, extra, gross, pts }] (gross 0 = ikke spilt, pts null = ingen).
+function _pgaGridHtml(cells) {
   const shape = (s, par) => {
     if (!s) return '<span style="color:rgba(255,255,255,0.2);">–</span>';
     const d = s - par;
     const cls = d <= -2 ? 'eagle' : d === -1 ? 'birdie' : d === 1 ? 'bogey' : d >= 2 ? 'double' : '';
     return `<span class="pga-s ${cls}">${s}</span>`;
   };
-  const blocks = chunks.map(ch => {
-    let par = 0, sum = 0, pts = 0, played = 0;
-    const cells = ch.map(h => {
-      const s = scores[h.hole_number] || 0;
-      const e = extraFor(h);
-      const p = (s && h.par && h.stroke_index) ? calcStableford(s, h.par, phcp, h.stroke_index) : null;
-      par += h.par || 0;
-      if (s) { sum += s; played++; tot.parPlayed += h.par || 0; tot.net += s - e; tot.n++; }
-      if (p != null) pts += p;
-      return { h, s, e, p };
-    });
-    tot.par += par; tot.s += sum; tot.pts += pts;
-    const label = `${ch[0].hole_number}-${ch[ch.length - 1].hole_number}`;
-    const pad = n => '<div></div>'.repeat(9 - n);
+  const sorted = [...cells].sort((a, b) => a.hole - b.hole);
+  const chunks = [];
+  for (let i = 0; i < sorted.length; i += 9) chunks.push(sorted.slice(i, i + 9));
+  return chunks.map(ch => {
+    const par = ch.reduce((t, c) => t + (c.par || 0), 0);
+    const played = ch.filter(c => c.gross);
+    const sum = played.reduce((t, c) => t + c.gross, 0);
+    const pts = ch.reduce((t, c) => t + (c.pts || 0), 0);
+    const pad = '<div></div>'.repeat(9 - ch.length);
     return `<div class="pga-grid">
-      <div class="lbl hole" style="background:rgba(255,255,255,0.05);">Hull</div>${cells.map(c => `<div class="hole">${c.h.hole_number}<span class="pga-dots">${'•'.repeat(c.e)}</span></div>`).join('')}${pad(cells.length)}<div class="hole sum">${label}</div>
-      <div class="lbl">Par</div>${cells.map(c => `<div style="color:var(--cream-dim);">${c.h.par || '–'}</div>`).join('')}${pad(cells.length)}<div class="sum" style="color:var(--cream-dim);">${par}</div>
-      <div class="lbl">Score</div>${cells.map(c => `<div>${shape(c.s, c.h.par)}</div>`).join('')}${pad(cells.length)}<div class="sum">${played ? sum : '–'}</div>
-      <div class="lbl">Poeng</div>${cells.map(c => `<div class="pts">${c.p ?? ''}</div>`).join('')}${pad(cells.length)}<div class="sum" style="color:var(--gold);">${pts}</div>
+      <div class="lbl hole">Hull</div>${ch.map(c => `<div class="hole">${c.hole}<span class="pga-dots">${'•'.repeat(Math.max(0, c.extra || 0))}</span></div>`).join('')}${pad}<div class="hole sum">${ch[0].hole}-${ch[ch.length - 1].hole}</div>
+      <div class="lbl">Par</div>${ch.map(c => `<div style="color:var(--cream-dim);">${c.par || '–'}</div>`).join('')}${pad}<div class="sum" style="color:var(--cream-dim);">${par}</div>
+      <div class="lbl">Score</div>${ch.map(c => `<div>${shape(c.gross, c.par)}</div>`).join('')}${pad}<div class="sum">${played.length ? sum : '–'}</div>
+      <div class="lbl">Poeng</div>${ch.map(c => `<div class="pts">${c.gross && c.pts != null ? c.pts : ''}</div>`).join('')}${pad}<div class="sum" style="color:var(--gold);">${pts}</div>
     </div>`;
   }).join('');
-  const bvp = tot.n ? tot.s - tot.parPlayed : null, nvp = tot.n ? tot.net - tot.parPlayed : null;
-  return `${blocks}
-    <div style="display:flex; justify-content:space-around; font-size:12px; color:var(--cream-dim); margin:2px 0 10px;">
-      <div>Brutto <b style="color:var(--cream);">${tot.n ? tot.s : '–'}</b> <span style="color:${_vsParColor(bvp)};">${_fmtVsPar(bvp)}</span></div>
-      <div>Netto <b style="color:var(--cream);">${tot.n ? tot.net : '–'}</b> <span style="color:${_vsParColor(nvp)};">${_fmtVsPar(nvp)}</span></div>
-      <div>Poeng <b style="color:var(--gold);">${tot.pts}</b></div>
-    </div>
+}
+function _pgaFooterHtml({ gross, net, parPlayed, pts, played, penalty }) {
+  const bvp = played ? gross - parPlayed : null, nvp = played ? net - parPlayed : null;
+  return `<div style="display:flex; justify-content:space-around; font-size:12px; color:var(--cream-dim); margin:2px 0 10px;">
+      <div>Brutto <b style="color:var(--cream);">${played ? gross : '–'}</b> <span style="color:${_vsParColor(bvp)};">${_fmtVsPar(bvp)}</span></div>
+      <div>Netto <b style="color:var(--cream);">${played ? net : '–'}</b> <span style="color:${_vsParColor(nvp)};">${_fmtVsPar(nvp)}</span></div>
+      <div>Poeng <b style="color:var(--gold);">${pts}</b></div>
+    </div>${penalty ? `<div style="text-align:center; font-size:11px; color:#e8a070; margin:-4px 0 8px;">Netto inkl. +${penalty} straffeslag (utslagskvote)</div>` : ''}
     <div class="pga-legend"><span><i class="pga-s eagle"></i>Eagle</span><span><i class="pga-s birdie"></i>Birdie</span><span><i class="pga-s bogey"></i>Bogey</span><span><i class="pga-s double"></i>Dobbel+</span><span><b style="color:var(--green-light);">•</b> slag</span></div>`;
+}
+function _pgaScorecardHtml(scores, holes, phcp) {
+  const extraFor = h => { if (!h.stroke_index) return 0; let e = Math.floor(phcp / 18); if (h.stroke_index <= (phcp % 18)) e++; return e; };
+  const t = { gross: 0, net: 0, parPlayed: 0, pts: 0, played: 0 };
+  const cells = holes.map(h => {
+    const gross = scores[h.hole_number] || 0;
+    const extra = extraFor(h);
+    const pts = (gross && h.par && h.stroke_index) ? calcStableford(gross, h.par, phcp, h.stroke_index) : null;
+    if (gross) { t.gross += gross; t.net += gross - extra; t.parPlayed += h.par || 0; t.played++; }
+    if (pts != null) t.pts += pts;
+    return { hole: h.hole_number, par: h.par, extra, gross, pts };
+  });
+  return _pgaGridHtml(cells) + _pgaFooterHtml(t);
+}
+// Lag (scramble): tallene hentes fra motoren (ScrambleGame.compute) så straff o.l. stemmer.
+function _teamPgaScorecardHtml(r) {
+  const cells = r.holeResults.map(h => ({ hole: h.holeNumber, par: h.par, extra: h.gross ? h.gross - h.net : _teamExtraStrokes(Number(r.teamHcp) || 0, h.si), gross: h.gross || 0, pts: h.gross ? h.sf : null }));
+  return _pgaGridHtml(cells) + _pgaFooterHtml({ gross: r.totalGross, net: r.totalNet, parPlayed: r.totalPar, pts: r.totalSf, played: r.thru, penalty: r.penalty });
 }
 function showLeaderboard() {
   // Snitt per partype bygger på individuelle scorer — gir ikke mening i scramble
