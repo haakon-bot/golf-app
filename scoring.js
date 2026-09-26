@@ -303,6 +303,7 @@ async function closeScoringScreen() {
     if (!ok) return;
   }
   document.getElementById('scoringScreen').style.display = 'none';
+  clearInterval(_junkPollTimer); _junkPollTimer = null;
   if (currentProfile) { loadRounds(); loadDashboard(); }
   else if (typeof showJoinPage === 'function') { showJoinPage(); }   // gjest → tilbake til bli-med
 }
@@ -339,6 +340,34 @@ function renderScoringHole() {
   renderSkinsTracker();
   renderGameTrackers();
   _sqSetState(_sqState);
+  _syncJunkPolling();
+}
+// Sidekonkurranse: på et konkurransehull hentes alle flighters forsøk hvert
+// 15. sekund, så alle ser hverandres registreringer uten å oppdatere appen.
+let _junkPollTimer = null;
+function _currentHoleHasJunk() {
+  const g = (currentRound?.games || []).find(x => x.game_type === 'junk');
+  return !!g && (g.config?.entries || []).some(e => e.hole === currentHole);
+}
+function _syncJunkPolling() {
+  clearInterval(_junkPollTimer); _junkPollTimer = null;
+  if (!_currentHoleHasJunk()) return;
+  _refreshRoundEvents();
+  _junkPollTimer = setInterval(_refreshRoundEvents, 15000);
+}
+async function _refreshRoundEvents() {
+  const scr = document.getElementById('scoringScreen');
+  if (!scr || scr.style.display === 'none') { clearInterval(_junkPollTimer); _junkPollTimer = null; return; }
+  if (document.visibilityState !== 'visible') return;
+  const rid = currentRound?.id;
+  const { data, error } = await db.from('game_events').select('*').eq('round_id', rid);
+  if (error || !data || currentRound?.id !== rid) return;
+  roundEvents = data;
+  _applyPendingOverlay(rid);
+  // Ikke tegn på nytt midt i tasting (verdi skrevet inn eller feltet i fokus)
+  const el = document.getElementById('scGames');
+  const typing = el && (el.contains(document.activeElement) || [...el.querySelectorAll('input')].some(i => i.value !== ''));
+  if (!typing) renderGameTrackers();
 }
 function renderHoleStats() {
   const allFP = roundFlights.flatMap(f => f.flight_players || []);

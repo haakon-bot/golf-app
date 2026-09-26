@@ -61,14 +61,18 @@ const JunkGame = {
     return raw.filter(e => e && Number.isFinite(e.hole) && JUNK_KIND_META[e.kind]);
   },
 
-  // Alle junk_entry/junk_confirmed-hendelser for et gitt hull+type, siste vinner.
+  // Siste junk_entry per spiller for hull+type. En senere junk_removed for
+  // samme spiller/hull/type fjerner forsøket (append-only — ingenting slettes
+  // i databasen, «✕» legger bare til en fjern-hendelse).
   _latestByPlayer(events, hole, kind) {
     const out = {};
     (events || []).forEach(e => {
-      if (e.event_type !== 'junk_entry' || e.hole_number !== hole || e.payload?.kind !== kind) return;
-      const ts = e.created_at || '';
-      if (!out[e.player_id] || ts >= out[e.player_id].ts) out[e.player_id] = { value: e.payload.value, ts };
+      if ((e.event_type !== 'junk_entry' && e.event_type !== 'junk_removed') || e.hole_number !== hole || e.payload?.kind !== kind) return;
+      // Tidspunkt som tall: lokale (…Z) og server-tider (…+00:00) kan blandes
+      const ts = Date.parse(e.created_at || '') || 0;
+      if (!out[e.player_id] || ts >= out[e.player_id].ts) out[e.player_id] = { value: e.payload?.value, ts, removed: e.event_type === 'junk_removed' };
     });
+    Object.keys(out).forEach(pid => { if (out[pid].removed) delete out[pid]; });
     return out;
   },
   _latestConfirmed(events, hole, kind) {
@@ -95,10 +99,12 @@ const JunkGame = {
       const candidates = Object.entries(latest)
         .map(([pid, v]) => ({ playerId: pid, name: nameById[pid] || '?', value: v.value }))
         .sort((a, b) => meta.better === 'higher' ? b.value - a.value : a.value - b.value);
+      // En bekreftet vinner hvis forsøk senere er fjernet (✕) teller ikke
+      const confirmed = JunkGame._latestConfirmed(evs, entry.hole, entry.kind);
       return {
         hole: entry.hole, kind: entry.kind, points: meta.penalty ? -points : points,
         candidates, bestId: candidates[0]?.playerId || null,
-        confirmedId: JunkGame._latestConfirmed(evs, entry.hole, entry.kind),
+        confirmedId: candidates.some(c => c.playerId === confirmed) ? confirmed : null,
       };
     });
     return { entries: results };
@@ -117,24 +123,31 @@ const JunkGame = {
       const meta = JUNK_KIND_META[entry.kind] || JUNK_KIND_META.closest_pin;
       const latest = JunkGame._latestByPlayer(evs, entry.hole, entry.kind);
       const unit = meta.unit;
-      const label = meta.label;
-      const logged = Object.entries(latest).map(([pid, v]) => {
-        const name = allFP.find(fp => fp.player_id === pid)?.profiles?.display_name?.split(' ')[0] || '?';
-        return `<span style="color:var(--cream-dim);">${name}: ${v.value}${unit}</span>`;
-      }).join(' · ');
+      const firstName = pid => allFP.find(fp => fp.player_id === pid)?.profiles?.display_name?.split(' ')[0] || '?';
+      // Alle flighters forsøk, beste først (den som «leder» øverst)
+      const sorted = Object.entries(latest).sort((x, y) => meta.better === 'higher' ? y[1].value - x[1].value : x[1].value - y[1].value);
+      const logged = sorted.map(([pid, v], i) => `<div style="display:flex; align-items:center; gap:8px; padding:5px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
+          <span style="width:18px; text-align:center;">${i === 0 ? (meta.penalty ? '😬' : '🏆') : ''}</span>
+          <span style="flex:1; color:${i === 0 ? 'var(--gold-light)' : 'var(--cream)'}; font-size:14px;">${firstName(pid)}</span>
+          <span style="color:var(--cream); font-size:14px; font-variant-numeric:tabular-nums;">${v.value} ${unit}</span>
+          <button onclick="removeJunkEntry('${g.id}',${entry.hole},'${entry.kind}','${pid}')" title="Fjern" style="background:none; border:none; color:rgba(255,255,255,0.35); font-size:15px; padding:2px 6px; cursor:pointer;">✕</button>
+        </div>`).join('');
       const uid = `${g.id}-${entry.hole}-${entry.kind}`;
       const playerOptions = allFP.map(fp => `<option value="${fp.player_id}">${(fp.profiles?.display_name || '?').split(' ')[0]}</option>`).join('');
-      return `<div style="margin-top:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.06);">
-        <div style="font-size:10px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">${label} · hull ${entry.hole}</div>
-        ${logged ? `<div style="font-size:12px; margin-bottom:6px;">${logged}</div>` : ''}
-        <div style="display:flex; gap:6px;">
-          <select id="junkP-${uid}" style="flex:1; padding:6px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.3); color:var(--cream); font-size:13px;">${playerOptions}</select>
-          <input type="number" step="0.1" min="0" id="junkV-${uid}" placeholder="${unit}" style="width:64px; padding:6px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.3); color:var(--cream); font-size:13px; text-align:center;">
-          <button onclick="logJunkEntry('${g.id}',${entry.hole},'${entry.kind}')" style="padding:6px 12px; border-radius:6px; border:none; background:var(--gold); color:var(--green-deep); font-size:13px; font-weight:600; cursor:pointer;">Lagre</button>
+      return `<div style="margin-bottom:8px; padding:10px 12px; background:rgba(201,168,76,0.08); border:1px solid rgba(201,168,76,0.3); border-radius:10px;">
+        <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px;">
+          <div style="font-size:13px; color:var(--gold-light); font-weight:600;">${meta.label} · hull ${entry.hole}</div>
+          <div style="font-size:11px; color:var(--cream-dim);">${meta.penalty ? '−' : '+'}${Math.abs(Number.isFinite(config.points) ? config.points : 2)}p · alle flighter</div>
+        </div>
+        ${logged || '<div style="font-size:12px; color:var(--cream-dim); margin-bottom:6px;">Ingen registrert ennå.</div>'}
+        <div style="display:flex; gap:6px; margin-top:8px;">
+          <select id="junkP-${uid}" style="flex:1; padding:8px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.3); color:var(--cream); font-size:14px;">${playerOptions}</select>
+          <input type="number" inputmode="decimal" step="0.1" min="0" id="junkV-${uid}" placeholder="${unit}" style="width:70px; padding:8px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.3); color:var(--cream); font-size:14px; text-align:center;">
+          <button onclick="logJunkEntry('${g.id}',${entry.hole},'${entry.kind}')" style="padding:8px 14px; border-radius:6px; border:none; background:var(--gold); color:var(--green-deep); font-size:14px; font-weight:600; cursor:pointer;">Lagre</button>
         </div>
       </div>`;
     }).join('');
-    return `<div>${blocks}</div>`;
+    return `<div style="width:100%;">${blocks}</div>`;
   },
 
   // Rundeoppsummeringen: liste per hull med kandidater + bekreft-knapp.
@@ -155,7 +168,7 @@ const JunkGame = {
           <div style="font-size:12px; color:var(--cream-dim);">${label} · hull ${entry.hole} — ingen registrert ennå</div>
         </div>`;
       }
-      const candList = entry.candidates.map(c => `<span style="color:${c.playerId === entry.confirmedId ? 'var(--gold)' : 'var(--cream-dim)'};">${c.name.split(' ')[0]} ${c.value}${unit}${c.playerId === entry.confirmedId ? ' ✓' : ''}</span>`).join(' · ');
+      const candList = entry.candidates.map(c => `<span style="display:inline-flex; align-items:center; gap:2px; margin-right:8px; color:${c.playerId === entry.confirmedId ? 'var(--gold)' : 'var(--cream-dim)'};">${c.name.split(' ')[0]} ${c.value}${unit}${c.playerId === entry.confirmedId ? ' ✓' : ''}<button onclick="removeJunkEntryInSummary('${gameId}','${roundId}',${entry.hole},'${entry.kind}','${c.playerId}')" title="Fjern" style="background:none; border:none; color:rgba(255,255,255,0.35); font-size:13px; padding:0 4px; cursor:pointer;">✕</button></span>`).join('');
       const confirmedName = entry.confirmedId ? (entry.candidates.find(c => c.playerId === entry.confirmedId)?.name.split(' ')[0] || '?') : null;
       const bestName = entry.candidates.find(c => c.playerId === entry.bestId)?.name.split(' ')[0] || '?';
       const uid = `${entry.hole}-${entry.kind}`;
@@ -196,6 +209,23 @@ async function logJunkEntry(gameId, hole, kind) {
   const row = enqueueEvent({ game_id: gameId, round_id: currentRound.id, hole_number: hole, player_id: playerId, event_type: 'junk_entry', payload: { kind, value } });
   roundEvents.push({ ...row, created_at: new Date().toISOString() });   // umiddelbar UI-oppdatering
   renderGameTrackers();
+}
+
+// «✕» på scoringskjermen: legger til en junk_removed-hendelse via lagringskøen.
+async function removeJunkEntry(gameId, hole, kind, playerId) {
+  const ok = await showConfirm('Fjerne dette forsøket?', 'Fjern');
+  if (!ok) return;
+  const row = enqueueEvent({ game_id: gameId, round_id: currentRound.id, hole_number: hole, player_id: playerId, event_type: 'junk_removed', payload: { kind } });
+  roundEvents.push({ ...row, created_at: new Date().toISOString() });
+  renderGameTrackers();
+}
+// «✕» i rundeoppsummeringen (samme hendelse, direkte — oppsummeringen lastes på nytt).
+async function removeJunkEntryInSummary(gameId, roundId, hole, kind, playerId) {
+  const ok = await showConfirm('Fjerne dette forsøket? Er spilleren bekreftet vinner, må vinneren bekreftes på nytt.', 'Fjern');
+  if (!ok) return;
+  const { error } = await db.from('game_events').insert({ game_id: gameId, round_id: roundId, hole_number: hole, player_id: playerId, event_type: 'junk_removed', payload: { kind } });
+  if (error) { alert('Kunne ikke fjerne forsøket: ' + error.message); return; }
+  if (typeof showRoundSummary === 'function') showRoundSummary(roundId);
 }
 
 function _toggleJunkOverride(uid) {

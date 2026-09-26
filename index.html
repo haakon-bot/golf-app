@@ -297,6 +297,10 @@
     </div>
     <!-- Spillerscores (kun egen flight) -->
     <div id="scPlayerScores" style="padding:10px 12px 4px;"></div>
+    <!-- Generisk spill-tracker for øvrige spill (quota o.l.) -->
+    <div id="scGamesStrip" style="padding:0 12px 8px;display:none;">
+      <div id="scGames" style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;"></div>
+    </div>
     <!-- Stilling på tvers av flighter (trykk = ledertavle) -->
     <div style="padding:4px 12px 8px;">
       <div id="scMiniLeader" onclick="showLeaderboard()" style="cursor:pointer; -webkit-tap-highlight-color:transparent;"></div>
@@ -310,10 +314,6 @@
     <div id="scSkinsStrip" style="padding:0 12px 8px;display:none;">
       <div style="font-size:10px;color:var(--gold);letter-spacing:2px;text-transform:uppercase;margin-bottom:6px;">💰 Skins</div>
       <div id="scSkins" style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;"></div>
-    </div>
-    <!-- Generisk spill-tracker for øvrige spill (quota o.l.) -->
-    <div id="scGamesStrip" style="padding:0 12px 8px;display:none;">
-      <div id="scGames" style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;"></div>
     </div>
     <div style="flex:1;"></div>
     <!-- Neste hull: fast nederst -->
