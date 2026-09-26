@@ -13,10 +13,11 @@
 //     Rangeringen gjenbruker ScrambleGame.compute (samme kilde som
 //     live-ledertavlen); "🏌️ Lag-vinner" vises i tillegg som egen kåring.
 //   · Best Ball-runde: scorer individuelt, så går gjennom SAMME
-//     plasseringsstige som en vanlig Stableford-runde (ingen game_teams-
-//     rader å kjenne igjen den på) — MEN i tillegg får hvert medlem av
-//     vinner-flighten (beste BestBallGame-lagresultat) BESTBALL_WIN_POINTS
-//     oppå sin individuelle plasseringspoengsum, samme mønster som scramble.
+//     plasseringsstige som en vanlig Stableford-runde, men UTEN individuell
+//     vinnerbonus (besluttet 26. sep 2026 — Best Ball er et lagspill; den
+//     individuelle vinneren får bare plasseringspoeng). I tillegg får hvert
+//     medlem av vinner-flighten (beste BestBallGame-lagresultat)
+//     BESTBALL_WIN_POINTS oppå, samme mønster som scramble.
 // - Sidekonkurranse (nærmest pin / lengst drive + straffevariantene)
 //   registreres og bekreftes PER RUNDE av game-junk.js; bekreftede vinnere
 //   legger til/trekker fra poeng i summen over (se junkGame-blokken under).
@@ -143,7 +144,9 @@ async function computeTournamentData(tournamentId) {
         });
         if (thru > 0) played.push({ id: fp.player_id, name: fp.profiles?.display_name || '?', value: pts });
       });
-      const placement = _rankToPoints(played, STABLEFORD_WINNER_BONUS);
+      // Best Ball: ingen individuell vinnerbonus (kun plassering + lagbonus under).
+      const bbMain = (round.games || []).some(g => g.game_type === 'bestball' && g.is_main);
+      const placement = _rankToPoints(played, bbMain ? 0 : STABLEFORD_WINNER_BONUS);
       played.forEach(p => {
         if (!totals[p.id]) totals[p.id] = { name: p.name, points: 0, perRound: {}, perRoundBonus: {} };
         totals[p.id].points += placement[p.id];
@@ -408,7 +411,19 @@ function _renderTournamentDetailHTML(t, data, opts) {
       </table></div>
     </div>
     ${teamSection}
-    <div style="font-size:10px;color:rgba(255,255,255,0.35);margin:4px 0 24px;">Sidekonkurranse (nærmest pin/lengst drive) registreres og bekreftes i den enkelte runden — se rundeoppsummeringen. Bekreftede poeng er allerede talt med i summen over.</div>
+    <div style="font-size:10px;color:rgba(255,255,255,0.35);margin:4px 0 12px;">Sidekonkurranse (nærmest pin/lengst drive) registreres og bekreftes i den enkelte runden — se rundeoppsummeringen. Bekreftede poeng er allerede talt med i summen over.</div>
+    <details style="margin:0 0 24px; background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:10px 14px;">
+      <summary style="font-size:13px; color:var(--gold-light); cursor:pointer;">ℹ️ Slik regnes poengene</summary>
+      <div style="font-size:12px; color:var(--cream-dim); line-height:1.6; margin-top:8px;">
+        <b style="color:var(--cream);">Plassering:</b> vinneren får like mange poeng som antall spillere i runden, deretter ett mindre per plass ned til 1 poeng for sisteplass (8 spillere: 8, 7, 6 … 1). Det er plasseringen som teller, ikke hvor mange Stableford-poeng man fikk.<br>
+        <b style="color:var(--cream);">Stableford:</b> plassering + ${STABLEFORD_WINNER_BONUS} ekstra til vinneren.<br>
+        <b style="color:var(--cream);">Best Ball:</b> individuell plassering (uten vinnerbonus) + ${BESTBALL_WIN_POINTS} til hver spiller i vinner-flighten.<br>
+        <b style="color:var(--cream);">Scramble:</b> ${SCRAMBLE_WIN_POINTS} til hver spiller på vinnerlaget, 0 til de andre.<br>
+        <b style="color:var(--cream);">Lik plass:</b> alle får poengene for den beste delte plassen, og neste plass hopper over (1, 2, 2, 4 …).<br>
+        <b style="color:var(--cream);">Sidekonkurranse:</b> bekreftet vinner får pluss- eller minuspoeng etter oppsettet i runden.<br>
+        <b style="color:var(--cream);">Justeringer:</b> manuelle poeng legges til summen.
+      </div>
+    </details>
     <div style="font-size:11px;color:var(--cream-dim);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;">⚖️ Manuelle justeringer <span style="text-transform:none;letter-spacing:0;font-size:10px;opacity:0.7;">(sikkerhetsventil — telles i summen over)</span></div>
     <div style="background:rgba(0,0,0,0.2);border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,0.07);margin-bottom:10px;">
       ${adjustmentList || `<div style="padding:12px 16px;font-size:13px;color:var(--cream-dim);">Ingen justeringer.</div>`}
