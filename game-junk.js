@@ -192,8 +192,7 @@ async function logJunkEntry(gameId, hole, kind) {
   const playerId = document.getElementById(`junkP-${uid}`)?.value;
   const value = parseFloat(document.getElementById(`junkV-${uid}`)?.value);
   if (!playerId || !value) return;
-  const row = { game_id: gameId, round_id: currentRound.id, hole_number: hole, player_id: playerId, event_type: 'junk_entry', payload: { kind, value } };
-  await db.from('game_events').insert(row);
+  const row = enqueueEvent({ game_id: gameId, round_id: currentRound.id, hole_number: hole, player_id: playerId, event_type: 'junk_entry', payload: { kind, value } });
   roundEvents.push({ ...row, created_at: new Date().toISOString() });   // umiddelbar UI-oppdatering
   renderGameTrackers();
 }

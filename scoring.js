@@ -14,6 +14,167 @@ let roundTeams = [];        // game_teams for scramble-hovedspillet
 let roundTeamScores = {};   // team_id → hull → slag
 let _scrambleGameRow = null;
 let roundEvents = [];       // game_events (drive_used …) for utslags-logging (E)
+// ── LAGRINGSKØ (scores + game_events) ──
+// Hvert trykk oppdaterer skjermen med en gang og legges i en kø i localStorage.
+// Køen sendes til Supabase i bakgrunnen, og en endring fjernes først når
+// serveren har bekreftet den. Køen overlever skjermlås/app-lukking og sendes
+// før runden lastes på nytt (_resumeScoring/openRound). Hullnavigasjon og
+// «Avslutt runde» venter til køen er tom (flushScoreQueue).
+const _SQ_KEY = 'fore_pending_writes';
+const _SQ_STALE_MS = 10000;   // eldre endringer sjekkes mot serveren (en annen kan ha rettet)
+let _sqFlushing = null;       // pågående flush-promise
+let _sqTimer = null;
+let _sqRetryMs = 0;
+let _sqState = 'idle';        // idle | saving | error
+function _sqLoad() {
+  try { return JSON.parse(localStorage.getItem(_SQ_KEY) || '[]'); } catch (e) { return []; }
+}
+function _sqSave(q) {
+  try { localStorage.setItem(_SQ_KEY, JSON.stringify(q)); } catch (e) {}
+}
+function _sqUuid() {
+  if (window.crypto?.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+// Score-endring: siste verdi per (runde, spiller/lag, hull) vinner — raske trykk slås sammen.
+// strokes 0 = slett scoren.
+function enqueueScore(roundId, owner, hole, strokes) {
+  const key = `s|${roundId}|${owner.player_id ? 'p:' + owner.player_id : 't:' + owner.team_id}|${hole}`;
+  const q = _sqLoad().filter(op => op.key !== key);
+  q.push({ key, kind: 'score', round_id: roundId, player_id: owner.player_id || null, team_id: owner.team_id || null,
+    hole_number: hole, strokes, ts: new Date().toISOString() });
+  _sqSave(q);
+  _sqSchedule(250);
+}
+// game_events: klient-generert id gjør innsettingen idempotent ved ny sending.
+function enqueueEvent(row) {
+  const full = { id: _sqUuid(), ...row };
+  const q = _sqLoad();
+  q.push({ key: 'e|' + full.id, kind: 'event', round_id: row.round_id, row: full, ts: new Date().toISOString() });
+  _sqSave(q);
+  _sqSchedule(0);
+  return full;
+}
+function hasPendingWrites(roundId) {
+  return _sqLoad().some(op => !roundId || op.round_id === roundId);
+}
+function _sqSchedule(ms) {
+  clearTimeout(_sqTimer);
+  _sqTimer = setTimeout(() => { flushScoreQueue(); }, ms);
+}
+function _sqSetState(state) {
+  _sqState = state;
+  const el = document.getElementById('scSaveStatus');
+  if (!el) return;
+  const pending = hasPendingWrites(currentRound?.id);
+  if (state === 'error' && pending) { el.textContent = '⚠ ikke lagret · prøver igjen'; el.style.color = '#f09595'; el.style.opacity = '1'; }
+  else if (pending) { el.textContent = 'lagrer…'; el.style.color = 'var(--cream-dim)'; el.style.opacity = '1'; }
+  else { el.textContent = '✓ lagret'; el.style.color = 'var(--green-light)'; el.style.opacity = '0.7'; }
+}
+// Feil som aldri går over ved ny sending (integritet/tilgang). Nettverksfeil har ingen slik kode.
+function _sqIsPermanent(err) {
+  const c = String(err?.code || '');
+  return c.startsWith('23') || c.startsWith('42');
+}
+async function _sqSendOne(op) {
+  if (op.kind === 'event') {
+    const { error } = await db.from('game_events').insert(op.row);
+    if (error && error.code !== '23505') throw error;   // 23505 = allerede lagret (tidligere sending nådde fram)
+    return;
+  }
+  const ownerCol = op.player_id ? 'player_id' : 'team_id';
+  const ownerId = op.player_id || op.team_id;
+  // Gammel endring (f.eks. telefonen var låst): har noen andre lagret noe nyere, forkastes vår.
+  if (Date.now() - new Date(op.ts).getTime() > _SQ_STALE_MS) {
+    const { data, error } = await db.from('scores').select('updated_at')
+      .eq('round_id', op.round_id).eq(ownerCol, ownerId).eq('hole_number', op.hole_number).maybeSingle();
+    if (error) throw error;
+    if (data?.updated_at && new Date(data.updated_at) > new Date(op.ts)) return;
+  }
+  if (!op.strokes) {
+    const { error } = await db.from('scores').delete()
+      .eq('round_id', op.round_id).eq(ownerCol, ownerId).eq('hole_number', op.hole_number);
+    if (error) throw error;
+  } else {
+    const { error } = await db.from('scores').upsert({
+      round_id: op.round_id, [ownerCol]: ownerId, hole_number: op.hole_number,
+      strokes: op.strokes, updated_at: op.ts
+    }, { onConflict: `round_id,${ownerCol},hole_number` });
+    if (error) throw error;
+  }
+}
+// Sender hele køen i rekkefølge. Returnerer true når køen er tom.
+function flushScoreQueue() {
+  if (_sqFlushing) return _sqFlushing;
+  clearTimeout(_sqTimer);
+  _sqFlushing = (async () => {
+    try {
+      let q = _sqLoad();
+      if (!q.length) { _sqSetState('idle'); return true; }
+      _sqSetState('saving');
+      while (q.length) {
+        const op = q[0];
+        try {
+          await _sqSendOne(op);
+        } catch (err) {
+          if (!_sqIsPermanent(err)) throw err;
+          // Blokker ikke resten av køen for alltid — men si ifra, aldri stille tap.
+          console.error('Endring avvist av serveren', op, err);
+          alert(`En endring (hull ${op.hole_number || op.row?.hole_number}) ble avvist av serveren og kunne ikke lagres: ${err.message || err.code}`);
+        }
+        // Fjern bare hvis ikke erstattet av et nyere trykk mens vi sendte
+        _sqSave(_sqLoad().filter(o => !(o.key === op.key && o.ts === op.ts)));
+        q = _sqLoad();
+      }
+      _sqRetryMs = 0;
+      _sqSetState('idle');
+      return true;
+    } catch (e) {
+      console.warn('Lagring feilet, prøver igjen', e);
+      _sqRetryMs = Math.min(_sqRetryMs ? _sqRetryMs * 2 : 2000, 10000);
+      _sqSetState('error');
+      _sqSchedule(_sqRetryMs);
+      return false;
+    } finally {
+      _sqFlushing = null;
+      // Trykk som kom mens siste sending avsluttet, skal også sendes
+      if (_sqState !== 'error' && hasPendingWrites()) _sqSchedule(0);
+    }
+  })();
+  return _sqFlushing;
+}
+// Venter til køen er tom (maks timeoutMs). true = alt lagret.
+async function waitForSaved(timeoutMs = 8000) {
+  const deadline = Date.now() + timeoutMs;
+  while (hasPendingWrites()) {
+    const ok = await Promise.race([flushScoreQueue(), new Promise(r => setTimeout(() => r(false), Math.max(0, deadline - Date.now())))]);
+    if (ok && !hasPendingWrites()) return true;
+    if (Date.now() >= deadline) return !hasPendingWrites();
+    await new Promise(r => setTimeout(r, 500));
+  }
+  return true;
+}
+// Legg ventende (ikke-bekreftede) endringer oppå data hentet fra serveren,
+// så skjermen viser det brukeren faktisk tastet.
+function _applyPendingOverlay(roundId) {
+  _sqLoad().filter(op => op.round_id === roundId).forEach(op => {
+    if (op.kind === 'score') {
+      const map = op.player_id ? roundScores : roundTeamScores;
+      const id = op.player_id || op.team_id;
+      if (!map[id]) map[id] = {};
+      map[id][op.hole_number] = op.strokes || 0;
+    } else if (op.kind === 'event' && !roundEvents.some(e => e.id === op.row.id)) {
+      roundEvents.push({ ...op.row, created_at: op.ts });
+    }
+  });
+}
+window.addEventListener('online', () => _sqSchedule(0));
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && hasPendingWrites()) flushScoreQueue();
+});
+
 async function deleteRound(roundId) {
   const confirmed = await showConfirm('Slette denne runden? Dette sletter alle scores og kan ikke angres.');
   if (!confirmed) return;
@@ -78,6 +239,8 @@ async function openRound(roundId) {
       roundScores[s.player_id][s.hole_number] = s.strokes;
     }
   });
+  _applyPendingOverlay(roundId);
+  if (hasPendingWrites()) flushScoreQueue();
   document.getElementById('scCourseName').textContent = round.courses?.name || '';
   document.getElementById('scRoundDate').textContent = round.date;
   const teeBtnEl = document.getElementById('scTeeBtn');
@@ -109,7 +272,10 @@ async function openRound(roundId) {
   document.getElementById('scoringScreen').style.flexDirection = 'column';
 }
 async function closeScoringScreen() {
-  if (currentRound?.status === 'active') {
+  if (hasPendingWrites() && !(await waitForSaved(5000))) {
+    const ok = await showConfirm('Noen scorer er ikke lagret ennå (dårlig dekning?). De ligger på telefonen og sendes automatisk neste gang appen har nett. Forlate likevel?', 'Forlat');
+    if (!ok) return;
+  } else if (currentRound?.status === 'active') {
     const ok = await showConfirm('Forlate spillet? Det lagres og kan gjenopptas fra oversikten.', 'Forlat');
     if (!ok) return;
   }
@@ -154,6 +320,7 @@ function renderScoringHole() {
   renderScrambleTracker();
   renderSkinsTracker();
   renderGameTrackers();
+  _sqSetState(_sqState);
 }
 function renderHoleStats() {
   const allFP = roundFlights.flatMap(f => f.flight_players || []);
@@ -332,39 +499,24 @@ function _driveBlock(team, canEdit) {
 }
 async function logDrive(teamId, playerId) {
   if (!_scrambleGameRow) return;
-  const row = { game_id: _scrambleGameRow.id, round_id: currentRound.id, hole_number: currentHole, team_id: teamId, player_id: playerId, event_type: 'drive_used', payload: {} };
-  await db.from('game_events').insert(row);
+  const row = enqueueEvent({ game_id: _scrambleGameRow.id, round_id: currentRound.id, hole_number: currentHole, team_id: teamId, player_id: playerId, event_type: 'drive_used', payload: {} });
   roundEvents.push({ ...row, created_at: new Date().toISOString() });   // umiddelbar UI-oppdatering
   const holeData = roundHoles.find(h => h.hole_number === currentHole) || { par: null, stroke_index: null };
   renderTeamInputs(holeData);
   renderScrambleTracker();
 }
-let _adjustTeamLock = false;
-async function adjustTeamScore(teamId, delta) {
-  if (_adjustTeamLock) return;
-  _adjustTeamLock = true;
-  setTimeout(() => { _adjustTeamLock = false; }, 300);
+function adjustTeamScore(teamId, delta) {
   if (!roundTeamScores[teamId]) roundTeamScores[teamId] = {};
   const current = roundTeamScores[teamId][currentHole] || 0;
-  const newVal = Math.max(1, Math.min(current + delta, 15));
-  if (delta === -1 && current <= 1) {
-    roundTeamScores[teamId][currentHole] = 0;
-    await db.from('scores').delete()
-      .eq('round_id', currentRound.id)
-      .eq('team_id', teamId)
-      .eq('hole_number', currentHole);
-  } else {
-    roundTeamScores[teamId][currentHole] = newVal;
-    await db.from('scores').upsert({
-      round_id: currentRound.id, team_id: teamId,
-      hole_number: currentHole, strokes: newVal,
-      updated_at: new Date().toISOString()
-    }, { onConflict: 'round_id,team_id,hole_number' });
-  }
+  // − fra 1 (eller tomt) = slett scoren
+  const newVal = (delta === -1 && current <= 1) ? 0 : Math.max(1, Math.min(current + delta, 15));
+  roundTeamScores[teamId][currentHole] = newVal;
+  enqueueScore(currentRound.id, { team_id: teamId }, currentHole, newVal);
   const holeData = roundHoles.find(h => h.hole_number === currentHole) || { par: null, stroke_index: null };
   renderTeamInputs(holeData);
   renderMiniLeaderboard();
   renderScrambleTracker();
+  _sqSetState(_sqState);
 }
 function renderScrambleTracker() {
   const strip = document.getElementById('scScrambleStrip');
@@ -439,33 +591,17 @@ function getScoreName(strokes, par) {
   if (d === 3) return 'Trippel';
   return `+${d}`;
 }
-let _adjustScoreLock = false;
-async function adjustScore(playerId, delta) {
-  if (_adjustScoreLock) return;
-  _adjustScoreLock = true;
-  // Always release the lock — even if the DB call fails after wake/network hiccup
-  setTimeout(() => { _adjustScoreLock = false; }, 300);
+function adjustScore(playerId, delta) {
   if (!roundScores[playerId]) roundScores[playerId] = {};
   const current = roundScores[playerId][currentHole] || 0;
-  const newVal = Math.max(1, Math.min(current + delta, 15));
-  // Ikke gå under 1 (bruk − for å komme til 0/tomt = slett score)
-  if (delta === -1 && current <= 1) {
-    roundScores[playerId][currentHole] = 0;
-    await db.from('scores').delete()
-      .eq('round_id', currentRound.id)
-      .eq('player_id', playerId)
-      .eq('hole_number', currentHole);
-  } else {
-    roundScores[playerId][currentHole] = newVal;
-    await db.from('scores').upsert({
-      round_id: currentRound.id, player_id: playerId,
-      hole_number: currentHole, strokes: newVal,
-      updated_at: new Date().toISOString()
-    }, { onConflict: 'round_id,player_id,hole_number' });
-  }
+  // − fra 1 (eller tomt) = slett scoren
+  const newVal = (delta === -1 && current <= 1) ? 0 : Math.max(1, Math.min(current + delta, 15));
+  roundScores[playerId][currentHole] = newVal;
+  enqueueScore(currentRound.id, { player_id: playerId }, currentHole, newVal);
   const holeData = roundHoles.find(h => h.hole_number === currentHole) || { par: null, stroke_index: null };
   renderPlayerInputs(holeData);
   renderMiniLeaderboard();
+  _sqSetState(_sqState);
 }
 function openHoleGuide() {
   const holeData = roundHoles.find(h => h.hole_number === currentHole);
@@ -473,7 +609,35 @@ function openHoleGuide() {
   document.getElementById('hgText').textContent = holeData?.guide_text || 'Ingen baneguide er generert for dette hullet ennå.';
   openModal('modalHoleGuide');
 }
-function changeHole(delta) {
+// Sperre: ikke bytt hull / avslutt før alt som vises er bekreftet lagret.
+let _sqGateBusy = false;
+// allowSkip: brukeren kan velge å gå videre (endringen ligger trygt i køen).
+// «Avslutt runde» krever at alt er lagret.
+async function _ensureSaved(allowSkip = true) {
+  if (!hasPendingWrites()) return true;
+  if (_sqGateBusy) return false;
+  _sqGateBusy = true;
+  const btns = ['scNextHole', 'scNextHoleBottom', 'scPrevHole'].map(id => document.getElementById(id)).filter(Boolean);
+  const labels = btns.map(b => b.textContent);
+  btns.forEach(b => { b.textContent = 'Lagrer…'; b.style.opacity = '0.6'; });
+  try {
+    while (true) {
+      if (await waitForSaved(8000)) return true;
+      if (allowSkip) {
+        const skip = await showConfirm('Scoren er ikke lagret ennå, trolig dårlig dekning. Den ligger trygt på telefonen og sendes automatisk når nettet er tilbake. Gå videre likevel?', 'Gå videre');
+        return skip;
+      }
+      const retry = await showConfirm('Kan ikke avslutte runden før alle scorer er lagret (dårlig dekning?). Prøve igjen?', 'Prøv igjen');
+      if (!retry) return false;
+    }
+  } finally {
+    btns.forEach((b, i) => { b.textContent = labels[i]; b.style.opacity = ''; });
+    _sqGateBusy = false;
+    renderScoringHole();
+  }
+}
+async function changeHole(delta) {
+  if (!(await _ensureSaved())) return;
   const firstHole = roundHoles.length > 0 ? Math.min(...roundHoles.map(h => h.hole_number)) : 1;
   const lastHole = roundHoles.length > 0 ? Math.max(...roundHoles.map(h => h.hole_number)) : (currentRound?.courses?.holes || 18);
   const newHole = currentHole + delta;
@@ -791,6 +955,7 @@ function _incompleteParticipants() {
   return missing;
 }
 async function finishRound() {
+  if (!(await _ensureSaved(false))) return;
   const missing = _incompleteParticipants();
   const msg = missing.length
     ? `⚠️ Ikke alle har fullført: ${missing.map(m => `${m.name} (${m.left} hull igjen)`).join(', ')}. Avslutte likevel? Dette lukker runden for ALLE flighter med én gang, uansett om de er ferdige.`

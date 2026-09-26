@@ -417,25 +417,40 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').catch(() => {});
 }
 init();
+// Endringer som ble liggende igjen forrige gang (appen lukket før lagring) sendes nå
+// (DOMContentLoaded: scoring.js er lastet etter app.js)
+document.addEventListener('DOMContentLoaded', () => { if (hasPendingWrites()) setTimeout(() => flushScoreQueue(), 1500); });
 
 
 async function _resumeScoring() {
   if (!currentRound?.id) return;
+  // Send ventende endringer FØR vi henter fra serveren — ellers overskriver
+  // serverens gamle tall det som ble tastet før skjermen ble låst.
+  await waitForSaved(8000);
   // Re-fetch scores in case other players scored while phone was asleep
   const { data: scores } = await db.from('scores').select('*').eq('round_id', currentRound.id);
+  const { data: events } = await db.from('game_events').select('*').eq('round_id', currentRound.id);
   if (scores) {
     roundScores = {};
+    roundTeamScores = {};
     scores.forEach(s => {
-      if (!roundScores[s.player_id]) roundScores[s.player_id] = {};
-      roundScores[s.player_id][s.hole_number] = s.strokes;
+      const map = s.team_id ? roundTeamScores : roundScores;
+      const id = s.team_id || s.player_id;
+      if (!id) return;
+      if (!map[id]) map[id] = {};
+      map[id][s.hole_number] = s.strokes;
     });
   }
+  if (events) roundEvents = events;
+  _applyPendingOverlay(currentRound.id);
   renderScoringHole();
 }
 
 let _visibilityDebounce = null;
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && currentProfile) {
+  const scoringOpen = document.getElementById('scoringScreen')?.style.display !== 'none';
+  // Gjester (uten innlogging) som taster må også få scoringen gjenopprettet
+  if (document.visibilityState === 'visible' && (currentProfile || scoringOpen)) {
     clearTimeout(_visibilityDebounce);
     _visibilityDebounce = setTimeout(async () => {
       // Scoring screen open: restore full state instead of touching other pages
@@ -443,6 +458,7 @@ document.addEventListener('visibilitychange', () => {
         await _resumeScoring();
         return;
       }
+      if (!currentProfile) return;
       const activePage = document.querySelector('.page.active')?.id?.replace('page-', '');
       if (activePage === 'dashboard') loadDashboard();
       else if (activePage === 'rounds') loadRounds();
