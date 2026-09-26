@@ -1063,9 +1063,12 @@ async function openEditGame(roundId) {
     tournamentId: round.tournament_id || null,
     _orig: {
       players: players.map(p => ({ id: p.id, handicap: p.handicap, _fpId: p._fpId })),
-      addons: addons.map(a => ({ type: a.type, config: { ...a.config } })),
+      // Dyp kopi: config har nøstede lister (f.eks. junk entries). En grunn
+      // kopi delte listen med _wizState.addons, så endringer i ⚙ Oppsett ble
+      // sett på som «uendret» og aldri lagret (sept 2026).
+      addons: addons.map(a => ({ type: a.type, config: JSON.parse(JSON.stringify(a.config || {})) })),
       teams: teams.map(t => ({ _teamId: t._teamId, team_handicap: t.team_handicap })),
-      mainConfig: { ...(main?.config || {}) },
+      mainConfig: JSON.parse(JSON.stringify(main?.config || {})),
       tournamentId: round.tournament_id || null,
     },
   };

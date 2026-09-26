@@ -191,7 +191,8 @@ async function logJunkEntry(gameId, hole, kind) {
   const uid = `${gameId}-${hole}-${kind}`;
   const playerId = document.getElementById(`junkP-${uid}`)?.value;
   const value = parseFloat(document.getElementById(`junkV-${uid}`)?.value);
-  if (!playerId || !value) return;
+  // 0 er en gyldig verdi (0 cm fra pin, 0 m drive) — kun tomt/ugyldig avvises
+  if (!playerId || !Number.isFinite(value) || value < 0) return;
   const row = enqueueEvent({ game_id: gameId, round_id: currentRound.id, hole_number: hole, player_id: playerId, event_type: 'junk_entry', payload: { kind, value } });
   roundEvents.push({ ...row, created_at: new Date().toISOString() });   // umiddelbar UI-oppdatering
   renderGameTrackers();
