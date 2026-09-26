@@ -505,22 +505,9 @@ const ScrambleGame = {
     const data = ScrambleGame.compute(ctx);
     if (!data || !data.teams.length) return '';
     const scoring = data.scoring;
-    const holes = ctx.holes || [];
+    const allFP = (ctx.round?.flights || []).flatMap(f => f.flight_players || []);
+    const firstName = pid => (allFP.find(fp => fp.player_id === pid)?.profiles?.display_name || '?').split(' ')[0];
     const scoreLabel = scoring === 'stableford' ? 'Poeng' : scoring === 'slag' ? 'Slag' : 'Netto';
-    const headerCells = data.teams.map(r => `<th style="padding:5px 8px;text-align:center;color:var(--cream-dim);font-size:10px;font-weight:400;text-transform:uppercase;letter-spacing:1px;">${r.team.name}</th>`).join('');
-    const holeRows = holes.map(h => {
-      const cells = data.teams.map(r => {
-        const hr = r.holeResults.find(x => x.holeNumber === h.hole_number);
-        const g = hr?.gross || 0;
-        const color = g ? getScoreColor(g, h.par) : 'var(--cream-dim)';
-        return `<td style="padding:5px 8px;text-align:center;font-family:'Playfair Display',serif;font-size:14px;color:${color};">${g || '–'}</td>`;
-      }).join('');
-      return `<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
-        <td style="padding:5px 8px;color:var(--cream-dim);font-size:12px;">${h.hole_number}</td>
-        <td style="padding:5px 8px;text-align:center;color:var(--cream-dim);font-size:12px;">${h.par}</td>
-        ${cells}
-      </tr>`;
-    }).join('');
     const val = r => scoring === 'stableford' ? `${r.totalSf}p` : scoring === 'slag' ? `${r.totalGross || '–'}` : (() => {
       if (!r.totalGross) return '–';
       const d = r.totalNet - r.totalPar;
@@ -533,17 +520,9 @@ const ScrambleGame = {
     </div>`).join('');
     return `<div style="background:rgba(201,168,76,0.06);border:1px solid rgba(201,168,76,0.25);border-radius:12px;padding:16px;">
       <div style="font-size:11px;color:var(--gold);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:14px;">⛳ Scramble · ${scoreLabel}</div>
-      <div style="overflow-x:auto;margin-bottom:14px;">
-        <table style="width:100%;border-collapse:collapse;font-size:13px;">
-          <thead><tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
-            <th style="padding:5px 8px;text-align:left;color:var(--cream-dim);font-size:10px;font-weight:400;text-transform:uppercase;letter-spacing:1px;">Hull</th>
-            <th style="padding:5px 8px;text-align:center;color:var(--cream-dim);font-size:10px;font-weight:400;text-transform:uppercase;letter-spacing:1px;">Par</th>
-            ${headerCells}
-          </tr></thead>
-          <tbody>${holeRows}</tbody>
-        </table>
-      </div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;">${totals}</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">${totals}</div>
+      ${data.teams.map(r => `<div style="font-size:12px;color:var(--cream);margin:10px 0 6px;">${r.team.name} <span style="color:var(--cream-dim);font-size:11px;">· ${(r.team.member_ids || []).map(firstName).join(', ')}</span></div>
+      <div class="pga-card" style="border-radius:10px;margin:0 -8px;">${_teamPgaScorecardHtml(r)}</div>`).join('')}
     </div>`;
   },
 };

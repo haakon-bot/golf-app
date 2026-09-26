@@ -692,59 +692,6 @@ function renderGameTrackers() {
   el.innerHTML = html || '';
 }
 
-function _scorecardInlineHtml(fp, scores, holes, round, fullCoursePar) {
-  const phcp = _playingHcp(fp.handicap, round?.tee_sets?.slope, round?.tee_sets?.course_rating, fullCoursePar || 72);
-  let totalBrutto = 0, totalNetto = 0, totalPar = 0, totalStab = 0, played = 0;
-  const rows = holes.map(h => {
-    const s = scores[h.hole_number];
-    if (!s || s <= 0 || !h.par || !h.stroke_index) {
-      return `<tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
-        <td style="padding:5px 8px;color:var(--gold-dim);font-weight:600;">${h.hole_number}</td>
-        <td style="padding:5px 8px;text-align:center;color:var(--cream-dim);">${h.par || '–'}</td>
-        <td colspan="5" style="padding:5px 8px;text-align:center;color:rgba(255,255,255,0.2);">–</td>
-      </tr>`;
-    }
-    let extra = Math.floor(phcp / 18);
-    if (h.stroke_index <= (phcp % 18)) extra++;
-    const netto = s - extra;
-    const bvp = s - h.par;
-    const nvp = netto - h.par;
-    const stab = Math.max(0, h.par - netto + 2);
-    totalBrutto += s; totalNetto += netto; totalPar += h.par; totalStab += stab; played++;
-    return `<tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
-      <td style="padding:5px 8px;color:var(--gold-dim);font-weight:600;">${h.hole_number}</td>
-      <td style="padding:5px 8px;text-align:center;color:var(--cream-dim);">${h.par}</td>
-      <td style="padding:5px 8px;text-align:center;color:var(--cream);font-weight:500;">${s}</td>
-      <td style="padding:5px 8px;text-align:center;font-weight:600;color:${_vsParColor(bvp)};">${_fmtVsPar(bvp)}</td>
-      <td style="padding:5px 8px;text-align:center;color:var(--cream);">${netto}</td>
-      <td style="padding:5px 8px;text-align:center;font-weight:600;color:${_vsParColor(nvp)};">${_fmtVsPar(nvp)}</td>
-      <td style="padding:5px 8px;text-align:center;font-weight:600;color:${stab >= 3 ? 'var(--gold)' : stab === 2 ? 'var(--cream)' : '#f09595'};">${stab}p</td>
-    </tr>`;
-  }).join('');
-  const bvpTot = played ? totalBrutto - totalPar : null;
-  const nvpTot = played ? totalNetto - totalPar : null;
-  const th = 'padding:5px 8px;text-align:center;color:var(--cream-dim);font-size:10px;font-weight:400;text-transform:uppercase;letter-spacing:1px;';
-  return `<div style="overflow-x:auto;">
-    <table style="width:100%;border-collapse:collapse;font-size:12px;">
-      <thead><tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
-        <th style="${th}text-align:left;">Hull</th><th style="${th}">Par</th>
-        <th style="${th}">Slag</th><th style="${th}">±</th>
-        <th style="${th}">Netto</th><th style="${th}">N±</th><th style="${th}">Stab</th>
-      </tr></thead>
-      <tbody>${rows}</tbody>
-      <tfoot><tr style="border-top:1px solid rgba(255,255,255,0.1);">
-        <td style="padding:7px 8px;color:var(--cream);font-weight:600;">Tot</td>
-        <td style="padding:7px 8px;text-align:center;color:var(--cream-dim);">${totalPar || '–'}</td>
-        <td style="padding:7px 8px;text-align:center;color:var(--cream);font-weight:600;">${played ? totalBrutto : '–'}</td>
-        <td style="padding:7px 8px;text-align:center;font-weight:700;color:${_vsParColor(bvpTot)};">${_fmtVsPar(bvpTot)}</td>
-        <td style="padding:7px 8px;text-align:center;color:var(--cream);">${played ? totalNetto : '–'}</td>
-        <td style="padding:7px 8px;text-align:center;font-weight:700;color:${_vsParColor(nvpTot)};">${_fmtVsPar(nvpTot)}</td>
-        <td style="padding:7px 8px;text-align:center;font-weight:700;color:var(--gold);">${totalStab}p</td>
-      </tr></tfoot>
-    </table>
-  </div>`;
-}
-// Fullt scorekort for ett lag (per hull: brutto/netto/stab) — vises ved trykk.
 function toggleTeamScorecard(teamId) {
   const target = document.getElementById('lbteam-' + teamId);
   if (!target) return;
@@ -907,7 +854,7 @@ function showPlayerScorecard(fp, scores, holes, round, fullCoursePar) {
   const name = fp.profiles?.display_name || '?';
   const phcp = _playingHcp(fp.handicap, round?.tee_sets?.slope, round?.tee_sets?.course_rating, fullCoursePar || 72);
   document.getElementById('scorecardModalTitle').textContent = `${name} · ${phcp} slag`;
-  document.getElementById('scorecardModalContent').innerHTML = _scorecardInlineHtml(fp, scores, holes, round, fullCoursePar);
+  document.getElementById('scorecardModalContent').innerHTML = `<div class="pga-card" style="border-radius:10px;">${_pgaScorecardHtml(scores, holes, phcp)}</div>`;
   openModal('modalPlayerScorecard');
 }
 async function openChangeTee() {
@@ -1197,7 +1144,7 @@ function showSummaryPlayer(playerId, btn) {
   let totalStabs = 0, totalStrokes = 0, birdies = 0, pars = 0, bogeys = 0, doubles = 0;
   const parSf = { 3: [], 4: [], 5: [] };
   let bestHole = null, worstHole = null;
-  const rows = holes.map(h => {
+  holes.forEach(h => {
     const s = playerScores[h.hole_number] || 0;
     const stab = s > 0 ? calcStableford(s, h.par, hcp, h.stroke_index, 18) : 0;
     totalStabs += stab;
@@ -1212,15 +1159,7 @@ function showSummaryPlayer(playerId, btn) {
       else if (d === 1) bogeys++;
       else doubles++;
     }
-    const color = s > 0 ? getScoreColor(s, h.par) : 'var(--cream-dim)';
-    return `<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
-      <td style="padding:7px 10px; color:var(--cream-dim); font-size:13px;">${h.hole_number}</td>
-      <td style="padding:7px 10px; text-align:center; color:var(--cream-dim); font-size:13px;">${h.par}</td>
-      <td style="padding:7px 10px; text-align:center; color:var(--cream-dim); font-size:13px;">${h.stroke_index}</td>
-      <td style="padding:7px 10px; text-align:center; font-family:'Playfair Display',serif; font-size:16px; color:${color};">${s || '–'}</td>
-      <td style="padding:7px 10px; text-align:center; font-family:'Playfair Display',serif; font-size:16px; color:var(--gold);">${stab || '–'}</td>
-    </tr>`;
-  }).join('');
+  });
   // Par-type averages
   const parCard = (p) => {
     const arr = parSf[p];
@@ -1263,15 +1202,6 @@ function showSummaryPlayer(playerId, btn) {
     </div>
     <div style="display:flex;gap:8px;margin-bottom:14px;">${parCard(3)}${parCard(4)}${parCard(5)}</div>
     ${extremes}
-    <table style="width:100%; border-collapse:collapse; font-size:13px;">
-      <thead><tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
-        <th style="padding:6px 10px; text-align:left; color:var(--cream-dim); font-size:11px; font-weight:400; text-transform:uppercase; letter-spacing:1px;">Hull</th>
-        <th style="padding:6px 10px; text-align:center; color:var(--cream-dim); font-size:11px; font-weight:400; text-transform:uppercase; letter-spacing:1px;">Par</th>
-        <th style="padding:6px 10px; text-align:center; color:var(--cream-dim); font-size:11px; font-weight:400; text-transform:uppercase; letter-spacing:1px;">SI</th>
-        <th style="padding:6px 10px; text-align:center; color:var(--cream-dim); font-size:11px; font-weight:400; text-transform:uppercase; letter-spacing:1px;">Slag</th>
-        <th style="padding:6px 10px; text-align:center; color:var(--cream-dim); font-size:11px; font-weight:400; text-transform:uppercase; letter-spacing:1px;">Poeng</th>
-      </tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
+    <div class="pga-card" style="border-radius:10px; margin:0 -4px;">${_pgaScorecardHtml(playerScores, holes, hcp)}</div>
   `;
 }
