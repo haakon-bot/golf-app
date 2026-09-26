@@ -276,7 +276,7 @@ function showPage(pageId) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   const page = document.getElementById('page-' + pageId);
   if (page) page.classList.add('active');
-  const navMap = { dashboard: 'navDashboard', rounds: 'navRounds', stats: 'navStats', profile: 'navProfile', players: 'navProfile' };
+  const navMap = { dashboard: 'navDashboard', rounds: 'navRounds', stats: 'navStats', tournament: 'navTournament', profile: 'navProfile', players: 'navProfile' };
   const navBtn = document.getElementById(navMap[pageId]);
   if (navBtn) navBtn.classList.add('active');
   if (pageId === 'players') loadPlayers();
