@@ -519,15 +519,28 @@ function renderTeamMiniLeaderboard() {
   const data = getGame('scramble').compute(_scrambleCtx());
   if (!data || !data.teams.length) { el.innerHTML = ''; return; }
   const scoring = data.scoring;
-  el.innerHTML = data.teams.map((r, i) => {
-    const lead = i === 0 && r.thru > 0;
-    const vsPar = r.totalGross ? r.totalNet - r.totalPar : null;
-    const main = scoring === 'stableford' ? `${r.totalSf}p`
-      : scoring === 'slag' ? `${r.totalGross || '–'}`
-      : (vsPar == null ? '–' : vsPar === 0 ? 'E' : vsPar > 0 ? `+${vsPar}` : `${vsPar}`);
-    const flag = r.out ? ' <span style="color:#f09595;">⚠</span>' : r.penalty ? ` <span style="font-size:10px;color:#e8a070;">+${r.penalty}</span>` : '';
-    return `<div class="sc-chip${lead ? ' lead' : ''}"><span style="color:var(--cream-dim);">${i + 1}</span> ${r.team.name} <b style="color:${lead ? 'var(--gold)' : 'var(--cream)'};">${main}</b>${flag}<span style="font-size:10px;color:var(--cream-dim);">${r.thru}</span></div>`;
-  }).join('');
+  const scoreLbl = scoring === 'stableford' ? 'Poeng' : scoring === 'slag' ? 'Slag' : 'Netto';
+  const cols = 'grid-template-columns:34px 1fr 40px 56px;';
+  const isMe = r => (r.team.member_ids || []).includes(_myRoundPlayerId);
+  const rows = _miniRows(data.teams, isMe);
+  el.innerHTML = `<div class="sc-mini">
+    <div class="lb-head" style="${cols}"><div class="lb-num">Pos</div><div>Lag</div><div class="lb-num">Thru</div><div class="lb-num">${scoreLbl}</div></div>
+    ${rows.map(r => {
+      const i = data.teams.indexOf(r);
+      const vsPar = r.totalGross ? r.totalNet - r.totalPar : null;
+      const main = scoring === 'stableford' ? `${r.totalSf}` : scoring === 'slag' ? `${r.totalGross || '–'}` : _fmtVsPar(vsPar);
+      const mainColor = scoring === 'netto' ? _vsParColor(vsPar) : (i === 0 ? 'var(--gold)' : 'var(--cream)');
+      const flag = r.out ? ' <span style="color:#f09595;">⚠ ute</span>' : r.penalty ? ` <span style="font-size:10px;color:#e8a070;">+${r.penalty} straff</span>` : '';
+      const thru = r.thru === 0 ? '–' : r.thru >= roundHoles.length ? 'F' : r.thru;
+      return `<div class="lb-row${isMe(r) ? ' me' : ''}" style="${cols}">
+        <div class="lb-num" style="color:${i === 0 ? 'var(--gold)' : 'var(--cream-dim)'};">${i + 1}</div>
+        <div style="color:var(--cream); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${r.team.name}${flag}</div>
+        <div class="lb-num" style="color:var(--cream-dim);">${thru}</div>
+        <div class="lb-num" style="font-weight:700; color:${mainColor};">${main}</div>
+      </div>`;
+    }).join('')}
+    ${_miniFoot(rows.length, data.teams.length)}
+  </div>`;
 }
 // _playingHcp og calcStableford bor nå i games-core.js (spillmotoren, delte helpers).
 // Counts extra strokes from fullHCP that land on the given active holes (full 18-hole distribution).
@@ -638,30 +651,34 @@ async function changeHole(delta) {
   renderScoringHole();
   document.getElementById('scoringScreen').scrollTo(0, 0);
 }
+// Mini-ledertavle: alle ved ≤8 spillere, ellers topp 5 + egen rad.
+function _miniRows(list, isMe) {
+  if (list.length <= 8) return list;
+  const top = list.slice(0, 5);
+  const me = list.find(isMe);
+  return me && !top.includes(me) ? [...top, me] : top;
+}
+function _miniFoot(shown, total) {
+  return `<div class="sc-mini-foot"><span style="color:var(--cream-dim);">${shown < total ? `Viser ${shown} av ${total}` : ''}</span><span>Hele ledertavla ›</span></div>`;
+}
 function renderMiniLeaderboard() {
   if (_scrambleGameRow) return renderTeamMiniLeaderboard();
-  const _rSlope = currentRound?.tee_sets?.slope, _rCr = currentRound?.tee_sets?.course_rating;
-  const allFP = roundFlights.flatMap(f => f.flight_players || []);
-  const standings = allFP.map(fp => {
-    let total = 0, holes = 0;
-    const hcp = _playingHcp(fp.handicap, _rSlope, _rCr, _fullCoursePar);
-    Object.entries(roundScores[fp.player_id] || {}).forEach(([h, s]) => {
-      if (s > 0) {
-        const hd = roundHoles.find(hh => hh.hole_number === parseInt(h));
-        if (hd?.par && hd?.stroke_index) {
-          let extra = Math.floor(hcp / 18);
-          if (hd.stroke_index <= (hcp % 18)) extra++;
-          const pts = Math.max(0, hd.par - (s - extra) + 2);
-          total += pts;
-        }
-        holes++;
-      }
-    });
-    return { name: fp.profiles?.display_name?.split(' ')[0] || '?', total, holes };
-  }).sort((a, b) => b.total - a.total);
-  document.getElementById('scMiniLeader').innerHTML = standings.map((p, i) =>
-    `<div class="sc-chip${i === 0 && p.holes ? ' lead' : ''}"><span style="color:var(--cream-dim);">${i + 1}</span> ${p.name} <b style="color:${i === 0 && p.holes ? 'var(--gold)' : 'var(--cream)'};">${p.total}p</b><span style="font-size:10px;color:var(--cream-dim);">${p.holes}</span></div>`
-  ).join('');
+  const el = document.getElementById('scMiniLeader');
+  if (!el) return;
+  const standings = _individualStandings();
+  const isMe = p => p.fp.player_id === _myRoundPlayerId;
+  const rows = _miniRows(standings, isMe);
+  el.innerHTML = `<div class="sc-mini">
+    <div class="lb-head"><div class="lb-num">Pos</div><div>Spiller</div><div class="lb-num">Netto</div><div class="lb-num">Thru</div><div class="lb-num">Poeng</div></div>
+    ${rows.map(p => `<div class="lb-row${isMe(p) ? ' me' : ''}">
+      <div class="lb-num" style="color:${p.pos === 1 ? 'var(--gold)' : 'var(--cream-dim)'};">${p.tied ? 'T' : ''}${p.pos}</div>
+      <div style="color:var(--cream); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${p.fp.profiles?.display_name || '?'}</div>
+      <div class="lb-num" style="font-weight:600; color:${_vsParColor(p.nettoVsPar)};">${_fmtVsPar(p.nettoVsPar)}</div>
+      <div class="lb-num" style="color:var(--cream-dim);">${p.thru}</div>
+      <div class="lb-num" style="font-weight:700; color:var(--gold);">${p.stab}</div>
+    </div>`).join('')}
+    ${_miniFoot(rows.length, standings.length)}
+  </div>`;
 }
 // toggleSkinsAmount + skins-beregning/-rendring bor nå i game-skins.js (skins-modulen).
 // Tynn wrapper: bygg ctx og la motoren rendre tracker-stripa.
@@ -798,11 +815,8 @@ function _teamPgaScorecardHtml(r) {
   const cells = r.holeResults.map(h => ({ hole: h.holeNumber, par: h.par, extra: h.gross ? h.gross - h.net : _teamExtraStrokes(Number(r.teamHcp) || 0, h.si), gross: h.gross || 0, pts: h.gross ? h.sf : null }));
   return _pgaGridHtml(cells) + _pgaFooterHtml({ gross: r.totalGross, net: r.totalNet, parPlayed: r.totalPar, pts: r.totalSf, played: r.thru, penalty: r.penalty });
 }
-function showLeaderboard() {
-  // Snitt per partype bygger på individuelle scorer — gir ikke mening i scramble
-  const _psw = document.getElementById('scParStatsWrap');
-  if (_psw) _psw.style.display = _scrambleGameRow ? 'none' : '';
-  if (_scrambleGameRow) { _renderScrambleLeaderboard(); openModal('modalLeaderboard'); return; }
+// Felles stilling for ledertavla og mini-tavla på scoringskjermen.
+function _individualStandings() {
   const allFP = roundFlights.flatMap(f => f.flight_players || []);
   const standings = allFP.map(fp => {
     const phcp = _playingHcp(fp.handicap, currentRound?.tee_sets?.slope, currentRound?.tee_sets?.course_rating, _fullCoursePar);
@@ -821,12 +835,22 @@ function showLeaderboard() {
     });
     return { fp, phcp, stab, holesPlayed, nettoVsPar: holesPlayed ? netto - parThru : null };
   }).sort((a, b) => b.stab - a.stab || (a.nettoVsPar ?? 99) - (b.nettoVsPar ?? 99));
-  const allHolesCount = roundHoles.length;
-  const rows = standings.map((p, i) => {
-    const tied = standings.filter(o => o.stab === p.stab).length > 1;
-    const pos = standings.findIndex(o => o.stab === p.stab) + 1;
+  standings.forEach(p => {
+    p.pos = standings.findIndex(o => o.stab === p.stab) + 1;
+    p.tied = standings.filter(o => o.stab === p.stab).length > 1;
+    p.thru = p.holesPlayed === 0 ? '–' : p.holesPlayed >= roundHoles.length ? 'F' : p.holesPlayed;
+  });
+  return standings;
+}
+function showLeaderboard() {
+  // Snitt per partype bygger på individuelle scorer — gir ikke mening i scramble
+  const _psw = document.getElementById('scParStatsWrap');
+  if (_psw) _psw.style.display = _scrambleGameRow ? 'none' : '';
+  if (_scrambleGameRow) { _renderScrambleLeaderboard(); openModal('modalLeaderboard'); return; }
+  const standings = _individualStandings();
+  const rows = standings.map(p => {
+    const { tied, pos, thru } = p;
     const isMe = p.fp.player_id === _myRoundPlayerId;
-    const thru = p.holesPlayed === 0 ? '–' : p.holesPlayed >= allHolesCount ? 'F' : p.holesPlayed;
     return `<div class="lb-row${isMe ? ' me' : ''}" onclick="toggleLeaderboardScorecard('${p.fp.player_id}')">
         <div class="lb-num" style="color:${pos === 1 ? 'var(--gold)' : 'var(--cream-dim)'}; font-size:13px;">${tied ? 'T' : ''}${pos}</div>
         <div style="min-width:0;">
