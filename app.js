@@ -210,9 +210,9 @@ function showApp() {
   const _q = _golfQuotes[Math.floor(Date.now() / 86400000) % _golfQuotes.length];
   const _qEl = document.getElementById('dashQuote');
   if (_qEl) _qEl.textContent = `"${_q.text}" – ${_q.author}`;
-  if (currentProfile?.is_admin) {
-    // admin-rettigheter aktive
-  }
+  // Papirkurv i hamburger-menyen (Admin) — kun admin
+  const _trashBtn = document.getElementById('drawerTrashBtn');
+  if (_trashBtn) _trashBtn.style.display = currentProfile?.is_admin ? '' : 'none';
   loadDashboard();
 }
 function switchAuthTab(tab) {
