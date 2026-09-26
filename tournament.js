@@ -205,6 +205,7 @@ async function computeTournamentData(tournamentId) {
   (adjustments || []).forEach(adj => {
     if (!totals[adj.player_id]) totals[adj.player_id] = { name: allPlayers[adj.player_id] || adj.profiles?.display_name || '?', points: 0, perRound: {}, perRoundBonus: {} };
     totals[adj.player_id].points += Number(adj.points) || 0;
+    totals[adj.player_id].adjusted = (totals[adj.player_id].adjusted || 0) + (Number(adj.points) || 0);
   });
   const standings = Object.entries(totals).map(([playerId, t]) => ({ playerId, ...t })).sort((a, b) => b.points - a.points);
   return { rounds: roundMeta, standings, adjustments: adjustments || [], allPlayers };
@@ -350,11 +351,15 @@ function _renderTournamentDetailHTML(t, data, opts) {
     if (bonus > 0) return `${total - bonus}<span style="color:var(--gold-dim);">+${bonus}</span>`;
     return `${total}`;
   };
+  // Egen kolonne for manuelle justeringer (f.eks. en runde som ble slettet og
+  // lagt inn som poeng), så summen alltid kan følges fra kolonnene.
+  const hasAdj = (data.adjustments || []).length > 0;
   const standingsRows = data.standings.map((s, i) => `
     <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
       <td style="padding:9px 10px;color:${i === 0 ? 'var(--gold)' : 'var(--cream-dim)'};font-size:13px;">${i + 1}</td>
       <td style="padding:9px 10px;color:var(--cream);font-size:14px;">${(s.name || '?').split(' ')[0]}</td>
       ${data.rounds.map(r => `<td style="padding:9px 6px;text-align:center;color:var(--cream-dim);font-size:12px;">${_fmtRoundCell(s, r)}</td>`).join('')}
+      ${hasAdj ? `<td style="padding:9px 6px;text-align:center;color:var(--cream-dim);font-size:12px;">${s.adjusted ? (s.adjusted > 0 ? '+' : '') + s.adjusted : '–'}</td>` : ''}
       <td style="padding:9px 10px;text-align:right;font-family:'Playfair Display',serif;font-size:17px;color:${i === 0 ? 'var(--gold)' : 'var(--cream)'};">${s.points}p</td>
     </tr>`).join('');
 
@@ -405,9 +410,10 @@ function _renderTournamentDetailHTML(t, data, opts) {
           <th style="padding:8px 10px;text-align:left;color:var(--cream-dim);font-size:10px;">#</th>
           <th style="padding:8px 10px;text-align:left;color:var(--cream-dim);font-size:10px;">Spiller</th>
           ${data.rounds.map((r, i) => `<th style="padding:8px 6px;text-align:center;color:var(--cream-dim);font-size:9px;" title="${_fmtRoundLabel(r)}">R${i + 1}${r.isTeamRound ? ' 🏌️' : r.isBestBall ? ' ⛳' : ''}</th>`).join('')}
+          ${hasAdj ? `<th style="padding:8px 6px;text-align:center;color:var(--cream-dim);font-size:9px;" title="Manuelle justeringer (se lista under)">±</th>` : ''}
           <th style="padding:8px 10px;text-align:right;color:var(--cream-dim);font-size:10px;">Sum</th>
         </tr></thead>
-        <tbody>${standingsRows || `<tr><td colspan="${data.rounds.length + 3}" style="padding:20px;text-align:center;color:var(--cream-dim);font-size:13px;">Ingen runder med poeng ennå.</td></tr>`}</tbody>
+        <tbody>${standingsRows || `<tr><td colspan="${data.rounds.length + 3 + (hasAdj ? 1 : 0)}" style="padding:20px;text-align:center;color:var(--cream-dim);font-size:13px;">Ingen runder med poeng ennå.</td></tr>`}</tbody>
       </table></div>
     </div>
     ${teamSection}
