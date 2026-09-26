@@ -23,6 +23,8 @@ let roundEvents = [];       // game_events (drive_used …) for utslags-logging 
 const _SQ_KEY = 'fore_pending_writes';
 const _SQ_STALE_MS = 10000;   // eldre endringer sjekkes mot serveren (en annen kan ha rettet)
 let _sqFlushing = null;       // pågående flush-promise
+let _sqFlushStarted = 0;      // når pågående flush startet (vakthund mot heng)
+const _SQ_OP_TIMEOUT_MS = 12000;
 let _sqTimer = null;
 let _sqRetryMs = 0;
 let _sqState = 'idle';        // idle | saving | error
@@ -69,7 +71,7 @@ function _sqSetState(state) {
   const el = document.getElementById('scSaveStatus');
   if (!el) return;
   const pending = hasPendingWrites(currentRound?.id);
-  if (state === 'error' && pending) { el.textContent = '⚠ ikke lagret · prøver igjen'; el.style.color = '#f09595'; el.style.opacity = '1'; }
+  if (state === 'error' && pending) { el.textContent = '⚠ ikke lagret · trykk for å prøve igjen'; el.style.color = '#f09595'; el.style.opacity = '1'; }
   else if (pending) { el.textContent = 'lagrer…'; el.style.color = 'var(--cream-dim)'; el.style.opacity = '1'; }
   else { el.textContent = '✓ lagret'; el.style.color = 'var(--green-light)'; el.style.opacity = '0.7'; }
 }
@@ -78,7 +80,16 @@ function _sqIsPermanent(err) {
   const c = String(err?.code || '');
   return c.startsWith('23') || c.startsWith('42');
 }
-async function _sqSendOne(op) {
+// Én sending får aldri henge: gir opp etter _SQ_OP_TIMEOUT_MS (feilen regnes
+// som nettverksfeil → ny sending senere). Dekker også heng FØR fetch, f.eks.
+// mens innloggingen fornyes etter at appen har ligget i bakgrunnen.
+function _sqSendOne(op) {
+  return Promise.race([
+    _sqSendOneRaw(op),
+    new Promise((_, rej) => setTimeout(() => rej(new Error('Tidsavbrudd ved lagring')), _SQ_OP_TIMEOUT_MS)),
+  ]);
+}
+async function _sqSendOneRaw(op) {
   if (op.kind === 'event') {
     const { error } = await db.from('game_events').insert(op.row);
     if (error && error.code !== '23505') throw error;   // 23505 = allerede lagret (tidligere sending nådde fram)
@@ -107,9 +118,16 @@ async function _sqSendOne(op) {
 }
 // Sender hele køen i rekkefølge. Returnerer true når køen er tom.
 function flushScoreQueue() {
+  // Vakthund: en flush som har stått i over 30 s regnes som hengt og forlates
+  if (_sqFlushing && Date.now() - _sqFlushStarted > 30000) _sqFlushing = null;
   if (_sqFlushing) return _sqFlushing;
+  _sqFlushStarted = Date.now();
   clearTimeout(_sqTimer);
-  _sqFlushing = (async () => {
+  // NB: kjøres via .then() så den ALLTID starter asynkront. Tidligere kunne en
+  // tom kø fullføre synkront, nullstille _sqFlushing FØR tildelingen under, og
+  // så ble et ferdig promise liggende som «pågående» for alltid → ingenting
+  // ble lagret før appen ble startet på nytt (sept 2026).
+  const self = Promise.resolve().then(async () => {
     try {
       let q = _sqLoad();
       if (!q.length) { _sqSetState('idle'); return true; }
@@ -138,12 +156,14 @@ function flushScoreQueue() {
       _sqSchedule(_sqRetryMs);
       return false;
     } finally {
-      _sqFlushing = null;
+      // En forlatt (hengt) flush skal ikke nullstille en nyere som er i gang
+      if (_sqFlushing === self) _sqFlushing = null;
       // Trykk som kom mens siste sending avsluttet, skal også sendes
       if (_sqState !== 'error' && hasPendingWrites()) _sqSchedule(0);
     }
-  })();
-  return _sqFlushing;
+  });
+  _sqFlushing = self;
+  return self;
 }
 // Venter til køen er tom (maks timeoutMs). true = alt lagret.
 async function waitForSaved(timeoutMs = 8000) {
@@ -170,10 +190,18 @@ function _applyPendingOverlay(roundId) {
     }
   });
 }
-window.addEventListener('online', () => _sqSchedule(0));
+window.addEventListener('online', () => { _sqRetryMs = 0; _sqSchedule(0); });
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden' && hasPendingWrites()) flushScoreQueue();
+  if (!hasPendingWrites()) return;
+  if (document.visibilityState === 'hidden') { flushScoreQueue(); return; }
+  // Tilbake i appen: forlat en eventuell hengt sending og prøv på nytt med en gang
+  _sqFlushing = null; _sqRetryMs = 0; _sqSchedule(300);
 });
+// Trykk på «ikke lagret» → prøv igjen nå
+function retrySaveNow() {
+  if (!hasPendingWrites()) return;
+  _sqFlushing = null; _sqRetryMs = 0; flushScoreQueue();
+}
 
 // Kun admin: flytter runden til papirkurven (ingenting slettes). Gjenopprett
 // eller slett permanent fra papirkurven (rounds.js). Håndheves også i databasen

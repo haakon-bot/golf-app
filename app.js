@@ -3,7 +3,26 @@ const SUPABASE_URL = 'https://fqiwnsmhypxtsdipzntm.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZxaXduc21oeXB4dHNkaXB6bnRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2MTA2NjIsImV4cCI6MjA5MzE4NjY2Mn0.QZjHeK-ckcM5aAIRsjeZalHQuLgkwCVcoxTL1pBpG68';
 const CLAUDE_PROXY = 'https://fqiwnsmhypxtsdipzntm.supabase.co/functions/v1/claude-proxy';
 const { createClient } = supabase;
-const db = createClient(SUPABASE_URL, SUPABASE_ANON);
+// Ingen databasekall får henge for alltid: iOS kan fryse en forespørsel når
+// appen legges i bakgrunnen, og da ble lagringskøen stående til appen ble
+// startet på nytt (sept 2026). Alle kall via db får derfor en tidsgrense.
+function _fetchWithTimeout(input, init = {}) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 15000);
+  if (init.signal) {
+    if (init.signal.aborted) ctrl.abort();
+    else init.signal.addEventListener('abort', () => ctrl.abort(), { once: true });
+  }
+  return fetch(input, { ...init, signal: ctrl.signal }).finally(() => clearTimeout(timer));
+}
+// Standardlåsen (navigator.locks) kan bli stående låst i Safari etter
+// bakgrunn, og da henger ALLE kall mens innloggingen fornyes. Én fane/én app
+// trenger ikke lås på tvers av faner.
+const _noLock = async (_name, _acquireTimeout, fn) => await fn();
+const db = createClient(SUPABASE_URL, SUPABASE_ANON, {
+  global: { fetch: _fetchWithTimeout },
+  auth: { lock: _noLock },
+});
 let currentUser = null;
 let currentProfile = null;
 

@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="FORE!">
 <link rel="apple-touch-icon" href="icon.svg">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.48.0/dist/tabler-icons.min.css">
 <link rel="stylesheet" href="styles.css">
@@ -289,7 +289,7 @@
         </div>
         <div style="flex:1; min-width:0;">
           <div style="font-size:14px; color:var(--cream);">Par <b id="scPar">–</b> <span style="color:var(--cream-dim);">·</span> SI <b id="scSI">–</b></div>
-          <div id="scSaveStatus" style="font-size:10px; color:var(--cream-dim); min-height:12px; white-space:nowrap;"></div>
+          <div id="scSaveStatus" onclick="retrySaveNow()" style="font-size:10px; color:var(--cream-dim); min-height:12px; white-space:nowrap; cursor:pointer;"></div>
         </div>
         <button id="scGuideBtn" onclick="openHoleGuide()" class="sc-pill-btn" title="Baneguide">🧭 Guide</button>
       </div>
