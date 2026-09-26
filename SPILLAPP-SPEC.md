@@ -4,27 +4,68 @@
 
 ---
 
-## STATUS pr. 13. august 2026 (koden er fasit)
+## STATUS pr. 26. september 2026 (koden er fasit)
 
 Dette dokumentet ble til FØR mye ble bygget. Denne blokken beskriver hva som
-faktisk er bygget og live (v1.169+). Resten av spec'en er dels historikk,
+faktisk er bygget og live (v1.201). Resten av spec'en er dels historikk,
 dels backlog — les den med denne blokken som fasit.
 
-**Bygget & live:**
-- **Spillmotoren (§3):** ferdig, men SPLITTET fra `games.js` til `games-core.js`
-  + `game-*.js` (én fil per spill). Kontrakten tar `ctx`-objekt, ikke løse
-  argumenter, og har fått `defaultConfig()` + `settle(ctx)` (§8).
-- **Spill (§5):** Stableford, Skins, Scramble, Quota, Nassau er registrert og
-  live. Skins er migrert inn (rounds.skins_amount dvalende).
-  IKKE bygget: Wolf (§5.2), Matchplay (§5.6), Mulligans/Gilligans (§5.7),
+**Spillmotor og spill**
+- **Spillmotoren (§3):** splittet i `games-core.js` + `game-*.js` (én fil per
+  spill). Kontrakten tar `ctx`-objekt og har `defaultConfig()` + `settle(ctx)` (§8).
+- **Hovedspill:** Stableford, Scramble, **Best Ball** (`game-bestball.js` —
+  flighten er laget, beste Stableford per hull blant lagkameratene, individuell
+  scoring, lagresultatet regnes i etterkant).
+- **Sidespill:** Skins, Nassau, Quota, **Sidekonkurranse/junk** (`game-junk.js`:
+  🎯 nærmest pin, 🚀 lengst drive, pluss straffevariantene 🤦 lengst fra pin og
+  🐌 kortest drive som gir minuspoeng). Vinner bekreftes/overstyres i
+  rundeoppsummeringen.
+- **IKKE bygget:** Wolf (§5.2), Matchplay (§5.6), Mulligans/Gilligans (§5.7),
   Kølle-lodd (§5.8).
-- **§2-flyten:** 4-stegs wizarden (Velg spill → Bane & hull → Spillere & lag →
-  Krydder) er bygget, inkl. hjemskjerm med «Start et spill» + hamburger (§2 F).
-- **Multi-flight (§2.7):** G1–G4 bygget; G5 (tverr-flight totalvinner + oppgjør)
-  verifisert korrekt for individuelle spill. Se «Avvik» under for scramble (G1b).
-- **Oppgjøret (§8):** bygget (generisk `settle()` + netting).
-- **Statistikk (§9):** individuell stats-side er BYGGET (ikke lenger «kommer
-  snart»). Sesong-leaderboard + head-to-head er fortsatt «kommer snart».
+
+**Flyt, flighter og deling**
+- **§2-flyten:** 4-stegs wizard + hjemskjerm med «Start et spill» og hamburger.
+- **Multi-flight (§2.7):** G1–G5 bygget, inkl. **G1b** (scramble: ett lag = én
+  flight, `game_teams.flight_id`, lagene rangeres samlet på tvers i live).
+- **§2 E (utslag):** drive_used-logging, §11.3-kvote med eskalerende varsler og
+  automatisk straff er bygget. Gjester kan taste utslag for eget lag.
+- **Admin:** kan redigere alle flighter/lag på en AVSLUTTET runde (ellers kun
+  egen flight). Manuell overstyring av lag-HCP i scramble-oppsettet.
+
+**Scoring-skjermen (v1.198–v1.200)**
+- **Lagringskø:** +/- oppdaterer skjermen umiddelbart; endringer legges i
+  localStorage (`fore_pending_writes`) og fjernes først når Supabase har
+  bekreftet. Køen sendes før runden hentes på nytt (oppvåkning/oppstart).
+  Hullbytte venter på lagring (kan overstyres ved dårlig dekning); «Avslutt
+  runde» krever at alt er lagret. Eldre køede endringer forkastes hvis serveren
+  har en nyere verdi. Scramble-utslag og junk går via samme kø (klient-generert
+  id → idempotent).
+- **Kompakt layout:** kun egen flight vises (tilskuere/admin på avsluttet runde
+  ser alle), toppfelt med 🏆 + ⋯-meny (oppsett, del, bytt tee, avslutt), hullinfo
+  på én rad, stilling som chips, «Neste hull» fast nederst.
+- **Ledertavle i PGA-stil** (fullskjerm): Pos/Spiller/Netto/Thru/Poeng med «T»
+  for delt plass; trykk gir PGA-scorekort (hull 1-9 / 10-18, sirkel/firkant,
+  prikker for tildelte slag). Samme kort brukes for scramble-lag (tall fra
+  `ScrambleGame.compute`, straff inkludert) og i rundeoppsummeringen.
+
+**Turnering og øvrig**
+- **Turnering** (`tournament.js`): sammenlagt over flere runder med
+  **plasseringspoeng** (ikke rå Stableford-sum), +3 vinnerbonus for Stableford-
+  vinner, vinnerlag i scramble og vinner-flight i Best Ball. Én kolonne per
+  runde (R1, R2 …). Alle kan opprette; kun admin kan redigere/slette/justere.
+  Egen knapp i bunnmenyen + hamburger.
+- **Baneguide:** AI-generert strategitekst per hull (`holes.guide_text`),
+  vises via 🧭 på scoring-skjermen.
+- **Oppgjøret (§8):** generisk `settle()` + netting på tvers.
+- **Statistikk (§9):** individuell stats-side, sesongtabell (spill vunnet) og
+  «Erkerivaler» er bygget. Sesong-leaderboard per spilltype gjenstår.
+
+**Kjente, åpne ting**
+- Mobil-PWA kan miste Supabase-sesjonen i bakgrunnen (Safari); løses i dag med
+  «Logg ut» på profilsiden.
+- Service workeren er network-first → treg oppstart på dårlig nett.
+- tabler-icons er pinnet til 3.48.0 (`dist/`); bump bevisst ved behov.
+- S1 (server-side «kun egen flight» på scores) er fortsatt kun UI-gating.
 
 **Kjente avvik doc↔kode er merket inline under med `⚠️ STATUS`.**
 
@@ -169,6 +210,8 @@ G1b (scramble på tvers) → G2 (runde-spesifikk live) → G3 (del + bli-med/
 claim; `flight_players.claimed_at`) → G4 (gjest-join) → G5 (tverr-flight
 totalvinner/oppgjør, verifiser). Deretter §2 E (utslag) → F (hjemskjerm).
 
+⚠️ STATUS (26. sep): G1b og §2 E er nå BYGGET — se STATUS-blokken øverst.
+Teksten under er beslutningsgrunnlaget fra august.
 ⚠️ STATUS (13. aug): ✅ G1, G2, G3, G4 bygget & live. ✅ G5 verifisert korrekt
 for individuelle spill (sammenlagt-standings på tvers + oppgjør nettet på tvers;
 skins holdt per-flight). ✅ §2 F (hjemskjerm) bygget.
@@ -309,6 +352,7 @@ Hvert spill deklarerer krav; appen filtrerer gyldige tillegg automatisk:
 
 Mal per spill: **Oppsett** (valg før start) · **Underveis** (input per hull utover score) · **Beregning** · **Kantene** (9 hull, frafall, uavgjort, brutte regler).
 
+⚠️ STATUS (26. sep): i tillegg er Best Ball (§10) og junk/sidekonkurranse bygget.
 ⚠️ STATUS (13. aug) — bygget vs ikke: ✅ 5.1 Scramble, ✅ 5.3 Skins, ✅ 5.4 Nassau,
 ✅ 5.5 Quota, samt Stableford (default individuelt hovedspill, ikke egen §-oppføring).
 ❌ IKKE bygget: 5.2 Wolf, 5.6 Matchplay, 5.7 Mulligans/Gilligans, 5.8 Kølle-lodd.
@@ -404,7 +448,7 @@ Rundens beste skjerm: hvert spill gjør opp for seg → appen **netter ut på tv
 
 ## 10. v2-spilliste
 
-Best ball/fourball, foursome, greensome, Vegas, snake, rabbit, junk-pakka (greenie/sandie/barkie/polie), nine-point, bingo bango bongo, Nassau-press, Ryder Cup-helgeformat.
+~~Best ball~~ (✅ bygget sep 2026)/fourball, foursome, greensome, Vegas, snake, rabbit, junk-pakka (greenie/sandie/barkie/polie), nine-point, bingo bango bongo, Nassau-press, Ryder Cup-helgeformat.
 
 ---
 
